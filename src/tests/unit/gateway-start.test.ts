@@ -89,7 +89,10 @@ describe('gateway server startup', () => {
   });
 
   it('closes diagnostic stores even when Nest shutdown fails', async () => {
-    const close = vi.fn().mockRejectedValueOnce(new Error('pending token write')).mockResolvedValue(undefined);
+    const close = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('pending token write'))
+      .mockResolvedValue(undefined);
     mockCreate.mockResolvedValue({
       register: vi.fn().mockResolvedValue(undefined),
       enableCors: vi.fn(),

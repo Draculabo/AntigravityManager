@@ -7,11 +7,14 @@ import { decrypt, encrypt, initializeMasterKey } from '@/shared/security/securit
 import { getCloudAccountsDbPath } from '@/shared/platform/paths';
 import { parseOAuthRecoveryRecord, type OAuthRecoveryRecord } from './oauth-recovery-codec';
 
-const JOURNAL_NAME = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.recovery$/;
+const JOURNAL_NAME =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.recovery$/;
 const MAX_ENCRYPTED_BYTES = 524_500;
 
 export function createProfileOAuthRecoveryJournal(): OAuthRecoveryJournal {
-  return new OAuthRecoveryJournal(path.join(path.dirname(getCloudAccountsDbPath()), 'oauth-recovery'));
+  return new OAuthRecoveryJournal(
+    path.join(path.dirname(getCloudAccountsDbPath()), 'oauth-recovery'),
+  );
 }
 
 /** Encrypted immutable records; callers must serialize recovery and cleanup with account updates. */
@@ -28,25 +31,33 @@ export class OAuthRecoveryJournal {
     const validated = parseOAuthRecoveryRecord(JSON.stringify(record));
     const directory = path.resolve(this.directory);
     const previous = OAuthRecoveryJournal.writes.get(directory) ?? Promise.resolve();
-    const operation = previous.catch(() => undefined).then(async () => {
-      // Existing ciphertext must participate in key selection before new data is encrypted.
-      const existing = await this.readAll();
-      if (existing.some((entry) => entry.record.accountId === validated.accountId)) {
-        throw new Error('OAuth recovery already pending');
-      }
-      if (existing.length === 0) {
-        await initializeMasterKey({ encryptedSamples: [] });
-      }
-      const encrypted = await encrypt(JSON.stringify(validated));
-      if (Buffer.byteLength(encrypted, 'utf8') > MAX_ENCRYPTED_BYTES ||
-          !encrypted.startsWith(ENCRYPTED_PAYLOAD_VERSION_PREFIX) || !parseEncryptedPayload(encrypted)) {
-        throw new Error('Invalid OAuth recovery journal entry');
-      }
-      const name = `${randomUUID()}.recovery`;
-      await writeFileAtomic(path.join(this.directory, name), encrypted, { mode: 0o600 });
-      return name;
-    });
-    const tail = operation.then(() => undefined, () => undefined);
+    const operation = previous
+      .catch(() => undefined)
+      .then(async () => {
+        // Existing ciphertext must participate in key selection before new data is encrypted.
+        const existing = await this.readAll();
+        if (existing.some((entry) => entry.record.accountId === validated.accountId)) {
+          throw new Error('OAuth recovery already pending');
+        }
+        if (existing.length === 0) {
+          await initializeMasterKey({ encryptedSamples: [] });
+        }
+        const encrypted = await encrypt(JSON.stringify(validated));
+        if (
+          Buffer.byteLength(encrypted, 'utf8') > MAX_ENCRYPTED_BYTES ||
+          !encrypted.startsWith(ENCRYPTED_PAYLOAD_VERSION_PREFIX) ||
+          !parseEncryptedPayload(encrypted)
+        ) {
+          throw new Error('Invalid OAuth recovery journal entry');
+        }
+        const name = `${randomUUID()}.recovery`;
+        await writeFileAtomic(path.join(this.directory, name), encrypted, { mode: 0o600 });
+        return name;
+      });
+    const tail = operation.then(
+      () => undefined,
+      () => undefined,
+    );
     OAuthRecoveryJournal.writes.set(directory, tail);
     try {
       return await operation;
@@ -88,7 +99,10 @@ export class OAuthRecoveryJournal {
           throw new Error('Invalid OAuth recovery journal entry');
         }
         const content = await handle.readFile('utf8');
-        if (!content.startsWith(ENCRYPTED_PAYLOAD_VERSION_PREFIX) || !parseEncryptedPayload(content)) {
+        if (
+          !content.startsWith(ENCRYPTED_PAYLOAD_VERSION_PREFIX) ||
+          !parseEncryptedPayload(content)
+        ) {
           throw new Error('Invalid OAuth recovery journal entry');
         }
         entries.push({ name, content });

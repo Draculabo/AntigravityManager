@@ -39,7 +39,7 @@ import { AccountLeaseConfigPolicy } from './policies/account-lease-config.policy
 import { normalizeTrustedGoogleValidationUrl } from '@/modules/cloud-account/utils/google-validation-url';
 import {
   createProfileOAuthRecoveryJournal,
-  type OAuthRecoveryJournal,
+  OAuthRecoveryJournal,
 } from '@/modules/cloud-account/persistence/oauth-recovery-journal';
 import {
   isAccountOAuthRecoveryBlocked,
@@ -131,6 +131,8 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
     @Optional()
     @Inject(ImageAccountSchedulerService)
     private readonly imageScheduler: ImageAccountSchedulerService = new ImageAccountSchedulerService(),
+    @Optional()
+    @Inject(OAuthRecoveryJournal)
     recoveryJournal?: OAuthRecoveryJournal | null,
   ) {
     this.recoveryJournal =
@@ -589,7 +591,12 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
 
         const [accountId, tokenData] = selectedTokenEntry;
         try {
-          const lease = await this.finalizeSelectedToken(accountId, tokenData, nowSeconds, sessionKey);
+          const lease = await this.finalizeSelectedToken(
+            accountId,
+            tokenData,
+            nowSeconds,
+            sessionKey,
+          );
           if (lease) {
             return lease;
           }

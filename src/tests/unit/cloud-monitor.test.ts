@@ -575,12 +575,18 @@ describe('CloudMonitorService', () => {
   });
 
   it('does not use a refreshed token if the account changed during monitor refresh', async () => {
-    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([{
-      id: 'conflict', email: 'conflict@example.com',
-      token: { access_token: 'old', refresh_token: 'refresh', expiry_timestamp: 1 },
-    }] as never);
+    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([
+      {
+        id: 'conflict',
+        email: 'conflict@example.com',
+        token: { access_token: 'old', refresh_token: 'refresh', expiry_timestamp: 1 },
+      },
+    ] as never);
     vi.mocked(GoogleAPIService.refreshAccessToken).mockResolvedValue({
-      access_token: 'new', refresh_token: 'rotated', expires_in: 3600, token_type: 'Bearer',
+      access_token: 'new',
+      refresh_token: 'rotated',
+      expires_in: 3600,
+      token_type: 'Bearer',
     });
     vi.mocked(CloudAccountRepo.compareAndUpdateToken).mockResolvedValueOnce(false);
     await CloudMonitorService.poll();
@@ -592,10 +598,17 @@ describe('CloudMonitorService', () => {
   it.each(['quota', 'credits'] as const)(
     'does not publish stale quota after a refresh conflict during %s retry',
     async (source) => {
-      vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([{
-        id: 'conflict-401', email: 'conflict@example.com',
-        token: { access_token: 'old', refresh_token: 'refresh', expiry_timestamp: Math.floor(Date.now() / 1000) + 3600 },
-      }] as never);
+      vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([
+        {
+          id: 'conflict-401',
+          email: 'conflict@example.com',
+          token: {
+            access_token: 'old',
+            refresh_token: 'refresh',
+            expiry_timestamp: Math.floor(Date.now() / 1000) + 3600,
+          },
+        },
+      ] as never);
       if (source === 'quota') {
         vi.mocked(GoogleAPIService.fetchQuota).mockRejectedValueOnce(new Error('UNAUTHORIZED'));
       } else {
@@ -603,7 +616,10 @@ describe('CloudMonitorService', () => {
         vi.mocked(GoogleAPIService.fetchAICredits).mockRejectedValueOnce(new Error('UNAUTHORIZED'));
       }
       vi.mocked(GoogleAPIService.refreshAccessToken).mockResolvedValueOnce({
-        access_token: 'new', refresh_token: 'rotated', expires_in: 3600, token_type: 'Bearer',
+        access_token: 'new',
+        refresh_token: 'rotated',
+        expires_in: 3600,
+        token_type: 'Bearer',
       });
       vi.mocked(CloudAccountRepo.compareAndUpdateToken).mockResolvedValueOnce(false);
       await CloudMonitorService.poll();

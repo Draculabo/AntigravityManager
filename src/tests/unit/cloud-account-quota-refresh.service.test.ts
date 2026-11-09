@@ -116,7 +116,11 @@ describe('Node-safe cloud account quota refresh', () => {
     const result = await refreshAccountQuotaCore(stored.id, { onPrimarySuccess, onRetrySuccess });
 
     expect(GoogleAPIService.fetchQuota).toHaveBeenNthCalledWith(2, 'new-access', undefined);
-    expect(CloudAccountRepo.compareAndUpdateToken).toHaveBeenCalledWith(stored.id, expect.objectContaining({ refresh_token: 'old-refresh' }), result.token);
+    expect(CloudAccountRepo.compareAndUpdateToken).toHaveBeenCalledWith(
+      stored.id,
+      expect.objectContaining({ refresh_token: 'old-refresh' }),
+      result.token,
+    );
     expect(result.token.refresh_token).toBe('new-refresh');
     expect(result.quota?.ai_credits).toEqual({ credits: 4, expiryDate: 'later' });
     expect(onPrimarySuccess).not.toHaveBeenCalled();
@@ -127,11 +131,16 @@ describe('Node-safe cloud account quota refresh', () => {
     const stored = account(1);
     vi.spyOn(CloudAccountRepo, 'getAccount').mockResolvedValue(stored);
     vi.spyOn(CloudAccountRefreshService, 'refreshAccessToken').mockResolvedValue({
-      access_token: 'new-access', refresh_token: 'new-refresh', expires_in: 3600, token_type: 'Bearer',
+      access_token: 'new-access',
+      refresh_token: 'new-refresh',
+      expires_in: 3600,
+      token_type: 'Bearer',
     });
     vi.mocked(CloudAccountRepo.compareAndUpdateToken).mockResolvedValue(false);
     const fetchQuota = vi.spyOn(GoogleAPIService, 'fetchQuota');
-    await expect(refreshAccountQuotaCore(stored.id)).rejects.toThrow('Account token changed during quota refresh');
+    await expect(refreshAccountQuotaCore(stored.id)).rejects.toThrow(
+      'Account token changed during quota refresh',
+    );
     expect(stored.token.refresh_token).toBe('old-refresh');
     expect(fetchQuota).not.toHaveBeenCalled();
     expect(CloudAccountRepo.setAccountStatus).not.toHaveBeenCalled();
@@ -142,10 +151,15 @@ describe('Node-safe cloud account quota refresh', () => {
     vi.spyOn(CloudAccountRepo, 'getAccount').mockResolvedValue(stored);
     vi.spyOn(GoogleAPIService, 'fetchQuota').mockRejectedValueOnce(new Error('UNAUTHORIZED'));
     vi.spyOn(CloudAccountRefreshService, 'refreshAccessToken').mockResolvedValue({
-      access_token: 'new-access', refresh_token: 'new-refresh', expires_in: 3600, token_type: 'Bearer',
+      access_token: 'new-access',
+      refresh_token: 'new-refresh',
+      expires_in: 3600,
+      token_type: 'Bearer',
     });
     vi.mocked(CloudAccountRepo.compareAndUpdateToken).mockResolvedValue(false);
-    await expect(refreshAccountQuotaCore(stored.id)).rejects.toThrow('Account token changed during quota refresh');
+    await expect(refreshAccountQuotaCore(stored.id)).rejects.toThrow(
+      'Account token changed during quota refresh',
+    );
     expect(CloudAccountRepo.setAccountStatus).not.toHaveBeenCalled();
     expect(GoogleAPIService.fetchQuota).toHaveBeenCalledOnce();
   });

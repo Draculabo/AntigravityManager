@@ -253,7 +253,10 @@ describe('core-owned cloud account switching', () => {
   it('does not inject credentials when refresh races with account replacement', async () => {
     account.token.refresh_token = 'private-refresh-token';
     vi.mocked(CloudAccountRefreshService.refreshAccessToken).mockResolvedValueOnce({
-      access_token: 'new-access', refresh_token: 'new-refresh', expires_in: 3600, token_type: 'Bearer',
+      access_token: 'new-access',
+      refresh_token: 'new-refresh',
+      expires_in: 3600,
+      token_type: 'Bearer',
     });
     vi.mocked(CloudAccountRepo.compareAndUpdateToken).mockResolvedValueOnce(false);
     await expect(switchCloudAccountCore(account.id)).rejects.toThrow();

@@ -30,7 +30,9 @@ describe('classifyAccountStatusFromError', () => {
   it('classifies TOS_VIOLATION as expired with ToS reason', () => {
     expect(
       classifyAccountStatusFromError(
-        new Error('This service has been disabled in this account for violation of Terms of Service.'),
+        new Error(
+          'This service has been disabled in this account for violation of Terms of Service.',
+        ),
       ),
     ).toEqual({
       status: 'expired',

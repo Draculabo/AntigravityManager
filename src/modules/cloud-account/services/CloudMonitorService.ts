@@ -371,7 +371,9 @@ export class CloudMonitorService {
                 createCloudAccountRefreshRequest(account),
               );
               const updated = mergeRefreshedToken(account.token, newToken, now);
-              if (!(await CloudAccountRepo.compareAndUpdateToken(account.id, account.token, updated))) {
+              if (
+                !(await CloudAccountRepo.compareAndUpdateToken(account.id, account.token, updated))
+              ) {
                 throw new MonitorTokenConflictError();
               }
               account.token = updated;
@@ -412,7 +414,13 @@ export class CloudMonitorService {
                 );
                 now = Math.floor(Date.now() / 1000);
                 const updated = mergeRefreshedToken(account.token, refreshedToken, now);
-                if (!(await CloudAccountRepo.compareAndUpdateToken(account.id, account.token, updated))) {
+                if (
+                  !(await CloudAccountRepo.compareAndUpdateToken(
+                    account.id,
+                    account.token,
+                    updated,
+                  ))
+                ) {
                   throw new MonitorTokenConflictError();
                 }
                 account.token = updated;
@@ -457,7 +465,9 @@ export class CloudMonitorService {
             );
             now = Math.floor(Date.now() / 1000);
             const updated = mergeRefreshedToken(account.token, refreshedToken, now);
-            if (!(await CloudAccountRepo.compareAndUpdateToken(account.id, account.token, updated))) {
+            if (
+              !(await CloudAccountRepo.compareAndUpdateToken(account.id, account.token, updated))
+            ) {
               throw new MonitorTokenConflictError();
             }
             account.token = updated;

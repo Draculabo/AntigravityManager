@@ -6,7 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import { applyOAuthRecoveryRecord } from '@/modules/cloud-account/persistence/oauth-recovery-apply';
 import { OAuthRecoveryJournal } from '@/modules/cloud-account/persistence/oauth-recovery-journal';
-import { commitOAuthRecoveryRecord, recoverOAuthJournal } from '@/modules/cloud-account/persistence/oauth-recovery-service';
+import {
+  commitOAuthRecoveryRecord,
+  recoverOAuthJournal,
+} from '@/modules/cloud-account/persistence/oauth-recovery-service';
 import { CloudAccountSettingsStore } from '@/modules/cloud-account/persistence/cloud-account-settings-store';
 import { upsertCloudAccountsAtomically } from '@/modules/cloud-account/persistence/cloud-account-batch-writer';
 import type { CloudAccount } from '@/modules/cloud-account/types';
@@ -66,10 +69,17 @@ describe('plaintext cloud-account persistence', () => {
     await CloudAccountRepo.init();
     await CloudAccountRepo.addAccount(first);
     const compare = vi.spyOn(CloudAccountRepo, 'compareAndUpdateHealth').mockResolvedValue(false);
-    const { CloudAccountHealthService } = await import('@/modules/cloud-account/services/CloudAccountHealthService');
-    await expect(CloudAccountHealthService.mutateHealth(first.id, () => ({
-      oauth: { refresh_blocked: false, invalid_grant_count: 1 },
-    }), { expectedToken: first.token })).rejects.toThrow('Account health could not be updated');
+    const { CloudAccountHealthService } =
+      await import('@/modules/cloud-account/services/CloudAccountHealthService');
+    await expect(
+      CloudAccountHealthService.mutateHealth(
+        first.id,
+        () => ({
+          oauth: { refresh_blocked: false, invalid_grant_count: 1 },
+        }),
+        { expectedToken: first.token },
+      ),
+    ).rejects.toThrow('Account health could not be updated');
     expect(compare).toHaveBeenCalledTimes(3);
     expect((await CloudAccountRepo.getAccount(first.id))?.health).toEqual(first.health);
   });
@@ -82,10 +92,15 @@ describe('plaintext cloud-account persistence', () => {
       await CloudAccountRepo.updateToken(first.id, { ...first.token, project_id: 'new-project' });
       return compare(...args);
     });
-    const { CloudAccountHealthService } = await import('@/modules/cloud-account/services/CloudAccountHealthService');
-    await CloudAccountHealthService.mutateHealth(first.id, () => ({
-      oauth: { refresh_blocked: false, invalid_grant_count: 1 },
-    }), { expectedToken: first.token });
+    const { CloudAccountHealthService } =
+      await import('@/modules/cloud-account/services/CloudAccountHealthService');
+    await CloudAccountHealthService.mutateHealth(
+      first.id,
+      () => ({
+        oauth: { refresh_blocked: false, invalid_grant_count: 1 },
+      }),
+      { expectedToken: first.token },
+    );
     const current = await CloudAccountRepo.getAccount(first.id);
     expect(current?.token.project_id).toBe('new-project');
     expect(current?.health?.oauth?.invalid_grant_count).toBe(1);
@@ -95,10 +110,15 @@ describe('plaintext cloud-account persistence', () => {
     await CloudAccountRepo.init();
     await CloudAccountRepo.addAccount(first);
     await CloudAccountRepo.updateToken(first.id, { ...first.token, project_id: 'new-project' });
-    const { CloudAccountHealthService } = await import('@/modules/cloud-account/services/CloudAccountHealthService');
-    await CloudAccountHealthService.mutateHealth(first.id, () => ({
-      oauth: { refresh_blocked: false, invalid_grant_count: 1 },
-    }), { expectedToken: first.token });
+    const { CloudAccountHealthService } =
+      await import('@/modules/cloud-account/services/CloudAccountHealthService');
+    await CloudAccountHealthService.mutateHealth(
+      first.id,
+      () => ({
+        oauth: { refresh_blocked: false, invalid_grant_count: 1 },
+      }),
+      { expectedToken: first.token },
+    );
     const current = await CloudAccountRepo.getAccount(first.id);
     expect(current?.token.project_id).toBe('new-project');
     expect(current?.health?.oauth?.invalid_grant_count).toBe(1);
@@ -113,10 +133,17 @@ describe('plaintext cloud-account persistence', () => {
       await CloudAccountRepo.updateToken(first.id, replacement);
       return compare(...args);
     });
-    const { CloudAccountHealthService } = await import('@/modules/cloud-account/services/CloudAccountHealthService');
-    await expect(CloudAccountHealthService.mutateHealth(first.id, () => ({
-      oauth: { refresh_blocked: true, invalid_grant_count: 2 },
-    }), { expectedToken: first.token })).rejects.toThrow('Account credentials changed during health update');
+    const { CloudAccountHealthService } =
+      await import('@/modules/cloud-account/services/CloudAccountHealthService');
+    await expect(
+      CloudAccountHealthService.mutateHealth(
+        first.id,
+        () => ({
+          oauth: { refresh_blocked: true, invalid_grant_count: 2 },
+        }),
+        { expectedToken: first.token },
+      ),
+    ).rejects.toThrow('Account credentials changed during health update');
     const current = await CloudAccountRepo.getAccount(first.id);
     expect(current?.token).toEqual(replacement);
     expect(current?.health).toEqual(first.health);
@@ -126,10 +153,14 @@ describe('plaintext cloud-account persistence', () => {
     await CloudAccountRepo.init();
     await CloudAccountRepo.addAccount(first);
     const next = { oauth: { refresh_blocked: false, invalid_grant_count: 1 } };
-    expect(await CloudAccountRepo.compareAndUpdateHealth(first.id, first.token, first.health, next)).toBe(true);
+    expect(
+      await CloudAccountRepo.compareAndUpdateHealth(first.id, first.token, first.health, next),
+    ).toBe(true);
     const replacement = { ...first.token, refresh_token: 'replacement' };
     await CloudAccountRepo.updateToken(first.id, replacement);
-    expect(await CloudAccountRepo.compareAndUpdateHealth(first.id, first.token, next, undefined)).toBe(false);
+    expect(
+      await CloudAccountRepo.compareAndUpdateHealth(first.id, first.token, next, undefined),
+    ).toBe(false);
     expect((await CloudAccountRepo.getAccount(first.id))?.health).toEqual(next);
   });
   it('does not resurrect an account deleted during recovery commit', async () => {
@@ -139,7 +170,10 @@ describe('plaintext cloud-account persistence', () => {
     const record = {
       version: 1 as const,
       accountId: first.id,
-      expected: { access_token: first.token.access_token, refresh_token: first.token.refresh_token },
+      expected: {
+        access_token: first.token.access_token,
+        refresh_token: first.token.refresh_token,
+      },
       token: { ...first.token, access_token: 'rotated-access', refresh_token: 'rotated-refresh' },
     };
     const compare = CloudAccountRepo.compareAndUpdateToken.bind(CloudAccountRepo);
@@ -159,7 +193,10 @@ describe('plaintext cloud-account persistence', () => {
     const record = {
       version: 1 as const,
       accountId: first.id,
-      expected: { access_token: first.token.access_token, refresh_token: first.token.refresh_token },
+      expected: {
+        access_token: first.token.access_token,
+        refresh_token: first.token.refresh_token,
+      },
       token: { ...first.token, access_token: 'rotated-access', refresh_token: 'rotated-refresh' },
     };
     const compare = CloudAccountRepo.compareAndUpdateToken.bind(CloudAccountRepo);
@@ -192,7 +229,10 @@ describe('plaintext cloud-account persistence', () => {
     const record = {
       version: 1 as const,
       accountId: first.id,
-      expected: { access_token: first.token.access_token, refresh_token: first.token.refresh_token },
+      expected: {
+        access_token: first.token.access_token,
+        refresh_token: first.token.refresh_token,
+      },
       token: { ...first.token, access_token: 'rotated-access', refresh_token: 'rotated-refresh' },
     };
     vi.spyOn(journal, 'remove').mockRejectedValueOnce(new Error('cleanup unavailable'));
@@ -213,7 +253,10 @@ describe('plaintext cloud-account persistence', () => {
     const record = {
       version: 1 as const,
       accountId: first.id,
-      expected: { access_token: first.token.access_token, refresh_token: first.token.refresh_token },
+      expected: {
+        access_token: first.token.access_token,
+        refresh_token: first.token.refresh_token,
+      },
       token: { ...first.token, access_token: 'rotated-access', refresh_token: 'rotated-refresh' },
     };
     await expect(commitOAuthRecoveryRecord(journal, record)).rejects.toThrow('journal unavailable');
@@ -238,17 +281,26 @@ describe('plaintext cloud-account persistence', () => {
     const record = {
       version: 1 as const,
       accountId: first.id,
-      expected: { access_token: first.token.access_token, refresh_token: first.token.refresh_token },
+      expected: {
+        access_token: first.token.access_token,
+        refresh_token: first.token.refresh_token,
+      },
       token: { ...first.token, access_token: 'rotated-access', refresh_token: 'rotated-refresh' },
     };
-    const replacement = { ...first.token, access_token: 'replacement-access', refresh_token: 'replacement-refresh' };
+    const replacement = {
+      ...first.token,
+      access_token: 'replacement-access',
+      refresh_token: 'replacement-refresh',
+    };
     const compare = CloudAccountRepo.compareAndUpdateToken.bind(CloudAccountRepo);
     vi.spyOn(CloudAccountRepo, 'compareAndUpdateToken').mockImplementationOnce(async (...args) => {
       await CloudAccountRepo.updateToken(first.id, replacement);
       return compare(...args);
     });
 
-    await expect(commitOAuthRecoveryRecord(journal, record)).rejects.toThrow('manual resolution: conflict');
+    await expect(commitOAuthRecoveryRecord(journal, record)).rejects.toThrow(
+      'manual resolution: conflict',
+    );
     expect((await CloudAccountRepo.getAccount(first.id))?.token).toEqual(replacement);
     expect((await journal.readAll()).map((entry) => entry.record)).toEqual([record]);
   });
@@ -270,16 +322,23 @@ describe('plaintext cloud-account persistence', () => {
     const record = {
       version: 1 as const,
       accountId: first.id,
-      expected: { access_token: first.token.access_token, refresh_token: first.token.refresh_token },
+      expected: {
+        access_token: first.token.access_token,
+        refresh_token: first.token.refresh_token,
+      },
       token: { ...first.token, access_token: 'rotated-access', refresh_token: 'rotated-refresh' },
     };
-    const compare = vi.spyOn(CloudAccountRepo, 'compareAndUpdateToken').mockRejectedValueOnce(new Error('SQLite unavailable'));
+    const compare = vi
+      .spyOn(CloudAccountRepo, 'compareAndUpdateToken')
+      .mockRejectedValueOnce(new Error('SQLite unavailable'));
     await expect(commitOAuthRecoveryRecord(journal, record)).rejects.toThrow('SQLite unavailable');
     expect((await journal.readAll()).map((entry) => entry.record)).toEqual([record]);
     expect((await CloudAccountRepo.getAccount(first.id))?.token).toEqual(first.token);
     compare.mockRestore();
     await CloudAccountRepo.init();
-    expect((await CloudAccountRepo.getAccount(first.id))?.token.refresh_token).toBe('rotated-refresh');
+    expect((await CloudAccountRepo.getAccount(first.id))?.token.refresh_token).toBe(
+      'rotated-refresh',
+    );
     expect(await journal.readAll()).toEqual([]);
   });
   it('replays idempotently when recovery preserves a newer existing id token', async () => {
@@ -290,8 +349,16 @@ describe('plaintext cloud-account persistence', () => {
     const record = {
       version: 1 as const,
       accountId: first.id,
-      expected: { access_token: first.token.access_token, refresh_token: first.token.refresh_token },
-      token: { ...first.token, access_token: 'rotated-access', refresh_token: 'rotated-refresh', id_token: undefined },
+      expected: {
+        access_token: first.token.access_token,
+        refresh_token: first.token.refresh_token,
+      },
+      token: {
+        ...first.token,
+        access_token: 'rotated-access',
+        refresh_token: 'rotated-refresh',
+        id_token: undefined,
+      },
     };
     expect(await applyOAuthRecoveryRecord(record)).toBe('applied');
     expect((await CloudAccountRepo.getAccount(first.id))?.token.id_token).toBe('existing-id');
@@ -315,11 +382,16 @@ describe('plaintext cloud-account persistence', () => {
     await journal.append({
       version: 1,
       accountId: first.id,
-      expected: { access_token: first.token.access_token, refresh_token: first.token.refresh_token },
+      expected: {
+        access_token: first.token.access_token,
+        refresh_token: first.token.refresh_token,
+      },
       token: { ...first.token, access_token: 'rotated-access', refresh_token: 'rotated-refresh' },
     });
     await recoverOAuthJournal(new OAuthRecoveryJournal(path.join(state.directory, 'recovery')));
-    expect((await CloudAccountRepo.getAccount(first.id))?.token.refresh_token).toBe('rotated-refresh');
+    expect((await CloudAccountRepo.getAccount(first.id))?.token.refresh_token).toBe(
+      'rotated-refresh',
+    );
     expect(await journal.readAll()).toEqual([]);
   });
 
@@ -341,11 +413,16 @@ describe('plaintext cloud-account persistence', () => {
     await journal.append({
       version: 1,
       accountId: first.id,
-      expected: { access_token: first.token.access_token, refresh_token: first.token.refresh_token },
+      expected: {
+        access_token: first.token.access_token,
+        refresh_token: first.token.refresh_token,
+      },
       token: { ...first.token, access_token: 'rotated-access', refresh_token: 'rotated-refresh' },
     });
     await CloudAccountRepo.init();
-    expect((await CloudAccountRepo.getAccount(first.id))?.token.refresh_token).toBe('rotated-refresh');
+    expect((await CloudAccountRepo.getAccount(first.id))?.token.refresh_token).toBe(
+      'rotated-refresh',
+    );
     expect(await journal.readAll()).toEqual([]);
   });
 
@@ -381,7 +458,10 @@ describe('plaintext cloud-account persistence', () => {
     const name = await journal.append({
       version: 1,
       accountId: first.id,
-      expected: { access_token: first.token.access_token, refresh_token: first.token.refresh_token },
+      expected: {
+        access_token: first.token.access_token,
+        refresh_token: first.token.refresh_token,
+      },
       token: { ...first.token, access_token: 'rotated-access', refresh_token: 'rotated-refresh' },
     });
     await CloudAccountRepo.removeAccount(first.id);
@@ -410,18 +490,27 @@ describe('plaintext cloud-account persistence', () => {
       const name = await journal.append({
         version: 1,
         accountId: first.id,
-        expected: { access_token: first.token.access_token, refresh_token: first.token.refresh_token },
+        expected: {
+          access_token: first.token.access_token,
+          refresh_token: first.token.refresh_token,
+        },
         token: { ...first.token, access_token: 'rotated-access', refresh_token: 'rotated-refresh' },
       });
       if (scenario === 'cleanup-failure') {
         vi.spyOn(journal, 'remove').mockRejectedValueOnce(new Error('cleanup failed'));
         await expect(recoverOAuthJournal(journal)).rejects.toThrow('cleanup failed');
-        expect((await CloudAccountRepo.getAccount(first.id))?.token.refresh_token).toBe('rotated-refresh');
+        expect((await CloudAccountRepo.getAccount(first.id))?.token.refresh_token).toBe(
+          'rotated-refresh',
+        );
         expect(await journal.readAll()).toHaveLength(1);
         await recoverOAuthJournal(journal);
         expect(await journal.readAll()).toEqual([]);
       } else {
-        const replacement = { ...first.token, access_token: 'replacement-access', refresh_token: 'replacement-refresh' };
+        const replacement = {
+          ...first.token,
+          access_token: 'replacement-access',
+          refresh_token: 'replacement-refresh',
+        };
         await CloudAccountRepo.updateToken(first.id, replacement);
         expect(await recoverOAuthJournal(journal)).toEqual(new Map([[first.id, 'conflict']]));
         expect((await CloudAccountRepo.getAccount(first.id))?.token).toEqual(replacement);
@@ -434,11 +523,18 @@ describe('plaintext cloud-account persistence', () => {
     const first = account();
     await CloudAccountRepo.init();
     await CloudAccountRepo.addAccount(first);
-    const replacement = { ...first.token, access_token: 'replacement-access', refresh_token: 'replacement-refresh' };
+    const replacement = {
+      ...first.token,
+      access_token: 'replacement-access',
+      refresh_token: 'replacement-refresh',
+    };
     const record = {
       version: 1 as const,
       accountId: first.id,
-      expected: { access_token: first.token.access_token, refresh_token: first.token.refresh_token },
+      expected: {
+        access_token: first.token.access_token,
+        refresh_token: first.token.refresh_token,
+      },
       token: { ...first.token, access_token: 'rotated-access', refresh_token: 'rotated-refresh' },
     };
     const compare = CloudAccountRepo.compareAndUpdateToken.bind(CloudAccountRepo);
@@ -458,19 +554,28 @@ describe('plaintext cloud-account persistence', () => {
     const record = {
       version: 1 as const,
       accountId: first.id,
-      expected: { access_token: first.token.access_token, refresh_token: first.token.refresh_token },
+      expected: {
+        access_token: first.token.access_token,
+        refresh_token: first.token.refresh_token,
+      },
       token: { ...first.token, access_token: 'rotated-access', refresh_token: 'rotated-refresh' },
     };
     expect(await applyOAuthRecoveryRecord(record)).toBe('applied');
-    expect((await CloudAccountRepo.getAccount(first.id))?.token.refresh_token).toBe('rotated-refresh');
+    expect((await CloudAccountRepo.getAccount(first.id))?.token.refresh_token).toBe(
+      'rotated-refresh',
+    );
     expect(await applyOAuthRecoveryRecord(record)).toBe('applied');
-    const replacement = { ...first.token, access_token: 'replacement-access', refresh_token: 'replacement-refresh' };
+    const replacement = {
+      ...first.token,
+      access_token: 'replacement-access',
+      refresh_token: 'replacement-refresh',
+    };
     await CloudAccountRepo.updateToken(first.id, replacement);
     expect(await applyOAuthRecoveryRecord(record)).toBe('conflict');
     expect((await CloudAccountRepo.getAccount(first.id))?.token).toEqual(replacement);
     expect(await applyOAuthRecoveryRecord({ ...record, accountId: 'missing' })).toBe('missing');
   });
-  it('recovers a rotated token on process restart when process crashed before SQLite persist', async () => {
+  it('recovers a journaled rotated token in a new lease owner after persistence fails', async () => {
     const first = account();
     first.token.expiry_timestamp = 1;
     first.token.project_id = 'project';
@@ -510,22 +615,23 @@ describe('plaintext cloud-account persistence', () => {
     await service.loadAccounts();
     const leased = await service.getNextToken({ targetAccountId: first.id });
     expect(leased?.token.refresh_token).toBe('rotated-refresh');
+    await expect(service.onModuleDestroy()).rejects.toThrow('SQLite disk I/O error');
 
-    // Simulate process crash: onModuleDestroy is NOT called! Process memory is abandoned.
-    // SQLite on disk still has the old credentials:
     expect((await CloudAccountRepo.getAccount(first.id))?.token.refresh_token).toBe('refresh-one');
 
-    // Restart: new process initializes and loads accounts
     const restarted = new AccountLeaseService(cloudAccountStoreAdapter, upstream);
     await restarted.loadAccounts();
 
-    // Rotated token was restored into SQLite and cache from the durable journal:
-    expect((await CloudAccountRepo.getAccount(first.id))?.token.refresh_token).toBe('rotated-refresh');
-    expect((await restarted.getNextToken({ targetAccountId: first.id }))?.token.refresh_token).toBe('rotated-refresh');
+    expect((await CloudAccountRepo.getAccount(first.id))?.token.refresh_token).toBe(
+      'rotated-refresh',
+    );
+    expect((await restarted.getNextToken({ targetAccountId: first.id }))?.token.refresh_token).toBe(
+      'rotated-refresh',
+    );
     expect(upstream.refreshAccessToken).toHaveBeenCalledTimes(1);
     await restarted.onModuleDestroy();
   });
-  it('does not overwrite reauthorized credentials when recovering from a crash on restart', async () => {
+  it('preserves reauthorization when a new lease owner recovers a failed persistence journal', async () => {
     const first = account();
     first.token.expiry_timestamp = 1;
     first.token.project_id = 'project';
@@ -564,8 +670,8 @@ describe('plaintext cloud-account persistence', () => {
     const service = new AccountLeaseService(store, upstream);
     await service.loadAccounts();
     await service.getNextToken({ targetAccountId: first.id });
+    await expect(service.onModuleDestroy()).rejects.toThrow('SQLite write failed');
 
-    // While process is dead, user reauthorizes through UI / re-login:
     const reauthorized = {
       ...first.token,
       access_token: 'reauth-access',
@@ -574,12 +680,11 @@ describe('plaintext cloud-account persistence', () => {
     };
     await CloudAccountRepo.updateToken(first.id, reauthorized);
 
-    // On restart, journal detects conflict and does NOT overwrite the reauthorized token:
     const restarted = new AccountLeaseService(cloudAccountStoreAdapter, upstream);
     await expect(restarted.loadAccounts()).resolves.toBe(0);
     expect((await CloudAccountRepo.getAccount(first.id))?.token).toEqual(reauthorized);
   });
-  it('does not resurrect a deleted account when recovering from a crash on restart', async () => {
+  it('preserves deletion when a new lease owner recovers a failed persistence journal', async () => {
     const first = account();
     first.token.expiry_timestamp = 1;
     first.token.project_id = 'project';
@@ -618,13 +723,10 @@ describe('plaintext cloud-account persistence', () => {
     const service = new AccountLeaseService(store, upstream);
     await service.loadAccounts();
     await service.getNextToken({ targetAccountId: first.id });
-    // Let the background failure settle (in a real crash the process would terminate):
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await expect(service.onModuleDestroy()).rejects.toThrow('SQLite write failed');
 
-    // While process is dead, user deletes the account:
     await CloudAccountRepo.removeAccount(first.id);
 
-    // On restart, journal detects account is missing and does NOT resurrect it:
     const restarted = new AccountLeaseService(cloudAccountStoreAdapter, upstream);
     await expect(restarted.loadAccounts()).resolves.toBe(0);
     expect(await CloudAccountRepo.getAccount(first.id)).toBeUndefined();
@@ -636,13 +738,25 @@ describe('plaintext cloud-account persistence', () => {
     await CloudAccountRepo.init();
     await CloudAccountRepo.addAccount(first);
     let attempts = 0;
-    const store = { ...cloudAccountStoreAdapter, compareAndUpdateToken: async (...args: Parameters<typeof cloudAccountStoreAdapter.compareAndUpdateToken>) => {
-      if (++attempts === 1) { throw new Error('temporary failure'); }
-      return cloudAccountStoreAdapter.compareAndUpdateToken(...args);
-    } };
+    const store = {
+      ...cloudAccountStoreAdapter,
+      compareAndUpdateToken: async (
+        ...args: Parameters<typeof cloudAccountStoreAdapter.compareAndUpdateToken>
+      ) => {
+        if (++attempts === 1) {
+          throw new Error('temporary failure');
+        }
+        return cloudAccountStoreAdapter.compareAndUpdateToken(...args);
+      },
+    };
     const upstream: AccountLeaseUpstream = {
       fetchQuota: vi.fn(),
-      refreshAccessToken: vi.fn(async () => ({ access_token: 'rotated-access', refresh_token: 'rotated-refresh', expires_in: 3600, token_type: 'Bearer' })),
+      refreshAccessToken: vi.fn(async () => ({
+        access_token: 'rotated-access',
+        refresh_token: 'rotated-refresh',
+        expires_in: 3600,
+        token_type: 'Bearer',
+      })),
       fetchProjectId: vi.fn(),
       normalizeRefreshedOAuthClientKey: vi.fn((token) => token.oauth_client_key),
     };
@@ -650,49 +764,80 @@ describe('plaintext cloud-account persistence', () => {
     await service.loadAccounts();
     await service.getNextToken({ targetAccountId: first.id });
     await service.onModuleDestroy();
-    expect((await CloudAccountRepo.getAccount(first.id))?.token.refresh_token).toBe('rotated-refresh');
+    expect((await CloudAccountRepo.getAccount(first.id))?.token.refresh_token).toBe(
+      'rotated-refresh',
+    );
     const restarted = new AccountLeaseService(cloudAccountStoreAdapter, upstream);
     await restarted.loadAccounts();
-    expect((await restarted.getNextToken({ targetAccountId: first.id }))?.token.refresh_token).toBe('rotated-refresh');
+    expect((await restarted.getNextToken({ targetAccountId: first.id }))?.token.refresh_token).toBe(
+      'rotated-refresh',
+    );
     expect(upstream.refreshAccessToken).toHaveBeenCalledTimes(1);
     await restarted.onModuleDestroy();
   });
-  it.each([false, true])('handles reauthorization %s after refresh and project writes both fail', async (reauthorize) => {
-    const first = account();
-    first.token.expiry_timestamp = 1;
-    first.token.project_id = undefined;
-    await CloudAccountRepo.init();
-    await CloudAccountRepo.addAccount(first);
-    let fail = true;
-    let firstWriteFailed = false;
-    const store = { ...cloudAccountStoreAdapter, getAccount: async (id: string) => {
-      if (fail && firstWriteFailed) { throw new Error('storage unavailable'); }
-      return cloudAccountStoreAdapter.getAccount(id);
-    }, compareAndUpdateToken: async (...args: Parameters<typeof cloudAccountStoreAdapter.compareAndUpdateToken>) => {
-      if (fail) { firstWriteFailed = true; throw new Error('storage unavailable'); }
-      return cloudAccountStoreAdapter.compareAndUpdateToken(...args);
-    } };
-    const upstream: AccountLeaseUpstream = {
-      fetchQuota: vi.fn(),
-      refreshAccessToken: vi.fn(async () => ({ access_token: 'rotated-access', refresh_token: 'rotated-refresh', expires_in: 3600, token_type: 'Bearer' })),
-      fetchProjectId: vi.fn(async () => 'discovered-project'),
-      normalizeRefreshedOAuthClientKey: vi.fn((token) => token.oauth_client_key),
-    };
-    const service = new AccountLeaseService(store, upstream);
-    await service.loadAccounts();
-    await service.getNextToken({ targetAccountId: first.id });
-    await expect(service.onModuleDestroy()).rejects.toThrow('storage unavailable');
-    const replacement = { ...first.token, access_token: 'reauthorized-access', refresh_token: 'reauthorized-refresh', expiry_timestamp: Math.floor(Date.now() / 1000) + 3600, project_id: 'replacement-project' };
-    if (reauthorize) {
-      await CloudAccountRepo.updateToken(first.id, replacement);
-    }
-    fail = false;
-    await service.reloadAllAccountsOrThrow();
-    const expected = reauthorize ? 'reauthorized-refresh' : 'rotated-refresh';
-    expect((await CloudAccountRepo.getAccount(first.id))?.token.refresh_token).toBe(expected);
-    expect((await service.getNextToken({ targetAccountId: first.id }))?.token.refresh_token).toBe(expected);
-    expect(upstream.refreshAccessToken).toHaveBeenCalledTimes(1);
-  });
+  it.each([false, true])(
+    'handles reauthorization %s after refresh and project writes both fail',
+    async (reauthorize) => {
+      const first = account();
+      first.token.expiry_timestamp = 1;
+      first.token.project_id = undefined;
+      await CloudAccountRepo.init();
+      await CloudAccountRepo.addAccount(first);
+      let fail = true;
+      let firstWriteFailed = false;
+      const store = {
+        ...cloudAccountStoreAdapter,
+        getAccount: async (id: string) => {
+          if (fail && firstWriteFailed) {
+            throw new Error('storage unavailable');
+          }
+          return cloudAccountStoreAdapter.getAccount(id);
+        },
+        compareAndUpdateToken: async (
+          ...args: Parameters<typeof cloudAccountStoreAdapter.compareAndUpdateToken>
+        ) => {
+          if (fail) {
+            firstWriteFailed = true;
+            throw new Error('storage unavailable');
+          }
+          return cloudAccountStoreAdapter.compareAndUpdateToken(...args);
+        },
+      };
+      const upstream: AccountLeaseUpstream = {
+        fetchQuota: vi.fn(),
+        refreshAccessToken: vi.fn(async () => ({
+          access_token: 'rotated-access',
+          refresh_token: 'rotated-refresh',
+          expires_in: 3600,
+          token_type: 'Bearer',
+        })),
+        fetchProjectId: vi.fn(async () => 'discovered-project'),
+        normalizeRefreshedOAuthClientKey: vi.fn((token) => token.oauth_client_key),
+      };
+      const service = new AccountLeaseService(store, upstream);
+      await service.loadAccounts();
+      await service.getNextToken({ targetAccountId: first.id });
+      await expect(service.onModuleDestroy()).rejects.toThrow('storage unavailable');
+      const replacement = {
+        ...first.token,
+        access_token: 'reauthorized-access',
+        refresh_token: 'reauthorized-refresh',
+        expiry_timestamp: Math.floor(Date.now() / 1000) + 3600,
+        project_id: 'replacement-project',
+      };
+      if (reauthorize) {
+        await CloudAccountRepo.updateToken(first.id, replacement);
+      }
+      fail = false;
+      await service.reloadAllAccountsOrThrow();
+      const expected = reauthorize ? 'reauthorized-refresh' : 'rotated-refresh';
+      expect((await CloudAccountRepo.getAccount(first.id))?.token.refresh_token).toBe(expected);
+      expect((await service.getNextToken({ targetAccountId: first.id }))?.token.refresh_token).toBe(
+        expected,
+      );
+      expect(upstream.refreshAccessToken).toHaveBeenCalledTimes(1);
+    },
+  );
   it('does not reload stale OAuth credentials after persistent write conflicts', async () => {
     const first = account();
     first.token.expiry_timestamp = 1;
@@ -702,7 +847,12 @@ describe('plaintext cloud-account persistence', () => {
     const store = { ...cloudAccountStoreAdapter, compareAndUpdateToken: vi.fn(async () => false) };
     const upstream: AccountLeaseUpstream = {
       fetchQuota: vi.fn(),
-      refreshAccessToken: vi.fn(async () => ({ access_token: 'rotated-access', refresh_token: 'rotated-refresh', expires_in: 3600, token_type: 'Bearer' })),
+      refreshAccessToken: vi.fn(async () => ({
+        access_token: 'rotated-access',
+        refresh_token: 'rotated-refresh',
+        expires_in: 3600,
+        token_type: 'Bearer',
+      })),
       fetchProjectId: vi.fn(),
       normalizeRefreshedOAuthClientKey: vi.fn((token) => token.oauth_client_key),
     };
@@ -711,7 +861,9 @@ describe('plaintext cloud-account persistence', () => {
     await service.getNextToken({ targetAccountId: first.id });
     await expect(service.onModuleDestroy()).rejects.toThrow('account changed during update');
     await expect(service.reloadAllAccountsOrThrow()).rejects.toThrow();
-    expect((await service.getNextToken({ targetAccountId: first.id }))?.token.refresh_token).toBe('rotated-refresh');
+    expect((await service.getNextToken({ targetAccountId: first.id }))?.token.refresh_token).toBe(
+      'rotated-refresh',
+    );
     expect(upstream.refreshAccessToken).toHaveBeenCalledTimes(1);
   });
   it('retains a rotated refresh token across cache reload after a persistence failure', async () => {
@@ -721,23 +873,39 @@ describe('plaintext cloud-account persistence', () => {
     await CloudAccountRepo.init();
     await CloudAccountRepo.addAccount(first);
     let fail = true;
-    const store = { ...cloudAccountStoreAdapter, compareAndUpdateToken: async (...args: Parameters<typeof cloudAccountStoreAdapter.compareAndUpdateToken>) => {
-      if (fail) { throw new Error('storage unavailable'); }
-      return cloudAccountStoreAdapter.compareAndUpdateToken(...args);
-    } };
+    const store = {
+      ...cloudAccountStoreAdapter,
+      compareAndUpdateToken: async (
+        ...args: Parameters<typeof cloudAccountStoreAdapter.compareAndUpdateToken>
+      ) => {
+        if (fail) {
+          throw new Error('storage unavailable');
+        }
+        return cloudAccountStoreAdapter.compareAndUpdateToken(...args);
+      },
+    };
     const upstream: AccountLeaseUpstream = {
       fetchQuota: vi.fn(),
-      refreshAccessToken: vi.fn(async () => ({ access_token: 'rotated-access', refresh_token: 'rotated-refresh', expires_in: 3600, token_type: 'Bearer' })),
+      refreshAccessToken: vi.fn(async () => ({
+        access_token: 'rotated-access',
+        refresh_token: 'rotated-refresh',
+        expires_in: 3600,
+        token_type: 'Bearer',
+      })),
       fetchProjectId: vi.fn(),
       normalizeRefreshedOAuthClientKey: vi.fn((token) => token.oauth_client_key),
     };
     const service = new AccountLeaseService(store, upstream);
     await service.loadAccounts();
-    expect((await service.getNextToken({ targetAccountId: first.id }))?.token.refresh_token).toBe('rotated-refresh');
+    expect((await service.getNextToken({ targetAccountId: first.id }))?.token.refresh_token).toBe(
+      'rotated-refresh',
+    );
     await expect(service.onModuleDestroy()).rejects.toThrow('storage unavailable');
     fail = false;
     await service.reloadAllAccounts();
-    expect((await service.getNextToken({ targetAccountId: first.id }))?.token.refresh_token).toBe('rotated-refresh');
+    expect((await service.getNextToken({ targetAccountId: first.id }))?.token.refresh_token).toBe(
+      'rotated-refresh',
+    );
     expect(upstream.refreshAccessToken).toHaveBeenCalledTimes(1);
   });
   it('preserves a concurrent project change while saving a rotated lease token', async () => {

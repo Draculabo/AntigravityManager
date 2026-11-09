@@ -72,14 +72,24 @@ export class CloudAccountHealthService {
     if (options.expectedToken) {
       let saved = false;
       for (let attempt = 0; attempt < 3; attempt += 1) {
-        if (account.token.access_token !== options.expectedToken.access_token ||
-            account.token.refresh_token !== options.expectedToken.refresh_token ||
-            (account.token.oauth_client_key?.trim() || undefined) !== (options.expectedToken.oauth_client_key?.trim() || undefined)) {
+        if (
+          account.token.access_token !== options.expectedToken.access_token ||
+          account.token.refresh_token !== options.expectedToken.refresh_token ||
+          (account.token.oauth_client_key?.trim() || undefined) !==
+            (options.expectedToken.oauth_client_key?.trim() || undefined)
+        ) {
           throw new Error('Account credentials changed during health update');
         }
         previousHealth = account.health;
         nextHealth = normalizeHealth(mutation(previousHealth));
-        if (await CloudAccountRepo.compareAndUpdateHealth(accountId, account.token, previousHealth, nextHealth)) {
+        if (
+          await CloudAccountRepo.compareAndUpdateHealth(
+            accountId,
+            account.token,
+            previousHealth,
+            nextHealth,
+          )
+        ) {
           saved = true;
           break;
         }

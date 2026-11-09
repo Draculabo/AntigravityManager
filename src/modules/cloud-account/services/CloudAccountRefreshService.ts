@@ -109,24 +109,27 @@ export class CloudAccountRefreshService {
       let updatedHealth: CloudAccount['health'];
       try {
         updatedHealth = await CloudAccountHealthService.mutateHealth(
-        request.accountId,
-        (currentHealth) => {
-          const failureCount = Math.min(2, (currentHealth?.oauth?.invalid_grant_count ?? 0) + 1);
-          return {
-            ...currentHealth,
-            oauth: {
-              refresh_blocked: failureCount >= 2,
-              invalid_grant_count: failureCount,
-              invalid_grant_last_at_ms: failureAt,
-              blocked_at_ms: failureCount >= 2 ? failureAt : undefined,
-              reason: 'invalid_grant',
-            },
-          };
-        },
-        { expectedToken },
+          request.accountId,
+          (currentHealth) => {
+            const failureCount = Math.min(2, (currentHealth?.oauth?.invalid_grant_count ?? 0) + 1);
+            return {
+              ...currentHealth,
+              oauth: {
+                refresh_blocked: failureCount >= 2,
+                invalid_grant_count: failureCount,
+                invalid_grant_last_at_ms: failureAt,
+                blocked_at_ms: failureCount >= 2 ? failureAt : undefined,
+                reason: 'invalid_grant',
+              },
+            };
+          },
+          { expectedToken },
         );
       } catch (healthError) {
-        if (healthError instanceof Error && healthError.message === 'Account credentials changed during health update') {
+        if (
+          healthError instanceof Error &&
+          healthError.message === 'Account credentials changed during health update'
+        ) {
           throw error;
         }
         throw healthError;

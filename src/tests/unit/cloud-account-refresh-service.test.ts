@@ -83,13 +83,18 @@ describe('CloudAccountRefreshService', () => {
     vi.mocked(CloudAccountRepo.updateHealth).mockImplementation(async (_accountId, health) => {
       persistedAccount.health = health;
     });
-    vi.mocked(CloudAccountRepo.compareAndUpdateHealth).mockImplementation(async (_id, expected, previous, health) => {
-      if (JSON.stringify(persistedAccount.token) !== JSON.stringify(expected) || JSON.stringify(persistedAccount.health) !== JSON.stringify(previous)) {
-        return false;
-      }
-      persistedAccount.health = health;
-      return true;
-    });
+    vi.mocked(CloudAccountRepo.compareAndUpdateHealth).mockImplementation(
+      async (_id, expected, previous, health) => {
+        if (
+          JSON.stringify(persistedAccount.token) !== JSON.stringify(expected) ||
+          JSON.stringify(persistedAccount.health) !== JSON.stringify(previous)
+        ) {
+          return false;
+        }
+        persistedAccount.health = health;
+        return true;
+      },
+    );
   });
 
   it('persists the first strike across service reset and blocks on the second operation', async () => {
@@ -192,7 +197,12 @@ describe('CloudAccountRefreshService', () => {
     const gate = Promise.withResolvers<void>();
     vi.mocked(GoogleAPIService.refreshAccessToken).mockImplementationOnce(async () => {
       await gate.promise;
-      return { access_token: 'new', refresh_token: 'rotated', expires_in: 3600, token_type: 'Bearer' };
+      return {
+        access_token: 'new',
+        refresh_token: 'rotated',
+        expires_in: 3600,
+        token_type: 'Bearer',
+      };
     });
     const first = CloudAccountRefreshService.refreshAccessToken(request);
     const second = CloudAccountRefreshService.refreshAccessToken(request);
@@ -204,11 +214,34 @@ describe('CloudAccountRefreshService', () => {
     expect(GoogleAPIService.refreshAccessToken).toHaveBeenCalledOnce();
   });
 
+  it.each(['deleted', 'reauthorized'] as const)(
+    'rejects %s credentials before calling the provider',
+    async (state) => {
+      if (state === 'deleted') {
+        vi.mocked(CloudAccountRepo.getAccount).mockResolvedValue(undefined);
+      } else {
+        persistedAccount.token.refresh_token = 'replacement-refresh';
+      }
+
+      await expect(CloudAccountRefreshService.refreshAccessToken(request)).rejects.toThrow(
+        'Account credentials changed before token refresh',
+      );
+      expect(GoogleAPIService.refreshAccessToken).not.toHaveBeenCalled();
+    },
+  );
+
   it('returns rotated credentials when clearing a prior failure cannot be saved', async () => {
     persistedAccount.health = { oauth: { refresh_blocked: false, invalid_grant_count: 1 } };
-    const rotated = { access_token: 'rotated-access', refresh_token: 'rotated-refresh', expires_in: 3600, token_type: 'Bearer' };
+    const rotated = {
+      access_token: 'rotated-access',
+      refresh_token: 'rotated-refresh',
+      expires_in: 3600,
+      token_type: 'Bearer',
+    };
     vi.mocked(GoogleAPIService.refreshAccessToken).mockResolvedValueOnce(rotated);
-    vi.mocked(CloudAccountRepo.compareAndUpdateHealth).mockRejectedValueOnce(new Error('storage unavailable'));
+    vi.mocked(CloudAccountRepo.compareAndUpdateHealth).mockRejectedValueOnce(
+      new Error('storage unavailable'),
+    );
 
     await expect(CloudAccountRefreshService.refreshAccessToken(request)).resolves.toEqual(rotated);
     expect(persistedAccount.health?.oauth?.invalid_grant_count).toBe(1);

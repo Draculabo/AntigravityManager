@@ -26,9 +26,20 @@ export function classifyOAuthRecovery(
   if (!current) {
     return 'missing';
   }
-  const sameIdentity = (a: Pick<CloudTokenData, 'access_token' | 'refresh_token' | 'oauth_client_key'>, b: Pick<CloudTokenData, 'access_token' | 'refresh_token' | 'oauth_client_key'>) =>
-    a.access_token === b.access_token && a.refresh_token === b.refresh_token && (a.oauth_client_key?.trim() || undefined) === (b.oauth_client_key?.trim() || undefined);
-  if (sameIdentity(current, record.token) && current.expiry_timestamp === record.token.expiry_timestamp && current.expires_in === record.token.expires_in && current.token_type === record.token.token_type && (record.token.id_token === undefined || current.id_token === record.token.id_token)) {
+  const sameIdentity = (
+    a: Pick<CloudTokenData, 'access_token' | 'refresh_token' | 'oauth_client_key'>,
+    b: Pick<CloudTokenData, 'access_token' | 'refresh_token' | 'oauth_client_key'>,
+  ) =>
+    a.access_token === b.access_token &&
+    a.refresh_token === b.refresh_token &&
+    (a.oauth_client_key?.trim() || undefined) === (b.oauth_client_key?.trim() || undefined);
+  if (
+    sameIdentity(current, record.token) &&
+    current.expiry_timestamp === record.token.expiry_timestamp &&
+    current.expires_in === record.token.expires_in &&
+    current.token_type === record.token.token_type &&
+    (record.token.id_token === undefined || current.id_token === record.token.id_token)
+  ) {
     return 'applied';
   }
   return sameIdentity(current, record.expected) ? 'apply' : 'conflict';

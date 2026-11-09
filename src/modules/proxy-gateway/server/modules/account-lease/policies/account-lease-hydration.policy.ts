@@ -344,7 +344,9 @@ export class AccountLeaseHydrationPolicy {
         return;
       }
     }
-    throw new Error(`Token state was not persisted for ${accountId}: account changed during update`);
+    throw new Error(
+      `Token state was not persisted for ${accountId}: account changed during update`,
+    );
   }
 
   normalizeRefreshedOauthClientKey(
@@ -410,10 +412,12 @@ export class AccountLeaseHydrationPolicy {
       .then(() => this.saveTokenState(accountId, snapshot, expectedSnapshot, recoveryName))
       .catch((error: unknown) => {
         const earlier = this.failedPersistence.get(accountId);
-        const chained = earlier &&
+        const chained =
+          earlier &&
           earlier.token.access_token === expectedSnapshot.access_token &&
           earlier.token.refresh_token === expectedSnapshot.refresh_token &&
-          normalizeClientKey(earlier.token.oauth_client_key) === normalizeClientKey(expectedSnapshot.oauth_client_key);
+          normalizeClientKey(earlier.token.oauth_client_key) ===
+            normalizeClientKey(expectedSnapshot.oauth_client_key);
         this.failedPersistence.set(accountId, {
           token: snapshot,
           expected: chained ? earlier.expected : expectedSnapshot,

@@ -238,12 +238,25 @@ export class CloudAccountRepo {
     const validated = CloudTokenDataSchema.parse(token);
     const { raw, orm } = getCloudDb();
     try {
-      const row = orm.select({ tokenJson: accounts.tokenJson }).from(accounts).where(eq(accounts.id, id)).get();
-      if (!row || JSON.stringify(parseCloudToken(id, row.tokenJson)) !== JSON.stringify(CloudTokenDataSchema.parse(expected))) {
+      const row = orm
+        .select({ tokenJson: accounts.tokenJson })
+        .from(accounts)
+        .where(eq(accounts.id, id))
+        .get();
+      if (
+        !row ||
+        JSON.stringify(parseCloudToken(id, row.tokenJson)) !==
+          JSON.stringify(CloudTokenDataSchema.parse(expected))
+      ) {
         return false;
       }
-      return orm.update(accounts).set({ tokenJson: JSON.stringify(validated) })
-        .where(and(eq(accounts.id, id), eq(accounts.tokenJson, row.tokenJson))).run().changes === 1;
+      return (
+        orm
+          .update(accounts)
+          .set({ tokenJson: JSON.stringify(validated) })
+          .where(and(eq(accounts.id, id), eq(accounts.tokenJson, row.tokenJson)))
+          .run().changes === 1
+      );
     } finally {
       raw.close();
     }
@@ -290,12 +303,26 @@ export class CloudAccountRepo {
     const { raw, orm } = getCloudDb();
     try {
       const row = orm.select().from(accounts).where(eq(accounts.id, id)).get();
-      if (!row || JSON.stringify(parseCloudToken(id, row.tokenJson)) !== JSON.stringify(CloudTokenDataSchema.parse(expectedToken)) ||
-          JSON.stringify(parseCloudHealth(id, row.healthJson)) !== JSON.stringify(expectedHealth)) {
+      if (
+        !row ||
+        JSON.stringify(parseCloudToken(id, row.tokenJson)) !==
+          JSON.stringify(CloudTokenDataSchema.parse(expectedToken)) ||
+        JSON.stringify(parseCloudHealth(id, row.healthJson)) !== JSON.stringify(expectedHealth)
+      ) {
         return false;
       }
-      return raw.prepare('UPDATE accounts SET health_json = ? WHERE id = ? AND token_json = ? AND health_json IS ?')
-        .run(parsedHealth ? JSON.stringify(parsedHealth) : null, id, row.tokenJson, row.healthJson).changes === 1;
+      return (
+        raw
+          .prepare(
+            'UPDATE accounts SET health_json = ? WHERE id = ? AND token_json = ? AND health_json IS ?',
+          )
+          .run(
+            parsedHealth ? JSON.stringify(parsedHealth) : null,
+            id,
+            row.tokenJson,
+            row.healthJson,
+          ).changes === 1
+      );
     } finally {
       raw.close();
     }

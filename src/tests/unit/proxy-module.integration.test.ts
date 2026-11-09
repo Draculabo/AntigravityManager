@@ -33,6 +33,7 @@ describe('FilesModule exports', () => {
   it('makes FilesService injectable by an importing module', async () => {
     const application = await NestFactory.createApplicationContext(FilesConsumerModule, {
       logger: false,
+      abortOnError: false,
     });
 
     try {
@@ -54,6 +55,7 @@ describe('ProxyModule dependency graph', () => {
   it('resolves the OpenAI operations service and all protocol controllers', async () => {
     const application = await NestFactory.createApplicationContext(ProxyModule, {
       logger: false,
+      abortOnError: false,
     });
 
     try {
@@ -79,6 +81,7 @@ describe('ProxyModule dependency graph', () => {
   it('builds every durable state owner and the file plane', async () => {
     const application = await NestFactory.createApplicationContext(ProxyModule, {
       logger: false,
+      abortOnError: false,
     });
 
     try {

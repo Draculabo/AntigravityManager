@@ -4,7 +4,11 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OAuthRecoveryJournal } from '@/modules/cloud-account/persistence/oauth-recovery-journal';
-import { decryptParsedPayloadWithKey, encryptWithKey, parseEncryptedPayload } from '@/shared/security/crypto';
+import {
+  decryptParsedPayloadWithKey,
+  encryptWithKey,
+  parseEncryptedPayload,
+} from '@/shared/security/crypto';
 import * as security from '@/shared/security/security';
 
 const key = Buffer.alloc(32, 7);
@@ -12,7 +16,13 @@ const record = {
   version: 1 as const,
   accountId: 'account-1',
   expected: { access_token: 'old-access', refresh_token: 'old-refresh' },
-  token: { access_token: 'new-access', refresh_token: 'new-refresh', expires_in: 3600, expiry_timestamp: 100, token_type: 'Bearer' },
+  token: {
+    access_token: 'new-access',
+    refresh_token: 'new-refresh',
+    expires_in: 3600,
+    expiry_timestamp: 100,
+    token_type: 'Bearer',
+  },
 };
 let directory: string;
 
@@ -56,9 +66,13 @@ describe('OAuth recovery journal', () => {
   it('does not require a keyring to read an empty or missing journal', async () => {
     vi.mocked(security.initializeMasterKey).mockRejectedValue(new Error('key unavailable'));
     await expect(new OAuthRecoveryJournal(directory).readAll()).resolves.toEqual([]);
-    await expect(new OAuthRecoveryJournal(path.join(directory, 'missing')).readAll()).resolves.toEqual([]);
+    await expect(
+      new OAuthRecoveryJournal(path.join(directory, 'missing')).readAll(),
+    ).resolves.toEqual([]);
     expect(security.initializeMasterKey).not.toHaveBeenCalled();
-    await expect(new OAuthRecoveryJournal(directory).append(record)).rejects.toThrow('key unavailable');
+    await expect(new OAuthRecoveryJournal(directory).append(record)).rejects.toThrow(
+      'key unavailable',
+    );
     expect(await fs.readdir(directory)).toEqual([]);
   });
 
@@ -86,7 +100,9 @@ describe('OAuth recovery journal', () => {
 
   it('does not persist an encrypted entry larger than the reader accepts', async () => {
     vi.mocked(security.encrypt).mockResolvedValueOnce(`agm_enc_v1:aa:bb:${'ab'.repeat(262_251)}`);
-    await expect(new OAuthRecoveryJournal(directory).append(record)).rejects.toThrow('Invalid OAuth recovery journal entry');
+    await expect(new OAuthRecoveryJournal(directory).append(record)).rejects.toThrow(
+      'Invalid OAuth recovery journal entry',
+    );
     expect(await fs.readdir(directory)).toEqual([]);
   });
 
