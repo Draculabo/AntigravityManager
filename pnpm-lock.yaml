@@ -18,6 +18,9 @@ patchedDependencies:
   '@pengx17/electron-forge-maker-appimage@1.2.1':
     hash: d1cde02313b43473177b8be7cd7a4a16f06639694e006880ca108609f106b13d
     path: patches/@pengx17__electron-forge-maker-appimage@1.2.1.patch
+  app-builder-lib@26.15.3:
+    hash: f63ffd31827a407f006860add622194cbe31a84e88be8d63393c683b69ee12ef
+    path: patches/app-builder-lib@26.15.3.patch
 
 importers:
 
@@ -15637,7 +15640,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  app-builder-lib@26.15.3(dmg-builder@26.15.3(electron-builder-squirrel-windows@24.13.3))(electron-builder-squirrel-windows@24.13.3):
+  app-builder-lib@26.15.3(patch_hash=f63ffd31827a407f006860add622194cbe31a84e88be8d63393c683b69ee12ef)(dmg-builder@26.15.3(electron-builder-squirrel-windows@24.13.3))(electron-builder-squirrel-windows@24.13.3):
     dependencies:
       '@electron/asar': 3.4.1
       '@electron/fuses': 1.8.0
@@ -16666,7 +16669,7 @@ snapshots:
 
   dmg-builder@26.15.3(electron-builder-squirrel-windows@24.13.3):
     dependencies:
-      app-builder-lib: 26.15.3(dmg-builder@26.15.3(electron-builder-squirrel-windows@24.13.3))(electron-builder-squirrel-windows@24.13.3)
+      app-builder-lib: 26.15.3(patch_hash=f63ffd31827a407f006860add622194cbe31a84e88be8d63393c683b69ee12ef)(dmg-builder@26.15.3(electron-builder-squirrel-windows@24.13.3))(electron-builder-squirrel-windows@24.13.3)
       builder-util: 26.15.3
       fs-extra: 10.1.0
       js-yaml: 4.1.1
@@ -16756,7 +16759,7 @@ snapshots:
 
   electron-builder@26.15.3(electron-builder-squirrel-windows@24.13.3):
     dependencies:
-      app-builder-lib: 26.15.3(dmg-builder@26.15.3(electron-builder-squirrel-windows@24.13.3))(electron-builder-squirrel-windows@24.13.3)
+      app-builder-lib: 26.15.3(patch_hash=f63ffd31827a407f006860add622194cbe31a84e88be8d63393c683b69ee12ef)(dmg-builder@26.15.3(electron-builder-squirrel-windows@24.13.3))(electron-builder-squirrel-windows@24.13.3)
       builder-util: 26.15.3
       builder-util-runtime: 9.7.0
       chalk: 4.1.2

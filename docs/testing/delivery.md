@@ -110,6 +110,17 @@ relaunch may drop the temporary user-data argument.
 Check a missing feed, an interrupted download and a tampered installer separately. Packaging
 and feed tests alone do not establish installed updater behavior or cross-architecture acceptance.
 
+For the NSIS staging regression, supply an incomplete installer as a fourth argument to
+`test:acceptance installers nsis-updater`. Build it with the same NSIS configuration from a
+disposable copy of the candidate payload under `out` that omits `resources/app.asar`. Use
+`pnpm exec electron-builder --win nsis --x64 --prepackaged <incomplete-payload> --config electron-builder.config.cjs --publish never`
+with `AGM_NSIS_ARCH=x64` and a separate `AGM_NSIS_OUTPUT` under `out`. This intentionally bypasses
+`make:nsis`'s input check. The runner requires an unsuccessful exit and byte-identical previous
+application files, then exercises the normal updater with the complete installer. For interactive
+coverage, open the complete installer directly and cancel at the confirmation. Verify the
+previous installation remains usable. The updater check also places a directory junction in the
+previous installation and verifies that replacing it preserves the linked external file.
+
 ### Linux AppImage updates
 
 For Linux updater changes, run the focused `linux-appimage-*.test.ts`, update metadata,

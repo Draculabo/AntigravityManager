@@ -4,9 +4,13 @@ const registryScript = `
 $ErrorActionPreference = 'Stop'
 $path = 'Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\antigravity_manager'
 $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($path, $true)
-if ($null -eq $key) { throw 'Existing Squirrel registration is absent' }
+$optional = $env:AGM_TEST_REGISTRY_ACTION -eq 'snapshot-if-present'
+if ($null -eq $key) {
+  if ($optional) { 'null'; return }
+  throw 'Existing Squirrel registration is absent'
+}
 try {
-  if ($env:AGM_TEST_REGISTRY_ACTION -eq 'snapshot') {
+  if ($optional -or $env:AGM_TEST_REGISTRY_ACTION -eq 'snapshot') {
     $items = @($key.GetValueNames() | Sort-Object | ForEach-Object {
       $name = $_
       $kind = $key.GetValueKind($name)
