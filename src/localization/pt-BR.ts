@@ -990,6 +990,7 @@ const ptBR = {
       turkish: 'Turkish',
       french: 'French',
       portuguese: 'Português (Brasil)',
+      japanese: 'Japonês',
     },
     about: {
       title: 'Sobre',

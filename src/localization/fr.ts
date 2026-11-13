@@ -548,6 +548,7 @@ const fr = {
       turkish: 'Turc',
       french: 'Français',
       portuguese: 'Portugais (Brésil)',
+      japanese: 'Japonais',
     },
     about: {
       title: 'A propos',
