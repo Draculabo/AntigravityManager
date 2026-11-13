@@ -20,6 +20,7 @@ interface GenerationHooks {
   collect: (stream: NodeJS.ReadableStream, signal?: AbortSignal) => Promise<GeminiResponse>;
   onFallback: () => void;
   recover?: () => Promise<GeminiResponse>;
+  observeResponse?: (response: GeminiResponse) => void;
 }
 
 /** The discarded direct response leaves scope before a request can enter the shared queue. */
@@ -39,6 +40,7 @@ export async function generateGeminiWithAggregationFallback(
       }
       const direct = decoded.response;
       throwIfRequestAborted(signal);
+      hooks.observeResponse?.(direct);
       if (direct.candidates?.[0]?.finishReason || direct.promptFeedback?.blockReason) {
         const state = new GenerationOutputState();
         state.observe(direct);
@@ -57,6 +59,7 @@ export async function generateGeminiWithAggregationFallback(
               throw new UpstreamGenerationError('invalid_upstream_response');
             }
             const recoveredState = new GenerationOutputState();
+            hooks.observeResponse?.(recovered.response);
             recoveredState.observe(recovered.response);
             const recoveredFailure = recoveredState.failure();
             if (recoveredFailure) {
@@ -89,6 +92,7 @@ export async function generateGeminiWithAggregationFallback(
       signal,
       estimateRetainedJsonBytes(hooks.request),
     );
+    hooks.observeResponse?.(collected);
     if (isIncompleteThinkingResponse(collected)) {
       throw new UpstreamGenerationError('incomplete_upstream_response');
     }

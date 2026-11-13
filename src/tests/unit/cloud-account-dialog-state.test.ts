@@ -58,6 +58,40 @@ function renderDialogs() {
 }
 
 describe('account dialog state ownership', () => {
+  it('keeps a rejected callback address for retry and sends its state to the owner unchanged', async () => {
+    const login = Promise.withResolvers<void>();
+    actions.startAuthFlow.mockReturnValue(login.promise);
+    actions.submitAuthCode.mockRejectedValueOnce({ data: { loginCode: 'invalid-manual-input' } });
+    renderDialogs();
+    fireEvent.click(screen.getByRole('button', { name: 'cloud.addAccount' }));
+    const open = screen.getByRole('button', { name: 'cloud.authDialog.openLogin' });
+    await waitFor(() => expect((open as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(open);
+    const input = screen.getByLabelText('cloud.authDialog.authCode');
+    const pasted = 'http://127.0.0.1:1234/oauth-callback?code=4%2Fsynthetic&state=current';
+    fireEvent.change(input, { target: { value: ` ${pasted} ` } });
+    const submit = screen.getByRole('button', { name: 'cloud.authDialog.verify' });
+    await waitFor(() => expect((submit as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(submit);
+    await waitFor(() =>
+      expect(actions.toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description: 'cloud.toast.addFailed.codes.invalid-manual-input',
+          variant: 'destructive',
+        }),
+      ),
+    );
+    expect((input as HTMLInputElement).value).toBe(` ${pasted} `);
+    expect(actions.submitAuthCode).toHaveBeenCalledExactlyOnceWith(
+      { code: pasted },
+      expect.anything(),
+    );
+    fireEvent.click(submit);
+    await waitFor(() => expect((input as HTMLInputElement).value).toBe(''));
+    expect(actions.submitAuthCode).toHaveBeenCalledTimes(2);
+    await act(async () => login.resolve());
+  });
+
   it('keeps typing and browser login updates out of the parent and sibling grid', async () => {
     const login = Promise.withResolvers<void>();
     actions.startAuthFlow.mockReturnValue(login.promise);

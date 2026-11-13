@@ -1,5 +1,23 @@
 # Proxy Compatibility Reference
 
+## Gemini query credentials
+
+Gemini HTTP routes under `/v1beta/` and `/upload/v1beta/` accept a query `key` when the existing
+header credential parser finds no credential. Bearer, `x-api-key` and `x-goog-api-key` retain
+their current precedence. An incorrect but recognized header credential is not replaced by a
+query credential. Authentication still validates the selected key using the normal proxy guard.
+
+The HTTP ingress resolves a single non-empty query key before compressed-body admission or audit
+identity capture and normalizes it into the existing header path. Equivalent header/query keys
+therefore retain the same tenant, signature/cache and Thought ownership. Different keys remain
+separate. Without a header credential, repeated query keys return HTTP 400. Management,
+OpenAI-compatible routes and Responses WebSocket upgrades continue to use header credentials.
+
+Credential parameters are redacted in stored audit metadata, historical read projections, cURL,
+HAR and diagnostics. Ordinary request payload properties named `key` remain ordinary content.
+Redaction does not erase credentials from historical database files or backups. See the
+[gateway security reference](security.md#query-credential-metadata).
+
 ## Fallback diagnostics
 
 OpenAI, Gemini and Anthropic Messages responses include `x-antigravity-attempts` and
@@ -18,7 +36,41 @@ failures. This classification does not change retry or account-selection policy.
 
 ## Model routes, variants and capability evidence
 
-OpenAI model list/retrieve keep their identity fields and local context/output limits.
+Enabled model aliases accept generation requests independently of their optional `published`
+flag. Existing exact aliases default to published; aliases targeting `auto:*` default to hidden
+unless explicitly published. Wildcard patterns and strategy identifiers are never published.
+OpenAI, Gemini and Anthropic list/detail routes and OpenAI-compatible probes use this public
+projection. Raw-only mode continues to omit aliases. Hiding a rule does not remove an independently
+advertised physical model with the same ID. If its automatic replacement is unavailable, that
+physical entry retains its own descriptive limits.
+
+**API Proxy > Model Mapping** edits aliases, enabled state, publication and routing strategy.
+Changes use the shared service configuration owner and apply to subsequent requests without a
+gateway restart. Existing Sonnet/Opus selectors edit the same alias list and preserve publication.
+
+Automatic targets are opt-in rule targets, never injected replacements or upstream model IDs:
+
+| Target                  | Selection                                                                                                                                                                                                  |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auto:gemini-flash-low` | Highest-version eligible physical Flash with the requested tier, defaulting to Low. Registered recipes, explicit tier names and client effort retain their existing precedence. Image models are excluded. |
+| `auto:claude-opus`      | Eligible Opus 5.5, then Opus 4.6. No Sonnet fallback.                                                                                                                                                      |
+| `auto:claude-opus-4-7`  | Eligible Opus 4.7, then 4.6, then 5.5. No Sonnet fallback.                                                                                                                                                 |
+
+Selection reads positive provider/quota evidence from currently eligible accounts, including
+quota, cooldown, capability and OAuth restrictions. It performs no refresh, lease or credential
+write. No matching candidate produces the existing no-available-accounts failure, rather than
+an invented physical fallback. Normal generation and count requests resolve once and preserve
+the physical target through retries. Existing request/physical-model diagnostics identify the
+chosen model. A published automatic alias without an eligible target is omitted from discovery;
+it can become visible again when the pool becomes eligible.
+
+OpenAI model list/retrieve keep their identity fields and resolve local context/output
+limits through the generation router. Configured replacements, equivalent aliases
+and runtime retirement rules select the same target for discovery.
+Provider-declared `supports_images` and `supports_thinking` appear only when eligible
+account evidence agrees. Missing or conflicting capability facts are omitted.
+A shared provider output cap can lower the published local ceiling;
+`capability_source: provider-catalog` identifies provider-derived metadata.
 Context metadata is published as `context_length`, `max_context_length`,
 `max_input_tokens`, `max_model_len` and `max_tokens`. Output metadata is published as
 `max_completion_tokens` and `max_output_tokens`. The fields within each group are
@@ -58,9 +110,9 @@ The existing `/v1/models/claude` directory returns one complete page with `data`
 release time. This gateway projection does not implement provider capability/lifecycle
 metadata or cursor filtering. See the [field upgrade instructions](../../upgrade-guides/next/model-directory-metadata.md).
 
-Model requests resolve user rules in this order: runtime deprecation forwarding,
-exact configured alias, a unique case-folded alias, a unique Claude-normalized
-alias, the most specific wildcard, the existing Anthropic family setting, built-in
+Model requests resolve user rules in this order: exact configured alias, a unique
+case-folded alias, a unique Claude-normalized alias, runtime deprecation forwarding,
+the most specific wildcard, the existing Anthropic family setting, built-in
 or canonical mapping, then passthrough. Exact aliases remain case-sensitive and
 win before equivalent lookups. Wildcards rank by the number of non-wildcard
 characters and use configuration order for ties. Equivalent aliases that point to
@@ -68,7 +120,13 @@ different targets fail explicitly instead of selecting one by iteration order.
 
 Name normalization trims surrounding whitespace before removing a leading
 `models/` path segment. Claude comparison additionally removes a leading
-`anthropic/` segment, folds case and replaces dots with hyphens. Unknown names
+`anthropic/` segment, folds case and replaces dots with hyphens. Known trailing
+Claude `[1m]`, `[200k]` and `[128k]` markers are context hints for route matching.
+The original exact configured spelling takes priority. The resolved model retains
+its actual context ceiling. Anthropic requests merge the gateway's required Beta
+flags with supported client flags, deduplicating them. The context-1m flag is
+admitted only for a resolved model with a locally declared million-token window.
+Unknown names
 still pass through with their capability unknown. A configured physical target is
 not fed back through its public alias.
 
@@ -84,8 +142,9 @@ request effort.
 Account availability and physical binding preserve explicit tiers. A missing
 explicit tier does not select another tier merely because the account advertises
 it. Registered public presets retain their defined physical recipes, including
-Gemini 3.5 Flash Low through `gemini-3.5-flash-extra-low` and Gemini 3.1 Pro High
-through `gemini-pro-agent`. Registered automatic Flash routes retain their physical
+Gemini 3.5 Flash Low through `gemini-3.5-flash-extra-low`. Gemini 3.1 Pro High
+prefers `gemini-3.1-pro-high` when the selected account advertises it and retains
+the equivalent `gemini-pro-agent` recipe for legacy account catalogs. Registered automatic Flash routes retain their physical
 `tiered` ID and adaptive budget regardless of request effort. Fixed High profiles
 do not bind to automatic profiles merely because both are registered as High.
 Explicit provider retirement rules retain their existing registered-recipe safety check and may
@@ -198,6 +257,21 @@ Once a streaming upstream attempt starts, deadline diagnostics record the furthe
 output phase. The phases are `waiting_for_output`, `thinking_only` and `output_started`.
 Heartbeats and usage metadata do not advance the phase. The diagnostic records the phase
 and the audit request ID when available.
+
+The same logical request counts admitted internal generation sends across account and endpoint
+changes, aggregation fallback, and recovery. Once three sends have been admitted, an attempt
+whose serialized upstream JSON is at least 4 MiB (UTF-8) is rejected locally with HTTP 503
+before transport and without penalizing an account. OpenAI routes report
+`generation_replay_limit`. Smaller bodies retain their retry policy. Shared cache creation
+and background warmup do not use this counter. Large scoped generation sends do not follow
+automatic HTTP redirects, which could otherwise resend their body within one admission.
+
+The per-attempt `Upstream generation stages` debug record includes the elapsed milliseconds
+from admission to Node's request upload completion, receipt of response headers, and the first
+validated usable model output. Upload completion indicates a local transport event. Reasoning,
+heartbeats, and usage metadata alone do not count as usable output. Unobserved stages are null.
+These diagnostics do not affect timeouts or the existing response timing headers.
+
 The main HTTP Chat/Responses, Messages and Gemini generation controllers start it before
 file/history expansion. Direct service calls start at service entry. Responses WebSocket
 starts its per-message budget at dispatch, before transcript admission. WebSocket queue
@@ -373,16 +447,23 @@ contiguous system/developer messages enter the initial instruction; later remind
 remain at their original conversation position. User-supplied repetitions and
 dynamic dates, paths, UUIDs and request/session identifiers remain significant.
 
-Exact standalone Claude Agent SDK identity maps to Claude Code. Other recognized
+Exact standalone Claude Agent SDK identities, including the Claude Code identity
+that names the SDK runtime, map to Claude Code. Other recognized
 English attributed identity heads can become `You are an AI Agent.` only when
 they contain an identity opening, an agent/assistant/AI noun and an adjacent
 attribution verb. Recognition covers at most the first four sentences and 8192
 UTF-16 code units of each system block; version decimal points do not count as
-sentence endings. Comma continuations and surrounding whitespace remain intact.
+sentence endings. Comma and semicolon continuations retain their delimiters and
+surrounding text.
 Ordinary business roles, quoted identities and later mentions are preserved.
 
-Only complete `x-anthropic-billing-header:` lines are removed from unprotected
-system text. Matching retains original line offsets. Markdown code fences honor
+Billing cleanup removes complete `x-anthropic-billing-header:` lines from
+unprotected system text. The complete client security-testing template from the Antigravity
+client samples is also removed from unprotected system text, with or without
+`authorized` in its opening. Matching requires the known policy body and preserves
+neighboring instructions, including a following `# Harness` section. When only the
+template remains, its empty system part is omitted. Matching retains original
+line offsets. Markdown code fences honor
 their delimiter width/character, including unclosed fences; inline code,
 blockquotes, XML comments and explicit quote/example/code/pre regions remain
 unchanged. No global trim, blank-line collapse or placeholder/ID replacement runs
@@ -415,7 +496,7 @@ identity is checked by the existing association owner. Cancellation and native
 signature/model validation retain their precedence.
 
 Supported anchored assistant prefill keeps its role and exact text. Only a
-non-image Gemini target receives one `ok go on` user tail in a temporary outbound
+non-image Gemini target receives one `.` user tail in a temporary outbound
 copy. Claude and other targets keep their tail. Repeated preparation is
 idempotent; signed/thought turns retain whitespace companion parts. The gateway
 does not insert dummy thinking, `Continue` for empty history or a fabricated
@@ -492,6 +573,21 @@ Gateway control uses registered model recipes and configured family budgets. Fla
 medium nonpositive settings resolve to 1,000 and 4,000 tokens. These defaults do not apply
 to an explicit Client budget.
 
+The final planner reads Gateway budgets after account binding for OpenAI Chat, Responses,
+Anthropic Messages and Gemini generation. The Claude Default field applies to Claude routes
+without a selected tier. A saved positive budget overrides the corresponding default. An
+explicit `-1` remains adaptive where the route supports it. Legacy Gateway zero values stay
+readable and fall back to the route's default until the user corrects them in Settings.
+Settings saves the control source and edited values together and validates newly saved
+Gateway budgets as `-1` or positive integers.
+
+If the selected account declares a thinking transport, the planner sends either a numeric
+budget or an uppercase level according to that declaration. A level-only route rejects a
+fixed numeric request and uses the declared level for adaptive requests without a level
+selection. The planner omits the thinking block on routes that declare thinking unsupported.
+Output limits apply to both transports. Discovery fields that are absent preserve the route's
+existing compatibility rules.
+
 Client control preserves disabled, adaptive and fixed budgets through model selection and
 account rebinding. Budget 0 and recognized disabled effort values disable thinking. Budget
 -1 remains adaptive; a positive numeric budget takes precedence over an enabled effort level.
@@ -532,11 +628,24 @@ of the current proxy API key and a stable D03 session hint. The scope includes e
 client sharing that key. A legacy user ID alone cannot establish the required session.
 
 Local compaction triggers terminate before account retry or penalty. The client requests
-its summary through the existing provider path. Successful provider completion and exact
-adoption of that summary establish continuation protection. Manual completion returns a
-local zero-usage acknowledgement. The gateway does not create a separate summary request
-or rewrite caller history. Native envelope compatibility and D14 joint acceptance remain
-unverified.
+its summary through the existing provider path. The manual command also accepts the exact
+`/compact.` form. A recognized summary instruction in a system text block can attach to
+an active operation in the same session after the original history prefix matches.
+For manual and automatic compaction, Cowork may append its summary instruction to an earlier user
+message and retain the recent messages. The gateway matches that shortened prefix
+against the triggered history, allowing cache annotations and a single trailing line
+break on the text next to the appended instruction. Partial-summary matching tracks
+up to 256 message fingerprints per operation. Confirmation also requires the exact
+retained sequence immediately after the provider summary in the continuation.
+Complete leading `<system-reminder>` blocks may precede the continuation envelope
+inside the same user message. Other leading prose cannot establish adoption.
+Successful provider completion and exact adoption of that summary in the first five
+messages establish continuation protection. Manual completion returns a local zero-usage
+acknowledgement labeled `X-AGM-Response-Source: local_compaction_acknowledgement` in JSON
+and SSE. For partial summaries, the acknowledgement answers the repeated manual command,
+including the command sent after complete reminder blocks. An ordinary follow-up proceeds
+through generation after adoption. The client owns summary generation and history replacement.
+Automatic adoption resumes the pending generation and activates continuation protection.
 
 ## Tool Result Association
 
@@ -710,6 +819,11 @@ builder, so `GET /v1/models/{id}` returns exactly the object the list published.
 
 ## Responses Requests and Durable History
 
+`POST /responses` is an HTTP alias for `POST /v1/responses`, with the same
+authentication, JSON body limit, request preparation, streaming events and errors.
+It is classified as Responses traffic in the audit view. Stored-response retrieval
+and deletion, and WebSocket upgrades, use their existing `/v1/responses` paths.
+
 Chat Completions also accepts a Responses request body when `messages` is absent and
 `input`, `instructions` or `previous_response_id` is present. This compatibility entry
 validates a string or item-array input and reuses Responses preparation for instructions,
@@ -725,7 +839,7 @@ The returned Chat ID belongs to the Chat surface and cannot address a new Respon
 
 Role-bearing messages with a missing or non-string `type` use the message path. Explicit empty-string and unknown string types are ignored as whole input items. Non-string roles default to `user`. String roles are retained through input parsing; the shared downstream conversion treats `system` and `developer` as instructions, keeps `assistant` and tool semantics, and degrades every other string role to `user` instead of forwarding an unknown Gemini role. Array content and a single typed object collect every string `text`, including empty strings, join them with newlines, and then append validated image or supported audio blocks. Both `input_image` and `image_url` accept a URL string or a validated URL object. URLs must be non-empty strings, `detail` must be `auto`, `low` or `high`, and other JSON extensions are retained. Supporting the object form for `input_image` is an intentional compatibility extension beyond upstream. Malformed image blocks are ignored rather than forwarded unchecked. `audio_url` accepts a URL object with optional `mime_type`, `mimeType`, or `format`: data URLs become Gemini `inlineData`, HTTP(S) URLs become `fileData`, and an unreadable tool-result source becomes the protocol-compatible `[audio]` text fallback. An untyped JSON object contributes no text; the enclosing message remains available to the existing cleanup rules. Top-level input objects and primitive content retain their existing conversion behavior.
 
-Function and custom-tool outputs unwrap an enclosing `content` field, accept an array or one typed object, keep text and supported image/audio media together, and retain the prior JSON-string fallback only when no supported part was recognized. The apply-patch retry-loop compactor runs on the extracted text without discarding media. Downstream mapping emits Gemini `functionResponse` first and then media `inlineData`; a pure-media result keeps an empty function result instead of fabricating success text.
+Function and custom-tool outputs unwrap an enclosing `content` field, accept an array or one typed object, keep text and supported image/audio media together, and retain the prior JSON-string fallback only when no supported part was recognized. Each tool result keeps its extracted text, including repeated failures, and its supported media. Downstream mapping emits Gemini `functionResponse` first and then media `inlineData`; a pure-media result keeps an empty function result instead of fabricating success text.
 
 Raw history and input parsing share their type resolver. Native `reasoning` output items,
 `msg_thought_` IDs and the reserved thinking prefix identify transcript-only items.
@@ -744,7 +858,7 @@ for budgets, reference versions, missing-content errors and downgrade limits.
 
 The remaining ignore rules apply to new input and recovered history during request conversion without rewriting old GET payloads. An empty-type assistant item does not trigger WebSocket transcript replacement. File-reference resolution still precedes input conversion, so unresolved attachment references retain their existing errors even inside an otherwise ignored item or object content.
 
-Non-stream responses emit nonblank reasoning as `reasoning` items with `summary_text`, followed by visible text/refusal and tools. Streaming emits the same native reasoning item shape, with the lifecycle `response.reasoning_summary_part.added` → `response.reasoning_summary_text.delta` → `response.reasoning_summary_text.done` → `response.reasoning_summary_part.done` → `response.output_item.done`. It closes reasoning before visible text or a tool item and never emits `output_text` or `content_part` events for reasoning. Ordinary message and tool lifecycles are unchanged, while native reasoning remains in the completed response but is excluded from continuation replay. Non-stream ordinary message items have no `phase`; streaming ordinary messages retain their existing `commentary` or `final_answer` phase. The apply_patch diagnostic exception retains commentary. Zero cached/reasoning token detail fields are normalized only at the non-stream response boundary.
+Non-stream responses emit nonblank reasoning as `reasoning` items with `summary_text`, followed by visible text/refusal and tools. Streaming emits the same native reasoning item shape, with the lifecycle `response.reasoning_summary_part.added` → `response.reasoning_summary_text.delta` → `response.reasoning_summary_text.done` → `response.reasoning_summary_part.done` → `response.output_item.done`. It closes reasoning before visible text or a tool item and never emits `output_text` or `content_part` events for reasoning. Ordinary message and tool lifecycles are unchanged, while native reasoning remains in the completed response but is excluded from continuation replay. Non-stream ordinary message items have no `phase`; streaming ordinary messages retain their existing `commentary` or `final_answer` phase. Zero cached/reasoning token detail fields are normalized only at the non-stream response boundary.
 
 The production non-stream path selects the first Gemini candidate, concatenates its text blocks without a separator, and constructs one internal Chat Completions choice with string-or-null content and a usage object. Missing upstream usage becomes zero before the final Responses conversion. The non-stream stream-aggregation fallback uses the same normalization. The final Responses mapper is not a general-purpose converter for arbitrary external Chat Completions responses or multiple choices.
 

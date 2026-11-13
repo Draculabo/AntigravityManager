@@ -140,6 +140,14 @@ export abstract class BaseProxyService {
     this.modelRoutingPolicy = modelRoutingPolicy;
   }
 
+  protected resolveRequestModelRoute(model: string, effort?: string, targetAccountId?: string) {
+    return this.modelRoutingPolicy.resolveModelRouteForRequest(model, {
+      effort,
+      getAvailableModels: () =>
+        this.accountLeaseService.getAvailableAdaptiveModels(targetAccountId),
+    });
+  }
+
   protected createOfficialRequestId(): string {
     const timestampMs = Date.now();
     const randomHex = uuidv4().replace(/-/g, '').slice(0, 8);
@@ -564,9 +572,7 @@ export abstract class BaseProxyService {
     resolvedTarget?: { physicalTarget: boolean },
   ): Promise<CountTokensResult> {
     throwIfRequestAborted(signal);
-    const route = resolvedTarget
-      ? undefined
-      : this.modelRoutingPolicy.resolveModelRouteForRequest(model);
+    const route = resolvedTarget ? undefined : this.resolveRequestModelRoute(model, effort);
     const explicitPhysicalTarget =
       route?.source === 'configured' || route?.source === 'dynamic-legacy';
     const applied = route
@@ -575,7 +581,7 @@ export abstract class BaseProxyService {
     const targetModel = applied?.model ?? model;
     const physicalTarget =
       resolvedTarget?.physicalTarget ?? (applied?.variant != null || explicitPhysicalTarget);
-    const extraHeaders = this.createModelSpecificHeaders(model);
+    const extraHeaders = this.createModelSpecificHeaders(targetModel);
     const retryState = this.createTokenRetryState(effort, physicalTarget);
     const maxRetries = await this.getMaxRetryAttempts(
       retryState,
@@ -699,7 +705,9 @@ export abstract class BaseProxyService {
     extraHeaders?: Record<string, string>,
     signal?: AbortSignal,
     options?: InternalGenerationOptions,
+    observeResponse?: (response: GeminiResponse | undefined) => void,
   ): Promise<GeminiResponse> {
+    observeResponse?.(undefined);
     const prepared = this.prepareThinkingRecovery(body, options);
     const sendStream = (
       request: GeminiInternalRequest,
@@ -719,6 +727,7 @@ export abstract class BaseProxyService {
       return await generateGeminiWithAggregationFallback(
         {
           request: body,
+          observeResponse,
           generate: () =>
             this.geminiClient.generateInternal(
               body,

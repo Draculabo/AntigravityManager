@@ -146,7 +146,6 @@ function parseCredentialStorePayload(payload: string): CredentialStoreToken {
   };
 }
 
-/** Agy reads its session file; desktop clients read the system credential store. */
 export async function readClientAccountToken(
   target?: AntigravityAppTarget | null,
 ): Promise<CredentialStoreToken | null> {
@@ -170,6 +169,19 @@ export async function readClientAccountToken(
   if (target !== 'agy') {
     return readAntigravityCredentialStoreToken();
   }
+  return readAgyCredentialFile();
+}
+
+/** The CLI's own session is the only source for discovery and active-account reconciliation. */
+export async function readAgyAccountToken(): Promise<CredentialStoreToken | null> {
+  const token = await readAgyCredentialFile();
+  if (token && !token.refreshToken) {
+    throw new CredentialStoreReadError('malformed');
+  }
+  return token;
+}
+
+async function readAgyCredentialFile(): Promise<CredentialStoreToken | null> {
   try {
     const payload = await fs.readFile(
       path.join(os.homedir(), '.gemini', 'antigravity-cli', 'antigravity-oauth-token'),

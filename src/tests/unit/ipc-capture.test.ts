@@ -39,6 +39,42 @@ afterEach(() => vi.useRealTimers());
 const metadata = { path: 'cloud/refresh', sessionId: 'stable', model: null };
 
 describe('remote IPC capture', () => {
+  it.each([false, true])(
+    'excludes manual OAuth payload from remote capture while preserving failure=%s',
+    async (fails) => {
+      const { owner, recorder, source, commands } = fixture();
+      const input = {
+        code: 'http://127.0.0.1/oauth-callback?code=4%2Fprivate-code&state=private-state',
+      };
+      const result = { output: { accepted: true } };
+      const failure = new Error('safe manual input rejection');
+      const next = vi.fn(() => {
+        if (fails) {
+          throw failure;
+        }
+        return result;
+      });
+      try {
+        const operation = recorder.run(['cloud', 'submitAuthCode'], input, next);
+        if (fails) {
+          await expect(operation).rejects.toBe(failure);
+        } else {
+          await expect(operation).resolves.toBe(result);
+        }
+        expect(next).toHaveBeenCalledOnce();
+        expect(source.startParent).not.toHaveBeenCalled();
+        expect(source.beginPreparedParentPayload).not.toHaveBeenCalled();
+        expect(commands).toEqual([]);
+        expect(JSON.stringify(source.completeParent.mock.calls)).not.toMatch(
+          /private-code|private-state/,
+        );
+      } finally {
+        owner.closeAdmission();
+        await owner.drain();
+      }
+    },
+  );
+
   it('admits business calls only after prepared metadata is complete and freezes input fields', async () => {
     const { owner, source } = fixture();
     const capability = await owner.prepare();

@@ -178,11 +178,11 @@ server-side invocation flag. Native Gemini requests keep their existing default 
 does not enforce the Anthropic option `disable_parallel_tool_use`.
 
 Ordinary function tools remain functions even when their name matches a search or custom-tool
-name. Google Search is mapped only from its recognized explicit built-in type. The OpenAI
-freeform `apply_patch` schema and argument adapter apply only to a declaration with
-`type: custom`; ordinary functions named `apply_patch` retain their declared Schema and runtime
-arguments. Tool parameters are not guessed, length-truncated or coerced to match a converted
-Schema.
+name. Google Search is mapped only from its recognized explicit built-in type. OpenAI declarations
+with `type: custom` use a single string `input` field at the upstream function boundary. Ordinary
+functions named `apply_patch` retain their declared Schema and runtime arguments. Tool parameters
+are not guessed, length-truncated or coerced to match a converted Schema. See
+[tool passthrough](stream-tool-compatibility.md#tool-passthrough) for the output contract.
 
 Within tool parameter Schemas, nonempty `enum` and converted `const` values serialize to strings,
 and their Schema node type becomes `string`. A literal empty-string member is removed; whitespace

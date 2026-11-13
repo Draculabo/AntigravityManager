@@ -115,25 +115,24 @@ export class CloudAccountEmailConflictError extends Error {
 }
 
 /** The guard and mutation share one synchronous SQLite transaction; no awaited read/write gap. */
-export function writeAccount(
+export function writeAccount<Result>(
   id: string,
   guard: CloudAccountWriteGuard | undefined,
-  write: (transaction: DrizzleExecutor) => void,
-): void {
+  write: (transaction: DrizzleExecutor) => Result,
+): Result {
   const { raw, orm } = getCloudDb();
   try {
     if (guard) {
-      orm.transaction((transaction) => {
+      return orm.transaction((transaction) => {
         const row = transaction.select().from(accounts).where(eq(accounts.id, id)).get();
         if (row) {
           assertPlainAccountFields(row);
         }
         guard(row ? parseAccountRow(row) : undefined);
-        write(transaction);
+        return write(transaction);
       });
-    } else {
-      write(orm);
     }
+    return write(orm);
   } finally {
     raw.close();
   }
@@ -357,6 +356,28 @@ export class CloudAccountRepo {
           .run().changes === 1;
     });
     return updated;
+  }
+
+
+  static updateProjectId(
+    id: string,
+    projectId: string | null,
+    selectCurrent: (current: CloudAccount | undefined) => CloudAccount,
+  ): CloudAccount {
+    let current: CloudAccount;
+    return writeAccount(id, (account) => {
+      current = selectCurrent(account);
+    }, (transaction) => {
+      if (current.token.project_id !== (projectId ?? undefined)) {
+        // Keep the rest of the token JSON and the credential-bound usage identity intact.
+        const tokenJson = projectId === null
+          ? sql`json_remove(${accounts.tokenJson}, '$.project_id')`
+          : sql`json_set(${accounts.tokenJson}, '$.project_id', ${projectId})`;
+        transaction.update(accounts).set({ tokenJson }).where(eq(accounts.id, id)).run();
+        current.token.project_id = projectId ?? undefined;
+      }
+      return current;
+    });
   }
 
   static async updateQuota(

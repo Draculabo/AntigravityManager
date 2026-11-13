@@ -37,7 +37,10 @@ export const CoworkCompactionConfigSchema = z.object({
   auto_enabled: z.boolean().default(false),
   manual_enabled: z.boolean().default(false),
   auto_threshold: z.number().int().min(50_000).max(2_000_000).default(200_000),
-  trusted_client_key_hashes: z.array(z.string().regex(/^[a-f0-9]{64}$/u)).max(32).default([]),
+  trusted_client_key_hashes: z
+    .array(z.string().regex(/^[a-f0-9]{64}$/u))
+    .max(32)
+    .default([]),
 });
 
 export const ThinkingBudgetConfigSchema = z.object({
@@ -87,6 +90,7 @@ export const ModelAliasRouteSchema = z.object({
   alias: z.string().trim().min(1),
   target: z.string().trim().min(1),
   enabled: z.boolean().default(true),
+  published: z.boolean().optional(),
 });
 
 export const ProxyConfigSchema = z.object({

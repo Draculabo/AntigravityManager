@@ -88,6 +88,9 @@ function source() {
 it('writes a versioned session with exact parent/body identity and partial capture metadata', async () => {
   const read = source();
   const owner = createAuditFileOwner({
+    harContent: async function* () {
+      throw new Error('HAR is outside this session fixture');
+    },
     bodyContent: read.body,
     sessionContent: (key) => auditSessionForExport(key, read),
   });
@@ -133,6 +136,9 @@ it.each(['changed', 'deleted', 'wrong-session', 'body-missing'] as const)(
       });
     }
     const owner = createAuditFileOwner({
+      harContent: async function* () {
+        throw new Error('HAR is outside this session fixture');
+      },
       bodyContent: read.body,
       sessionContent: (key) => auditSessionForExport(key, read),
     });

@@ -118,6 +118,31 @@ beforeEach(() => {
 });
 
 describe('Gemini complete-event privacy gate', () => {
+  it('retains the upstream rate-limit classification on an unterminated EOF event', async () => {
+    const { output, upstream, lease } = await run('gemini', [
+      frame(partial),
+      frame({
+        response: {
+          error: {
+            code: 429,
+            status: 'RESOURCE_EXHAUSTED',
+            message: 'Rate limited: token=synthetic-eof-secret',
+          },
+        },
+      }).trimEnd(),
+    ]);
+    expect(publicError('gemini', output)).toEqual({
+      code: 429,
+      status: 'RESOURCE_EXHAUSTED',
+      message: 'Rate limited: token=[REDACTED]',
+    });
+    expect(output).toContain('controlled partial');
+    expect(output).not.toContain('synthetic-eof-secret');
+    expect(output).not.toContain('"finishReason"');
+    expect(upstream.streamGenerateInternal).toHaveBeenCalledOnce();
+    expect(lease.markModelSuccess).not.toHaveBeenCalled();
+  });
+
   it('does not emit the synthetic EOF flush newline for an empty source', async () => {
     const upstream = createUpstream({ streamFrames: [] });
     const gateway = createGateway(

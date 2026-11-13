@@ -33,6 +33,11 @@ export interface CompactionPolicy {
   shouldAutoCompact: boolean;
 }
 
+export interface CompactionHistoryProof {
+  messages: number;
+  fingerprint: string;
+}
+
 export interface CompactionOperation {
   id: string;
   key: string;
@@ -46,6 +51,8 @@ export interface CompactionOperation {
   algorithmVersion: string;
   inputFingerprint: string;
   inputHistoryMessages?: number;
+  inputHistory?: readonly string[];
+  retainedHistory?: CompactionHistoryProof;
   providerSummaryFingerprint?: string;
   providerSummaryCharacters?: number;
   status: CompactionStatus;
@@ -63,6 +70,7 @@ export interface CompactionRequest {
   targetTokens: number;
   inputFingerprint: string;
   inputHistoryMessages?: number;
+  inputHistory?: readonly string[];
   now?: number;
 }
 
@@ -97,6 +105,7 @@ export interface ProviderSummarySuccessInput {
   operationId: string;
   summaryFingerprint: string;
   summaryCharacters?: number;
+  retainedHistory?: CompactionHistoryProof;
   now?: number;
 }
 
@@ -141,7 +150,9 @@ export function resolveManualCompactionCommand(text: string): string | null {
     return null;
   }
 
-  return /^(?:\.\\compact|\.\/compact\.?|\/compact)(?:\s+.*)?$/iu.test(firstLine) ? firstLine : null;
+  return /^(?:(?:\.\\compact|\.\/compact\.?|\/compact)(?:\s+.*)?|\/compact\.)$/iu.test(firstLine)
+    ? firstLine
+    : null;
 }
 
 function operationKey(request: Pick<CompactionRequest, 'tenantId' | 'clientSessionId'>): string {
@@ -206,6 +217,7 @@ export class ContextCompactionCoordinator {
       ...(request.inputHistoryMessages !== undefined
         ? { inputHistoryMessages: request.inputHistoryMessages }
         : {}),
+      ...(request.inputHistory ? { inputHistory: request.inputHistory } : {}),
       status: 'active',
       createdAt: now,
       expiresAt: now + this.operationTtlMs(),
@@ -257,6 +269,10 @@ export class ContextCompactionCoordinator {
     if (input.summaryCharacters !== undefined) {
       operation.providerSummaryCharacters = input.summaryCharacters;
     }
+    if (input.retainedHistory) {
+      operation.retainedHistory = input.retainedHistory;
+    }
+    delete operation.inputHistory;
     operation.status = 'summary-succeeded';
     return { ...operation };
   }

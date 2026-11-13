@@ -1,4 +1,9 @@
-import { ipcRenderer, contextBridge, type IpcRendererEvent } from 'electron';
+import { ipcRenderer, contextBridge, webFrame, type IpcRendererEvent } from 'electron';
+import {
+  isDesktopZoom,
+  isDesktopZoomCommand,
+  type DesktopZoomCommand,
+} from './modules/app-shell/desktop-appearance';
 import type { RendererPerformanceSnapshot } from './modules/app-shell/performance-recorder/types';
 import {
   TrafficAuditEventSchema,
@@ -18,8 +23,20 @@ const electronBridge = {
   getObservabilityConfig: () => {
     return ipcRenderer.invoke(IPC_CHANNELS.GET_OBSERVABILITY_CONFIG);
   },
-  changeLanguage: (lang: string) => {
-    ipcRenderer.send(IPC_CHANNELS.CHANGE_LANGUAGE, lang);
+  setDesktopZoom: (level: unknown) => {
+    if (!isDesktopZoom(level)) {
+      throw new RangeError('Unsupported desktop zoom level.');
+    }
+    webFrame.setZoomFactor(level / 100);
+  },
+  onDesktopZoomCommand: (callback: (command: DesktopZoomCommand) => void) => {
+    const handler = (_event: IpcRendererEvent, command: unknown) => {
+      if (isDesktopZoomCommand(command)) {
+        callback(command);
+      }
+    };
+    ipcRenderer.on(IPC_CHANNELS.DESKTOP_ZOOM_COMMAND, handler);
+    return () => ipcRenderer.off(IPC_CHANNELS.DESKTOP_ZOOM_COMMAND, handler);
   },
   onManualUpdateAvailable: (callback: (update: ManualUpdateInfo) => void) => {
     const handler = (_event: IpcRendererEvent, update: ManualUpdateInfo) => callback(update);
@@ -55,6 +72,9 @@ const electronBridge = {
   },
   saveTrafficAuditBody: (bodyId: string, suggestedName: string) => {
     return ipcRenderer.invoke(IPC_CHANNELS.SAVE_TRAFFIC_AUDIT_BODY, bodyId, suggestedName);
+  },
+  saveTrafficAuditHar: (requestId: string, suggestedName: string) => {
+    return ipcRenderer.invoke(IPC_CHANNELS.SAVE_TRAFFIC_AUDIT_HAR, requestId, suggestedName);
   },
   saveTrafficAuditSession: (sessionId: string, suggestedName: string) => {
     return ipcRenderer.invoke(IPC_CHANNELS.SAVE_TRAFFIC_AUDIT_SESSION, sessionId, suggestedName);

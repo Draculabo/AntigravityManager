@@ -13,17 +13,19 @@ collapsed whitespace outside the metadata owner.
 
 ## Decision
 
-Only explicitly owned billing metadata lines may be removed. Dynamic user and
+Only known client metadata and policy templates may be removed. Dynamic user and
 client identity fields remain byte-preserved in the system instruction. Cache
 reuse must follow actual prompt identity rather than a guessed normalized string.
 
 Initial system text across Claude, OpenAI conversion/Responses instructions and
 native Gemini uses the same normalization owner. Exact standalone Claude Agent SDK
-identity still maps to Claude Code. Otherwise, only a recognized English identity
+identities, including the CLI-with-SDK variant, map to Claude Code. Otherwise,
+only a recognized English identity
 opening, identity noun and adjacent attribution verb in the first four sentences
 (at most 8192 UTF-16 code units) can become `You are an AI Agent.`. Version decimal
-points do not end the sentence; comma continuations and surrounding whitespace
-remain. Ordinary business roles without attribution and later mentions remain.
+points do not end the sentence. Comma and semicolon continuations preserve their
+delimiters and surrounding text. Ordinary business roles without attribution and
+later mentions remain.
 The old global replace-all of one Codex sentence is removed.
 
 Markdown fences retain their delimiter width and character, including unclosed
@@ -32,6 +34,12 @@ and explicit quote/example/code/pre regions retain their original text. Metadata
 matching uses original line offsets, so the end of a protected span cannot create
 a false line beginning in the remaining text. No global trim, empty-line collapse,
 placeholder substitution or ID replacement follows restoration.
+
+Client-policy cleanup recognizes the complete security-testing template, including the
+opening without `authorized`. A matching opening and a later `# Harness` heading
+cannot identify everything between them as a client template. The bounded
+transformation diagnostic records only the removal kind and location. Configured
+global prompts and ordinary conversation retain their existing ownership.
 
 User/tool text and signed/thought history never enter system normalization.
 Native system parts carrying either signature alias or a thought marker also
@@ -44,7 +52,8 @@ Generation admission rejects empty business input, unanchored assistant starts
 and incomplete tool rounds before account selection. Existing association
 validators still own call identity. Supported anchored assistant prefill retains
 its role and text; only a non-image Gemini target receives one temporary
-`ok go on` user tail. Counting does not receive this generation-only adapter.
+`.` user tail. A neutral token avoids adding a synthetic instruction to continue.
+Counting does not receive this generation-only adapter.
 Signed/thought turns retain whitespace companion parts. No dummy thinking or
 empty-history business prompt is inserted.
 

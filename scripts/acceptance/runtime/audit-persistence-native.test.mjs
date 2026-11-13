@@ -262,7 +262,7 @@ test('exact saved-session filter preserves full tenant scope, paging and system 
   }
 });
 
-test('production worker reopens schema v4 and serves paged UTF-8 bodies with parent-local dedup', async () => {
+test('production worker reopens the current schema and serves paged UTF-8 bodies with parent-local dedup', async () => {
   const audit = openWorker('pages');
   const requestId = 'request-1';
   const body = `${'a'.repeat(65_530)}😀中${'b'.repeat(65_530)}`;
@@ -314,10 +314,10 @@ test('production worker reopens schema v4 and serves paged UTF-8 bodies with par
   }
 
   let db = new Database(audit.databasePath);
-  assert.equal(db.pragma('user_version', { simple: true }), 4);
+  assert.equal(db.pragma('user_version', { simple: true }), 7);
   assert.equal(
     db.prepare("SELECT value FROM schema_meta WHERE key='schema_version'").get().value,
-    '4',
+    '7',
   );
   db.pragma('auto_vacuum = NONE');
   db.exec('VACUUM');
@@ -329,17 +329,17 @@ test('production worker reopens schema v4 and serves paged UTF-8 bodies with par
   db = new Database(audit.databasePath);
   assert.equal(
     db.prepare("SELECT value FROM schema_meta WHERE key='schema_version'").get().value,
-    '4',
+    '7',
   );
   assert.equal(
     db.prepare("SELECT value FROM schema_meta WHERE key='layout'").get().value,
-    'classified-chunked-payload-v4',
+    'classified-chunked-payload-v7',
   );
   assert.equal(db.pragma('auto_vacuum', { simple: true }), 2);
   db.close();
 });
 
-test('schema v3 is preserved as a recoverable backup and replaced with an empty v4 database', async () => {
+test('schema v3 is preserved as a recoverable backup and replaced with an empty current database', async () => {
   const audit = openWorker('rebuild');
   await audit.command('insertParent', parent('old-row', 'model', Date.now()));
   await audit.close();
@@ -370,7 +370,7 @@ test('schema v3 is preserved as a recoverable backup and replaced with an empty 
   );
   backup.close();
   const current = new Database(audit.databasePath, { readonly: true });
-  assert.equal(current.pragma('user_version', { simple: true }), 4);
+  assert.equal(current.pragma('user_version', { simple: true }), 7);
   current.close();
 });
 
@@ -379,7 +379,7 @@ test('future audit schema is rejected without archiving or replacing its data', 
   await audit.command('insertParent', parent('future-row', 'model', Date.now()));
   await audit.close();
   const database = new Database(audit.databasePath);
-  database.pragma('user_version = 5');
+  database.pragma('user_version = 8');
   database.close();
 
   const workerPath =
@@ -387,11 +387,11 @@ test('future audit schema is rejected without archiving or replacing its data', 
     path.resolve(__dirname, '../../../.vite/build/traffic-audit.worker.js');
   const worker = new Worker(workerPath, { workerData: { databasePath: audit.databasePath } });
   const failure = await new Promise((resolve) => worker.once('error', resolve));
-  assert.match(failure.message, /Unsupported traffic audit schema version: 5/);
+  assert.match(failure.message, /Unsupported traffic audit schema version: 8/);
   await worker.terminate();
 
   const preserved = new Database(audit.databasePath, { readonly: true });
-  assert.equal(preserved.pragma('user_version', { simple: true }), 5);
+  assert.equal(preserved.pragma('user_version', { simple: true }), 8);
   assert.equal(
     preserved.prepare("SELECT id FROM request_logs WHERE id='future-row'").get().id,
     'future-row',
@@ -400,7 +400,7 @@ test('future audit schema is rejected without archiving or replacing its data', 
   assert.equal(
     fs
       .readdirSync(testDirectory)
-      .some((name) => name.startsWith('future-version.db.schema-v5-backup-')),
+      .some((name) => name.startsWith('future-version.db.schema-v8-backup-')),
     false,
   );
 });

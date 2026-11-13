@@ -179,25 +179,28 @@ describe('thought signature compatibility', () => {
     },
   );
 
-  it('does not cache a client placeholder as a real tool signature', () => {
-    const sessionKey = 'sentinel-is-not-real';
-    SignatureStore.store({
-      model: SIGNATURE_MODEL,
-      sessionKey,
-      toolCallId: 'placeholder-call',
-      toolName: 'read',
-      signature: 'skip_thought_signature_validator',
-    });
-    expect(SignatureStore.get({ model: SIGNATURE_MODEL, sessionKey })).toBeNull();
-    expect(
-      SignatureStore.getForToolCall({
+  it.each(['skip_thought_signature_validator', 'c2tpcF90aG91Z2h0X3NpZ25hdHVyZV92YWxpZGF0b3I='])(
+    'does not cache %s as a real tool signature',
+    (signature) => {
+      const sessionKey = 'sentinel-is-not-real';
+      SignatureStore.store({
         model: SIGNATURE_MODEL,
         sessionKey,
         toolCallId: 'placeholder-call',
         toolName: 'read',
-      }),
-    ).toBeNull();
-  });
+        signature,
+      });
+      expect(SignatureStore.get({ model: SIGNATURE_MODEL, sessionKey })).toBeNull();
+      expect(
+        SignatureStore.getForToolCall({
+          model: SIGNATURE_MODEL,
+          sessionKey,
+          toolCallId: 'placeholder-call',
+          toolName: 'read',
+        }),
+      ).toBeNull();
+    },
+  );
 
   it('does not inject a sentinel signature for an unsigned non-Flash tool call', () => {
     const request: ClaudeRequest = {

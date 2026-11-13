@@ -14,6 +14,7 @@ import {
 import { createLocalAccountDiscoveryFailure } from './discovery-errors';
 import { AntigravityKeyringDiscoverySource } from './sources/antigravity-keyring.source';
 import { AntigravityDatabaseDiscoverySource } from './sources/antigravity-database.source';
+import { AntigravityAgyFileDiscoverySource } from './sources/antigravity-agy-file.source';
 import { LegacyAgentDiscoverySource } from './sources/legacy-agent.source';
 
 export interface LocalAccountDiscoveryServiceOptions {
@@ -243,6 +244,7 @@ export function createDefaultLocalAccountDiscoveryService(): LocalAccountDiscove
       new AntigravityDatabaseDiscoverySource('classic'),
       new AntigravityDatabaseDiscoverySource('ide'),
       new LegacyAgentDiscoverySource(),
+      new AntigravityAgyFileDiscoverySource(),
     ],
     maxConcurrency: 3,
   });

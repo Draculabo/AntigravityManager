@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { ConfigManager } from '@/modules/config/ipc/manager';
 import { getNestServerStatus } from '@/server/main';
 import { getServerConfig } from '@/server/server-config';
-import { isSensitiveAuditKey } from '../audit/audit-sanitizer';
+import { isSensitiveAuditKey, sanitizeAuditUrl } from '../audit/audit-sanitizer';
 import { trafficAuditService } from '../audit/traffic-audit.service';
 import { formatCurlRequest } from '../curl-export/format-curl';
 
@@ -105,7 +105,7 @@ export async function buildAuditCurl(input: CopyAuditCurlInput): Promise<string>
   if (attempt && !/^https?:\/\//iu.test(rawUrl)) {
     throw new Error('The recorded upstream endpoint is not a replayable URL');
   }
-  const url = new URL(rawUrl, localBase).toString();
+  const url = new URL(sanitizeAuditUrl(rawUrl), localBase).toString();
   const parsedUrl = new URL(url);
   if (parsedUrl.username || parsedUrl.password) {
     parsedUrl.username = '';

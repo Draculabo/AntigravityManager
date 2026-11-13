@@ -70,8 +70,11 @@ export {
   parseCloudAccountSwitchORPCErrorData,
 } from '@/modules/cloud-account/services/cloud-account-switch.schema';
 
+import { createCloudAccountProjectIdProcedures } from './cloud-account-project-id-router';
+
 export const cloudRouter = os.router({
   localImport: localAccountImportRouter,
+  ...createCloudAccountProjectIdProcedures(getCloudAccountAdapter),
 
   listCloudAccounts: os.output(z.array(CloudAccountViewSchema)).handler(async () => {
     return getCloudAccountAdapter().listViews();

@@ -16,6 +16,7 @@ import { selectAuditFileAdapter } from '@/modules/proxy-gateway/ipc/audit-file-a
 import {
   exportSelectedAuditBody,
   exportSelectedAuditSession,
+  exportSelectedAuditHar,
 } from '@/modules/proxy-gateway/ipc/audit-file-desktop';
 import { mockCoreGatewayLifecycle } from '../support/core-gateway-lifecycle';
 
@@ -33,7 +34,11 @@ beforeEach(async () => {
     yield 'first\n';
     yield 'second\n';
   });
-  owner = createAuditFileOwner({ bodyContent: content, sessionContent: content });
+  owner = createAuditFileOwner({
+    bodyContent: content,
+    sessionContent: content,
+    harContent: content,
+  });
   selectAuditFileAdapter({ mode: 'desktop-embedded' });
 });
 afterEach(async () => {
@@ -72,6 +77,56 @@ async function remote() {
 }
 
 describe('selected audit file owner', () => {
+  it('streams HAR through the owner captured before the chooser yields, returning status only', async () => {
+    await remote();
+    const embedded = vi.spyOn(auditFileOwner, 'exportHar');
+    const chunk = '正文🙂'.repeat(50000);
+    content.mockImplementation(async function* () {
+      yield chunk;
+      yield chunk;
+      yield chunk;
+    });
+    const filePath = join(directory, 'request.har');
+    expect(
+      await exportSelectedAuditHar(bodyId, '../unsafe request.har', async (safeName) => {
+        expect(safeName).not.toMatch(/[\\/]/u);
+        selectAuditFileAdapter({ mode: 'desktop-embedded' });
+        return filePath;
+      }),
+    ).toEqual({ status: 'saved' });
+    expect(Buffer.byteLength(chunk.repeat(3))).toBeGreaterThan(1024 * 1024);
+    expect(await readFile(filePath, 'utf8')).toBe(chunk.repeat(3));
+    expect(content).toHaveBeenCalledExactlyOnceWith(bodyId);
+    expect(embedded).not.toHaveBeenCalled();
+  });
+
+  it('preserves the existing HAR and cleans temporary output after a content failure', async () => {
+    await remote();
+    const filePath = join(directory, 'request.har');
+    await writeFile(filePath, 'keep destination');
+    content.mockImplementation(async function* () {
+      yield '{"partial":';
+      throw new Error('capture changed');
+    });
+    await expect(
+      exportSelectedAuditHar(bodyId, 'request.har', async () => filePath),
+    ).rejects.toThrow('Audit export is unavailable.');
+    expect(await readFile(filePath, 'utf8')).toBe('keep destination');
+    expect((await readdir(directory)).filter((name) => name.endsWith('.tmp'))).toEqual([]);
+  });
+
+  it('does not read HAR content after chooser cancellation or an invalid request ID', async () => {
+    const chooser = vi.fn(async () => null);
+    expect(await exportSelectedAuditHar(bodyId, 'request.har', chooser)).toEqual({
+      status: 'cancelled',
+    });
+    await expect(exportSelectedAuditHar('invalid', 'request.har', chooser)).rejects.toThrow(
+      'Audit export is unavailable.',
+    );
+    expect(chooser).toHaveBeenCalledTimes(1);
+    expect(content).not.toHaveBeenCalled();
+  });
+
   it('exports a scoped session through the owner selected before the native chooser yields', async () => {
     await remote();
     const sessionId = `session:affinity:v1:${'a'.repeat(64)}`;

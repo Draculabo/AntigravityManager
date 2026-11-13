@@ -1,8 +1,8 @@
 import { readdir, readFile, stat, writeFile } from 'node:fs/promises';
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { releaseBuildTargets, resolveHead } from './release-source.mjs';
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const SOURCE_SHA = /^[a-f0-9]{40}$/u;
@@ -87,7 +87,7 @@ export function validateBuildSourceManifests(manifests) {
 }
 
 export function validateReleaseAssetMatrix(manifests) {
-  validateBuildSourceManifests(manifests);
+  const source = validateBuildSourceManifests(manifests);
   const requirements = {
     win32: [
       { label: 'Squirrel setup', test: (name) => /-win32-(?:x64|arm64)-setup\.exe$/u.test(name) },
@@ -113,7 +113,7 @@ export function validateReleaseAssetMatrix(manifests) {
       }
     }
   }
-  return true;
+  return source;
 }
 
 export async function writeBuildSourceManifest(file, manifest) {
@@ -138,6 +138,48 @@ async function listFiles(directory) {
   return files;
 }
 
+async function validateReleaseDirectory(root, directory, releaseTag, expected = {}) {
+  const files = (await listFiles(directory)).filter((file) =>
+    /^build-source-.*\.json$/u.test(path.basename(file)),
+  );
+  const manifests = await Promise.all(files.map(readBuildSourceManifest));
+  const targets = manifests.map(({ platform, arch }) => `${platform}-${arch}`).sort();
+  if (JSON.stringify(targets) !== JSON.stringify(releaseBuildTargets)) {
+    throw new Error(
+      `Expected one build source manifest for each of the six targets; found: ${targets.join(', ')}`,
+    );
+  }
+  const source = validateReleaseAssetMatrix(manifests);
+
+  const checkoutSha = expected.sourceSha ?? resolveHead(root, 'HEAD');
+  const version =
+    expected.version ?? JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')).version;
+  if (source.sourceSha !== checkoutSha) {
+    throw new Error(
+      `Build source ${source.sourceSha} does not match checked-out commit ${checkoutSha}`,
+    );
+  }
+  if (typeof version !== 'string' || !VERSION.test(version) || source.version !== version) {
+    throw new Error(`Build version ${source.version} does not match package version ${version}`);
+  }
+
+  if (releaseTag !== undefined) {
+    if (releaseTag !== `v${version}`) {
+      throw new Error(`Release tag ${releaseTag} does not match package version ${version}`);
+    }
+    let tagSha;
+    try {
+      tagSha = resolveHead(root, `refs/tags/${releaseTag}`);
+    } catch (cause) {
+      throw new Error(`Release tag ${releaseTag} could not be resolved to a commit`, { cause });
+    }
+    if (tagSha !== checkoutSha) {
+      throw new Error(`Release tag ${releaseTag} points to ${tagSha}, expected ${checkoutSha}`);
+    }
+  }
+  return source;
+}
+
 export async function createBuildSourceManifestFromDirectory({
   root,
   directory,
@@ -147,8 +189,7 @@ export async function createBuildSourceManifestFromDirectory({
   sourceSha,
   version,
 }) {
-  const resolvedSourceSha =
-    sourceSha ?? execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+  const resolvedSourceSha = sourceSha ?? resolveHead(root, 'HEAD');
   const resolvedVersion =
     version ?? JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')).version;
   const files = (await listFiles(directory)).filter((file) =>
@@ -178,15 +219,22 @@ export async function createBuildSourceManifestFromDirectory({
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = new Map();
   for (let index = 2; index < process.argv.length; index += 2) {
-    args.set(process.argv[index], process.argv[index + 1]);
+    const name = process.argv[index];
+    const value = process.argv[index + 1];
+    if (value === undefined) {
+      throw new Error(`Missing value for ${name}`);
+    }
+    args.set(name, value);
   }
   const root = path.resolve(args.get('--root') ?? process.cwd());
   if (args.has('--validate-directory')) {
-    const files = (await listFiles(path.resolve(root, args.get('--validate-directory')))).filter(
-      (file) => path.basename(file).startsWith('build-source-') && file.endsWith('.json'),
+    const source = await validateReleaseDirectory(
+      root,
+      path.resolve(root, args.get('--validate-directory')),
+      args.get('--release-tag'),
+      { sourceSha: args.get('--source-sha'), version: args.get('--version') },
     );
-    const manifests = await Promise.all(files.map(readBuildSourceManifest));
-    console.log(JSON.stringify(validateReleaseAssetMatrix(manifests)));
+    console.log(JSON.stringify(source));
   } else {
     await createBuildSourceManifestFromDirectory({
       root,

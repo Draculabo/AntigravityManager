@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GoogleAPIService } from '@/modules/cloud-account/services/GoogleAPIService';
 import { HeadlessOAuthSessionService } from '@/modules/cloud-account/services/headless-oauth-session.service';
 import type { CloudAccount } from '@/modules/cloud-account/types';
+import { InvalidManualOAuthInputError } from '@/modules/cloud-account/services/manual-oauth-input';
 
 const services: HeadlessOAuthSessionService[] = [];
 
@@ -56,6 +57,70 @@ function createService(timeoutMs?: number) {
 }
 
 describe('headless OAuth session', () => {
+  it('validates manual callback state before consumption and retains the session exchange context', async () => {
+    const { service, enroll, reload } = createService();
+    const started = await service.start('manual-client');
+    const authorization = new URL(started.authorizationUrl);
+    const redirect = authorization.searchParams.get('redirect_uri');
+    const state = authorization.searchParams.get('state');
+    for (const invalid of [
+      '?code=4/private-code',
+      '?code=4/private-code&state=wrong',
+      `?code=4/private-code&state=${state}&state=${state}`,
+      `?code=4%ZZ&state=${state}`,
+      '?error=access_denied&state=wrong',
+    ]) {
+      expect(() => service.completeCode(started.sessionId, invalid)).toThrow(
+        InvalidManualOAuthInputError,
+      );
+      expect(service.status(started.sessionId)).toEqual({ state: 'pending' });
+      expect(enroll).not.toHaveBeenCalled();
+      expect(reload).not.toHaveBeenCalled();
+    }
+    expect(
+      service.completeCode(
+        started.sessionId,
+        `https://different.invalid/callback?code=4%2Fprivate%2Bcode&state=${state}`,
+      ),
+    ).toBe(true);
+    expect(service.completeCode(started.sessionId, '4/replay')).toBe(false);
+    await vi.waitFor(() => expect(service.status(started.sessionId)?.state).toBe('succeeded'));
+    expect(enroll).toHaveBeenCalledExactlyOnceWith('4/private+code', {
+      oauthClientKey: 'manual-client',
+      redirectUri: redirect,
+      operation: expect.any(GoogleLoginOperation),
+    });
+    await expect(request(`${redirect}?code=late&state=${state}`)).rejects.toThrow();
+  });
+
+  it('accepts a manual denial once, closes its listener and lets a new login begin', async () => {
+    const { service, enroll, reload } = createService();
+    const first = await service.start();
+    const authorization = new URL(first.authorizationUrl);
+    const redirect = authorization.searchParams.get('redirect_uri');
+    const state = authorization.searchParams.get('state');
+    expect(service.completeCode(first.sessionId, `?error=access_denied&state=${state}`)).toBe(true);
+    expect(service.status(first.sessionId)).toMatchObject({
+      state: 'failed',
+      loginCode: 'authorization-denied',
+    });
+    expect(service.completeCode(first.sessionId, '4/late')).toBe(false);
+    expect(enroll).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
+    await vi.waitFor(async () => {
+      await expect(request(`${redirect}?code=late&state=${state}`)).rejects.toThrow();
+    });
+    const second = await service.start();
+    expect(second.sessionId).not.toBe(first.sessionId);
+    expect(service.completeCode(second.sessionId, '4%2Fnew%2Bcode')).toBe(true);
+    await vi.waitFor(() => expect(service.status(second.sessionId)?.state).toBe('succeeded'));
+    expect(enroll).toHaveBeenCalledExactlyOnceWith('4/new+code', {
+      oauthClientKey: 'test-client',
+      redirectUri: new URL(second.authorizationUrl).searchParams.get('redirect_uri'),
+      operation: expect.any(GoogleLoginOperation),
+    });
+  });
+
   it('accepts a pasted code once and uses the same client and redirect as the browser session', async () => {
     const { service, enroll } = createService();
     const started = await service.start('manual-client');

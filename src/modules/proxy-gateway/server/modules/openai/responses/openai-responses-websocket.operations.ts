@@ -54,6 +54,7 @@ export function createResponsesWebSocketOperations(
           identity: prepared.session.identity,
           transient: prepared.transient,
           mediaAdmitted: true,
+          mediaWindowProtectLatestUserTurn: prepared.mediaWindowProtectLatestUserTurn,
           requestSessionId: prepared.requestSessionId,
           responseId: prepared.responseId,
           routingSessionId: prepared.routingSessionId,

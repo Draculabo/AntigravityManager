@@ -1138,7 +1138,7 @@ describe('cloud switch fail-fast path', () => {
     }));
 
     vi.doMock('@/modules/app-shell/ipc/tray/handler', () => ({
-      updateTrayMenu: vi.fn(),
+      refreshTrayAccount: vi.fn(),
     }));
 
     vi.doMock('../../shared/platform/paths', () => ({
@@ -1290,7 +1290,7 @@ describe('cloud oauth client key backfill', () => {
         debug: vi.fn(),
       },
     }));
-    vi.doMock('@/modules/app-shell/ipc/tray/handler', () => ({ updateTrayMenu: vi.fn() }));
+    vi.doMock('@/modules/app-shell/ipc/tray/handler', () => ({ refreshTrayAccount: vi.fn() }));
     vi.doMock('@/modules/identity-profile/ipc/handler', () => ({
       ensureGlobalOriginalFromCurrentStorage: vi.fn(),
       ensureIdentityProfileStorage: vi.fn(),
@@ -1412,7 +1412,7 @@ describe('cloud oauth client key backfill', () => {
         debug: vi.fn(),
       },
     }));
-    vi.doMock('@/modules/app-shell/ipc/tray/handler', () => ({ updateTrayMenu: vi.fn() }));
+    vi.doMock('@/modules/app-shell/ipc/tray/handler', () => ({ refreshTrayAccount: vi.fn() }));
     vi.doMock('@/modules/identity-profile/ipc/handler', () => ({
       ensureGlobalOriginalFromCurrentStorage: vi.fn(),
       ensureIdentityProfileStorage: vi.fn(),
@@ -1513,7 +1513,7 @@ describe('cloud oauth client key backfill', () => {
         debug: vi.fn(),
       },
     }));
-    vi.doMock('@/modules/app-shell/ipc/tray/handler', () => ({ updateTrayMenu: vi.fn() }));
+    vi.doMock('@/modules/app-shell/ipc/tray/handler', () => ({ refreshTrayAccount: vi.fn() }));
     vi.doMock('@/modules/identity-profile/ipc/handler', () => ({
       ensureGlobalOriginalFromCurrentStorage: vi.fn(),
       ensureIdentityProfileStorage: vi.fn(),
@@ -1618,7 +1618,7 @@ describe('cloud oauth client key backfill', () => {
         debug: vi.fn(),
       },
     }));
-    vi.doMock('@/modules/app-shell/ipc/tray/handler', () => ({ updateTrayMenu: vi.fn() }));
+    vi.doMock('@/modules/app-shell/ipc/tray/handler', () => ({ refreshTrayAccount: vi.fn() }));
     vi.doMock('@/modules/identity-profile/ipc/handler', () => ({
       ensureGlobalOriginalFromCurrentStorage: vi.fn(),
       ensureIdentityProfileStorage: vi.fn(),

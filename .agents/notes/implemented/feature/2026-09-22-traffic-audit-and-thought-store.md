@@ -11,6 +11,18 @@ request lineage, retention controls or cross-protocol continuation.
 
 ## Decision
 
+D15 keeps versioned attempt-stage measurements in a nullable `timing_json` column,
+independently of captured HTTP headers. Schema 7 preserves schema-4, schema-5 and
+schema-6 rows after a verified snapshot. Old rows remain unknown. Measurement
+snapshots reach the once-only attempt completion, not the later debug report.
+
+HAR export uses the existing selected-owner atomic file writer and paginated safe
+body readers. Only actual parent/attempt records become entries. Missing capture,
+unknown transport metadata and reconstructed SSE remain explicit. Public operation
+duration and measured stages stay in `_agm` extensions when the transport breakdown
+required by HAR is unavailable. Owner compatibility 11 refuses mixed Core versions.
+See the [current reference](../../../../docs/modules/proxy-gateway/traffic-diagnostics.md).
+
 Traffic audit and Thought Store use separate SQLite databases, worker threads and bounded queues.
 Each worker is a dedicated Electron Forge build entry rather than an evaluated source string. The
 feature owns its Drizzle schema and repository; Drizzle handles typed metadata CRUD while the
@@ -115,6 +127,14 @@ filters change or the page is left. Parent requests can use the current proxy ke
 redacted. Historical credentials are neither restored nor stored for this feature.
 
 ## Alternatives considered
+
+- Internal timing values in captured response headers were rejected because they
+  would fabricate protocol metadata and contaminate HAR. Separate scalar columns
+  were viable, but one strict versioned object keeps this detail-only observation
+  cohesive without duplicating its shape across multiple columns.
+- Browser Blob export was rejected because large bodies already belong to a bounded
+  selected-owner file stream. Guessed upstream entries, methods, origins and default
+  wait times were rejected because they misrepresent what was observed.
 
 - Extending the existing 4xx capture files was rejected because it has no relational parent/attempt
   model, is opt-in, and deliberately omits most successful traffic.

@@ -58,6 +58,7 @@ const unitFiles = [
   '../build/forge-package-bin-scan.test.mjs',
   '../build/publish-standalone-runtime.test.mjs',
   '../build/trace-standalone-runtime.test.mjs',
+  '../release/build-source-manifest.test.mjs',
   '../release/github-release-notes.test.mjs',
   '../release/validate-release-artifacts.test.mjs',
   '../release/release-delivery.test.mjs',

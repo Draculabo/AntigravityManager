@@ -17,6 +17,13 @@ export const AuditSessionFileExportInputSchema = z
   })
   .refine((value) => Buffer.byteLength(JSON.stringify(value), 'utf8') <= 3000);
 export type AuditSessionFileExportInput = z.infer<typeof AuditSessionFileExportInputSchema>;
+export const AuditHarFileExportInputSchema = z
+  .strictObject({
+    requestId: z.string().uuid(),
+    filePath: z.string().min(1).max(4096).refine(path.isAbsolute),
+  })
+  .refine((value) => Buffer.byteLength(JSON.stringify(value), 'utf8') <= 3000);
+export type AuditHarFileExportInput = z.infer<typeof AuditHarFileExportInputSchema>;
 
 export class AuditFileOwnerError extends Error {
   constructor() {

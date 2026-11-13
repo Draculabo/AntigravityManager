@@ -29,6 +29,7 @@ export interface CloudQuotaModelInfo {
   supports_images?: boolean;
   supports_thinking?: boolean;
   thinking_budget?: number;
+  thinking_level?: 'low' | 'medium' | 'high';
   recommended?: boolean;
   max_tokens?: number;
   max_output_tokens?: number;
@@ -212,6 +213,7 @@ export const CloudQuotaModelInfoSchema = z.object({
   supports_images: z.boolean().optional(),
   supports_thinking: z.boolean().optional(),
   thinking_budget: z.number().optional(),
+  thinking_level: z.enum(['low', 'medium', 'high']).optional(),
   recommended: z.boolean().optional(),
   max_tokens: z.number().optional(),
   max_output_tokens: z.number().optional(),

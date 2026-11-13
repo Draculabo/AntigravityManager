@@ -37,6 +37,7 @@ function dependencies(
     refreshProcessCache: vi.fn(async () => {}),
     getCurrentAccountInfo: vi.fn(() => ({ isAuthenticated: false, email: '' })),
     usesCredentialStore: vi.fn(() => false),
+    readAgyAccountToken: vi.fn(async () => null),
     getActiveAccountId: vi.fn(() => ''),
     warn: vi.fn(),
     ...overrides,
@@ -127,6 +128,82 @@ describe('cloud account list service', () => {
     expect(deps.getActiveAccountId).not.toHaveBeenCalledWith('classic');
   });
 
+  it('moves the CLI badge on a new external login without changing the desktop badges', async () => {
+    const deps = dependencies(accounts, {
+      getCurrentAccountInfo: (target) => ({
+        isAuthenticated: true,
+        email: target === 'classic' ? 'old@example.com' : 'ide@example.com',
+      }),
+      readAgyAccountToken: vi
+        .fn<CloudAccountListDependencies['readAgyAccountToken']>()
+        .mockResolvedValueOnce({ refreshToken: 'secret-refresh-ide' })
+        .mockResolvedValueOnce({ refreshToken: 'secret-refresh-classic' }),
+      getActiveAccountId: vi.fn((target) => (target === 'agy' ? 'agy' : '')),
+    });
+    const service = createCloudAccountListService(deps);
+    const getFlags = async () =>
+      (await service.listViews()).map(({ id, is_active_classic, is_active_ide, is_active_agy }) => [
+        id,
+        is_active_classic,
+        is_active_ide,
+        is_active_agy,
+      ]);
+
+    expect(await getFlags()).toEqual([
+      ['classic', true, false, false],
+      ['ide', false, true, true],
+      ['agy', false, false, false],
+    ]);
+    expect(await getFlags()).toEqual([
+      ['classic', true, false, true],
+      ['ide', false, true, false],
+      ['agy', false, false, false],
+    ]);
+    expect(deps.getActiveAccountId).not.toHaveBeenCalledWith('agy');
+  });
+
+  it.each([
+    { match: 'no', refreshToken: 'synthetic-unimported', accounts },
+    {
+      match: 'only Anthropic',
+      refreshToken: 'secret-refresh-agy',
+      accounts: accounts.map((account) =>
+        account.id === 'agy' ? { ...account, provider: 'anthropic' as const } : account,
+      ),
+    },
+    {
+      match: 'multiple',
+      refreshToken: 'secret-refresh-agy',
+      accounts: [...accounts, { ...accounts[2], id: 'duplicate', email: 'duplicate@example.com' }],
+    },
+  ])('suppresses the saved CLI badge when the session has $match matches', async (fixture) => {
+    const deps = dependencies(fixture.accounts, {
+      readAgyAccountToken: async () => ({ refreshToken: fixture.refreshToken }),
+      getActiveAccountId: vi.fn((target) => (target === 'agy' ? 'agy' : '')),
+    });
+
+    const views = await createCloudAccountListService(deps).listViews();
+    expect(views.filter((view) => view.is_active_agy || view.is_active)).toEqual([]);
+    expect(deps.getActiveAccountId).not.toHaveBeenCalledWith('agy');
+  });
+
+  it('retains the saved CLI badge when the dedicated session cannot be read', async () => {
+    const error = new Error('Unexpected read failure with synthetic private value');
+    const deps = dependencies(accounts, {
+      readAgyAccountToken: vi.fn().mockRejectedValue(error),
+      getActiveAccountId: vi.fn((target) => (target === 'agy' ? 'agy' : '')),
+    });
+
+    const views = await createCloudAccountListService(deps).listViews();
+    expect(
+      views.filter((view) => view.is_active_agy && view.is_active).map((view) => view.id),
+    ).toEqual(['agy']);
+    expect(deps.warn).toHaveBeenCalledWith(
+      'Failed to read the agy session file during listing',
+      'unavailable',
+    );
+  });
+
   it('uses IDE credential-store ID when IDE uses the credential store', async () => {
     const deps = dependencies(accounts, {
       usesCredentialStore: (target) => target === 'ide',
@@ -169,13 +246,18 @@ describe('cloud account list service', () => {
         provider: 'google',
         email: 'old@example.com',
         name: 'Updated',
-        quota: { models: { gemini: { percentage: 50, resetTime: 'later' } } },
+        quota: {
+          models: { gemini: { percentage: 50, resetTime: 'later' } },
+          is_forbidden: false,
+        },
         created_at: 1,
         last_used: 2,
         is_active: false,
         is_active_classic: false,
         is_active_ide: false,
         is_active_agy: false,
+        proxy_priority: 50,
+        proxy_enabled: true,
         proxy_configured: true,
       },
     ]);

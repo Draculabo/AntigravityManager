@@ -3,8 +3,10 @@ import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { ConfigManager } from '@/modules/config/ipc/manager';
 import { isNumber, isString } from 'lodash-es';
 import { getMaxOutputTokens, getThinkingBudget } from '../../../antigravity/ModelSpecs';
-import type { GeminiInternalRequest } from '../../../antigravity/types';
+import type { GeminiInternalRequest, GenerationConfig } from '../../../antigravity/types';
 import { resolveGenerationPlan } from '../generation-plan';
+import type { ModelThinkingTransport } from '../../common/model-thinking-transport';
+import { isDisabledThinkingEffort, parseModelEffort } from '../../common/model-effort';
 
 /**
  * Injection token for the account-side capability reader. A token rather than the concrete
@@ -15,12 +17,17 @@ export const PROXY_MODEL_CAPABILITY_READER = 'PROXY_MODEL_CAPABILITY_READER';
 export interface ProxyModelCapabilityReader {
   getModelOutputLimitForAccount(accountId: string, modelName: string): number | undefined;
   getModelThinkingBudgetForAccount(accountId: string, modelName: string): number | undefined;
+  getModelThinkingTransportForAccount?(
+    accountId: string,
+    modelName: string,
+  ): ModelThinkingTransport | undefined;
 }
 
 export interface RegisteredGenerationConstraints {
   thinkingBudget: number;
   maxOutputTokens: number;
   includeThoughts: boolean;
+  tier?: 'low' | 'medium' | 'high';
 }
 
 @Injectable()
@@ -46,19 +53,54 @@ export class GenerationConstraintsService {
         (modality) => modality.toLowerCase() === 'image',
       ) === true ||
       model.toLowerCase().includes('-image');
+    const savedBudget = imageGeneration
+      ? undefined
+      : this.resolveConfiguredThinkingBudget(model, registered?.tier);
+    // Legacy zero remains readable in settings. Treat it as an unset override at runtime.
+    const configuredBudget = savedBudget === 0 ? undefined : savedBudget;
+    const transport = imageGeneration
+      ? undefined
+      : this.modelCapabilities.getModelThinkingTransportForAccount?.(accountId, model);
+    const normalizedModel = this.normalizeModelIdentifier(model).toLowerCase();
+    const isOpus46 = normalizedModel === 'claude-opus-4-6-thinking';
     let generationConfig = body.request.generationConfig;
     if (!generationConfig) {
-      if (!clientControlled && !registered && !enforceAuthoritativeThinkingBudget) {
+      if (
+        !clientControlled &&
+        !registered &&
+        !enforceAuthoritativeThinkingBudget &&
+        configuredBudget === undefined &&
+        transport === undefined
+      ) {
         return;
       }
       generationConfig = {};
       body.request.generationConfig = generationConfig;
     }
 
+    if (transport?.kind === 'level' || transport?.kind === 'disabled') {
+      this.applyDeclaredThinkingTransport(
+        generationConfig,
+        model,
+        accountId,
+        transport,
+        clientControlled,
+        configuredBudget,
+        registered,
+      );
+      return;
+    }
+
     if (clientControlled) {
       const thinkingConfig = generationConfig.thinkingConfig;
-      const isOpus46 =
-        this.normalizeModelIdentifier(model).toLowerCase() === 'claude-opus-4-6-thinking';
+      if (
+        transport?.kind === 'budget' &&
+        thinkingConfig?.thinkingBudget === undefined &&
+        thinkingConfig?.thinkingLevel !== undefined &&
+        !isDisabledThinkingEffort(thinkingConfig.thinkingLevel)
+      ) {
+        throw new BadRequestException('This model accepts a numeric thinking budget.');
+      }
       const clientPlan = resolveGenerationPlan({
         source: 'client',
         model,
@@ -107,92 +149,64 @@ export class GenerationConstraintsService {
       return;
     }
 
-    if (registered) {
-      const registeredPlan = resolveGenerationPlan({
-        source: 'gateway',
-        model,
-        imageGeneration,
-        registeredThinkingBudget:
-          this.resolveConfiguredThinkingBudget(model) ?? registered.thinkingBudget,
-        registeredMaxOutputTokens: registered.maxOutputTokens,
-        explicitMaxOutputTokens: generationConfig.maxOutputTokens,
-        outputCap: this.getModelOutputCap(accountId, model),
-        thinkingCap: this.getModelThinkingBudget(accountId, model),
-        includeThoughts: registered.includeThoughts,
-      });
-      generationConfig.maxOutputTokens = registeredPlan.maxOutputTokens;
-      if (registeredPlan.thinking.kind === 'disabled') {
-        delete generationConfig.thinkingConfig;
-      } else if (registeredPlan.thinking.kind === 'adaptive') {
-        generationConfig.thinkingConfig = {
-          includeThoughts: registeredPlan.includeThoughts,
-          thinkingBudget: -1,
-        };
-      } else if (registeredPlan.thinking.kind === 'budget') {
-        generationConfig.thinkingConfig = {
-          includeThoughts: registeredPlan.includeThoughts,
-          thinkingBudget: registeredPlan.thinking.budget,
-        };
-      }
-      return;
-    }
-
-    if (enforceAuthoritativeThinkingBudget) {
-      // Authoritative requests still go through the shared planner so a configured
-      // -1 or an account-scale budget cannot bypass the output/thinking caps.
-      const authoritativeBudget =
-        this.resolveConfiguredThinkingBudget(model) ??
-        this.getModelThinkingBudget(accountId, model);
-      const authoritativePlan = resolveGenerationPlan({
-        source: 'gateway',
-        model,
-        imageGeneration,
-        // A 0 capability budget means "thinking disabled for this model", so it must
-        // stay on the registered path where 0 is meaningful instead of gateway 0.
-        registeredThinkingBudget: authoritativeBudget,
-        explicitMaxOutputTokens: generationConfig.maxOutputTokens,
-        outputCap: this.getModelOutputCap(accountId, model),
-        thinkingCap: this.getModelThinkingBudget(accountId, model),
-      });
-      generationConfig.maxOutputTokens = authoritativePlan.maxOutputTokens;
-      if (authoritativePlan.thinking.kind === 'disabled') {
-        delete generationConfig.thinkingConfig;
-      } else {
-        generationConfig.thinkingConfig = {
-          includeThoughts: true,
-          thinkingBudget:
-            authoritativePlan.thinking.kind === 'budget' ? authoritativePlan.thinking.budget : -1,
-        };
-      }
-    }
-
     const outputCap = this.getModelOutputCap(accountId, model);
     const thinkingBudgetCap = this.getModelThinkingBudget(accountId, model);
-    const normalizedModel = this.normalizeModelIdentifier(model).toLowerCase();
-    const isClaudeModel = normalizedModel.includes('claude');
-    const isClaudeOpus46Thinking = normalizedModel === 'claude-opus-4-6-thinking';
-    const thinkingConfig = generationConfig.thinkingConfig as
-      | ({ thinkingLevel?: string; thinkingBudget?: number } & Record<string, unknown>)
-      | undefined;
-    /**
-     * Opus 4.6 rejects otherwise-valid combinations observed with generic thinking
-     * defaults. Keep this verified upstream recipe exact across compatible protocols.
-     */
-    if (isClaudeOpus46Thinking && thinkingConfig) {
-      thinkingConfig.includeThoughts = true;
-      thinkingConfig.thinkingBudget = Math.min(
-        24_576,
-        thinkingBudgetCap,
-        Math.max(0, outputCap - 1),
-      );
-      delete thinkingConfig.thinkingLevel;
+    const existing = generationConfig.thinkingConfig;
+    // Keep the verified Opus envelope for the unregistered route without a fixed override.
+    if (
+      isOpus46 &&
+      !registered &&
+      (configuredBudget === undefined || configuredBudget === -1) &&
+      (existing || configuredBudget === -1 || transport?.kind === 'budget')
+    ) {
+      generationConfig.thinkingConfig = {
+        includeThoughts: true,
+        thinkingBudget: Math.min(24_576, thinkingBudgetCap, Math.max(0, outputCap - 1)),
+      };
       generationConfig.maxOutputTokens = Math.min(57_344, outputCap);
       delete generationConfig.stopSequences;
       return;
     }
+    if (
+      registered ||
+      enforceAuthoritativeThinkingBudget ||
+      configuredBudget !== undefined ||
+      transport?.kind === 'budget'
+    ) {
+      const capOpusOverride = isOpus46 && configuredBudget !== undefined;
+      const plan = resolveGenerationPlan({
+        source: 'gateway',
+        model,
+        imageGeneration,
+        gatewayThinkingBudget: configuredBudget,
+        registeredThinkingBudget:
+          registered?.thinkingBudget ??
+          (transport?.kind === 'budget' ? transport.defaultBudget : undefined) ??
+          (enforceAuthoritativeThinkingBudget ? thinkingBudgetCap : existing?.thinkingBudget),
+        registeredMaxOutputTokens: registered?.maxOutputTokens,
+        explicitMaxOutputTokens: generationConfig.maxOutputTokens,
+        outputCap: capOpusOverride ? Math.min(57_344, outputCap) : outputCap,
+        thinkingCap: capOpusOverride ? Math.min(24_576, thinkingBudgetCap) : thinkingBudgetCap,
+        includeThoughts: registered?.includeThoughts ?? existing?.includeThoughts,
+      });
+      generationConfig.maxOutputTokens = plan.maxOutputTokens;
+      if (plan.thinking.kind === 'disabled') {
+        delete generationConfig.thinkingConfig;
+      } else if (plan.thinking.kind === 'budget' || plan.thinking.kind === 'adaptive') {
+        generationConfig.thinkingConfig = {
+          includeThoughts: plan.includeThoughts,
+          thinkingBudget: plan.thinking.kind === 'adaptive' ? -1 : plan.thinking.budget,
+        };
+      }
+      if (capOpusOverride) {
+        delete generationConfig.stopSequences;
+      }
+      return;
+    }
+    const thinkingConfig = generationConfig.thinkingConfig;
 
     if (thinkingConfig) {
-      if (!isClaudeModel && isString(thinkingConfig.thinkingLevel)) {
+      if (!normalizedModel.includes('claude') && isString(thinkingConfig.thinkingLevel)) {
         const converted = this.resolveThinkingLevelBudget(thinkingConfig.thinkingLevel);
         if (converted !== undefined) {
           thinkingConfig.thinkingBudget = converted;
@@ -233,23 +247,100 @@ export class GenerationConstraintsService {
     }
   }
 
-  private resolveConfiguredThinkingBudget(model: string): number | undefined {
+  private applyDeclaredThinkingTransport(
+    config: GenerationConfig,
+    model: string,
+    accountId: string,
+    transport: Extract<ModelThinkingTransport, { kind: 'level' | 'disabled' }>,
+    clientControlled: boolean,
+    configuredBudget: number | undefined,
+    registered?: RegisteredGenerationConstraints,
+  ): void {
+    const current = config.thinkingConfig;
+    const isOpus46 =
+      this.normalizeModelIdentifier(model).toLowerCase() === 'claude-opus-4-6-thinking';
+    const disabled =
+      clientControlled &&
+      (current?.thinkingBudget === 0 || isDisabledThinkingEffort(current?.thinkingLevel));
+    if (transport.kind === 'level' && disabled) {
+      throw new BadRequestException(
+        'This model does not support disabling thinking through its level parameter',
+      );
+    }
+    if (isOpus46 && (transport.kind === 'disabled' || disabled)) {
+      throw new BadRequestException('This model does not support disabling thinking');
+    }
+    const numericBudget = clientControlled ? current?.thinkingBudget : configuredBudget;
+    if (transport.kind === 'level' && numericBudget !== undefined && numericBudget !== -1) {
+      throw new BadRequestException(
+        'This model accepts a thinking level, not a numeric thinking budget',
+      );
+    }
+    const requestedLevel =
+      transport.kind === 'level'
+        ? clientControlled
+          ? current?.thinkingBudget === -1
+            ? transport.defaultLevel
+            : (current?.thinkingLevel ?? transport.defaultLevel)
+          : (registered?.tier ?? current?.thinkingLevel ?? transport.defaultLevel)
+        : undefined;
+    const parsed = requestedLevel === undefined ? undefined : parseModelEffort(requestedLevel);
+    if (requestedLevel !== undefined && !parsed) {
+      throw new BadRequestException('Unsupported model thinking level');
+    }
+    const plan = resolveGenerationPlan({
+      source: 'client',
+      model,
+      clientDisabled: transport.kind === 'disabled',
+      clientEffort: parsed === 'extra-low' ? 'low' : (parsed ?? undefined),
+      explicitMaxOutputTokens: config.maxOutputTokens,
+      registeredMaxOutputTokens: registered?.maxOutputTokens,
+      outputCap: Math.min(this.getModelOutputCap(accountId, model), isOpus46 ? 57_344 : Infinity),
+      thinkingCap: this.getModelThinkingBudget(accountId, model),
+      includeThoughts: current?.includeThoughts ?? registered?.includeThoughts,
+    });
+    config.maxOutputTokens = plan.maxOutputTokens;
+    if (plan.thinking.kind === 'level') {
+      config.thinkingConfig = {
+        includeThoughts: plan.includeThoughts,
+        thinkingLevel: plan.thinking.level.toUpperCase(),
+      };
+    } else if (plan.thinking.kind === 'disabled') {
+      delete config.thinkingConfig;
+    }
+    if (isOpus46) {
+      delete config.stopSequences;
+    }
+  }
+
+  private resolveConfiguredThinkingBudget(
+    model: string,
+    tier?: 'low' | 'medium' | 'high',
+  ): number | undefined {
     const configured =
       getServerConfig()?.thinking_budget ?? ConfigManager.getCachedConfig()?.proxy.thinking_budget;
     if (!configured || configured.control_source !== 'gateway') {
       return undefined;
     }
     const normalized = this.normalizeModelIdentifier(model).toLowerCase();
-    if (normalized.includes('claude')) {
-      if (normalized.includes('low')) return configured.claude_low;
-      if (normalized.includes('medium')) return configured.claude_medium;
-      if (
-        normalized.includes('high') ||
-        normalized.includes('opus') ||
-        normalized.includes('sonnet')
-      )
+    if (normalized.startsWith('claude-')) {
+      const selectedTier = /-(low|medium|high)$/.exec(normalized)?.[1] ?? tier;
+      if (selectedTier === 'low') {
+        return configured.claude_low;
+      }
+      if (selectedTier === 'medium') {
+        return configured.claude_medium;
+      }
+      if (selectedTier === 'high') {
         return configured.claude_high;
+      }
       return configured.claude_budget;
+    }
+    if (
+      normalized !== 'gemini-pro-agent' &&
+      !/^gemini-(?:[3-9]|\d{2,})(?:[.-]|$)/.test(normalized)
+    ) {
+      return undefined;
     }
     if (normalized.includes('pro')) {
       return normalized.includes('low') ? configured.pro_low : configured.pro_high;

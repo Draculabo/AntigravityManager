@@ -29,3 +29,10 @@ export function restoreExistingWindow(window: ActivatableWindow): boolean {
   window.focus();
   return true;
 }
+
+/** A hidden launch needs a usable tray to remain reachable. */
+export function restoreHiddenStartupWindow(window: ActivatableWindow, trayReady: boolean): void {
+  if (!trayReady && !window.isDestroyed() && !window.isVisible()) {
+    restoreExistingWindow(window);
+  }
+}

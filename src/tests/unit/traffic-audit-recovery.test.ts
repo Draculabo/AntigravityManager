@@ -8,7 +8,9 @@ import { recoverInterruptedAudit } from '@/modules/proxy-gateway/audit/traffic-a
 
 vi.mock('better-sqlite3', async () => {
   const { createRequire } = await import('node:module');
-  return { default: createRequire(import.meta.url)('better-sqlite3') };
+  return {
+    default: createRequire(import.meta.url)(process.env.AGM_TEST_SQLITE_MODULE ?? 'better-sqlite3'),
+  };
 });
 let directory: string;
 let databasePath: string;
@@ -144,7 +146,7 @@ describe('audit restart reconciliation', () => {
       expect(db.prepare('SELECT state FROM audit_payloads WHERE id=?').get('current-body')).toEqual(
         { state: 'writing' },
       );
-      expect(db.pragma('user_version', { simple: true })).toBe(4);
+      expect(db.pragma('user_version', { simple: true })).toBe(7);
     } finally {
       db.close();
     }

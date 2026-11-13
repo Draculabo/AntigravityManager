@@ -22,13 +22,14 @@ export class ProxyGuard implements CanActivate {
       .switchToHttp()
       .getRequest<{ headers: RequestHeaders; ip: string; url?: string }>();
 
+    return this.authorizeRequest(request);
+  }
+
+  /** Shared with compressed-body admission, which runs before Nest guards. */
+  authorizeRequest(request: { headers: RequestHeaders; ip: string; url?: string }): true {
     const config = getServerConfig();
     if (config) {
-      const decision = evaluateClientAddress(
-        request.ip,
-        request.headers,
-        config.network,
-      );
+      const decision = evaluateClientAddress(request.ip, request.headers, config.network);
       if (!decision.allowed) {
         throw new ForbiddenException('Request source is not allowed');
       }

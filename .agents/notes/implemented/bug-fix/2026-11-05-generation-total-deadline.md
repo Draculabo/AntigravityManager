@@ -69,6 +69,17 @@ actual submitted project; the adapter accepts only the known license rejection o
 already matched structured consumer denial. Unknown resource text and unrelated statuses
 retain their original failure. This keeps R5's recovery count aligned with R4's deadline.
 
+The generation owner also holds the large-body replay count. Transport admission increments
+it before audit or HTTP dispatch. After three admitted sends, a current body of at least 4 MiB
+of serialized UTF-8 JSON stops with a local 503. An account or endpoint switch, aggregate
+fallback, or recovery shares the same count. Smaller current bodies retain retry eligibility.
+Shared cache creation and scheduled warmup keep their independent ownership. Automatic
+redirects are disabled for large scoped generation sends to prevent implicit body replay.
+
+Attempt-local debug timings use the native request finish and response events, followed by
+validated usable output. They retain only elapsed durations and audit identifiers. These
+observations are independent of the request deadline and the existing first-byte headers.
+
 ## Verification
 
 Checks exercise all four service surfaces with stalled account selection and established

@@ -111,9 +111,9 @@ describe('resolveModelVariant', () => {
       },
       {
         canonicalModel: 'gemini-3.7-flash',
-        model: 'gemini-3.7-flash-medium',
-        tier: 'medium',
-        thinkingBudget: 4000,
+        model: 'gemini-3.6-flash-tiered',
+        tier: 'high',
+        thinkingBudget: -1,
         maxOutputTokens: 65536,
         includeThoughts: true,
         preserveClientBudget: false,

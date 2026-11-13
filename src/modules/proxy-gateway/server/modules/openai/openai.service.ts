@@ -1,4 +1,6 @@
 import { createOverloadThinkingRecovery } from '../../common/overload-thinking-recovery';
+import { MediaWindowLimitError } from '../../common/media-send-window';
+import { classifyMissingImage, type ImageOutputFailure } from './media/image-output-failure';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { runGenerationWithDeadline } from '../../common/generation-deadline';
 import { isUpstreamStreamInterruption } from '../../common/stream-interruption';
@@ -18,7 +20,7 @@ import {
   createSyntheticResponsesStream,
 } from './openai-synthetic-streams';
 import { FlowControlledSseStream } from '../../common/flow-controlled-sse-stream';
-import { Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { UpstreamProxyConfigurationError } from '@/modules/config/upstream-proxy.schema';
 import { UpstreamRequestError } from '../../common/exceptions/upstream-request.exception';
 import {
@@ -40,7 +42,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { Observable } from 'rxjs';
 import { transformClaudeRequestIn } from '@/modules/proxy-gateway/antigravity/ClaudeRequestMapper';
 import { resolveGlobalSystemPrompt } from '@/modules/proxy-gateway/antigravity/GlobalSystemPrompt';
-import { cleanImageModelName } from '@/modules/proxy-gateway/antigravity/ImageGenerationConfig';
+import {
+  cleanImageModelName,
+  resolveImageGenerationConfig,
+} from '@/modules/proxy-gateway/antigravity/ImageGenerationConfig';
 import {
   isMalformedFunctionCallFinishReason,
   MALFORMED_FUNCTION_CALL_RECOVERY_TEXT,
@@ -50,10 +55,9 @@ import { usesAuthoritativeThinkingBudget } from '@/modules/proxy-gateway/antigra
 import { toOpenAIUsageFromGeminiUsageMetadata } from '@/modules/proxy-gateway/antigravity/OpenAIUsageMapper';
 import { createResponsesStream } from './responses/openai-responses-stream';
 import {
-  extractCustomToolInput,
-  toCustomToolArguments,
+  isDeclaredOpenAICustomTool,
+  readCustomToolInput,
 } from '@/modules/proxy-gateway/antigravity/CustomToolCall';
-import { optimizeApplyPatch } from '@/modules/proxy-gateway/antigravity/ApplyPatchPreflight';
 import { splitNamespaceToolName } from '@/modules/proxy-gateway/antigravity/ToolNamespace';
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
 import { readThoughtSignature } from '@/modules/proxy-gateway/antigravity/signature-utils';
@@ -87,7 +91,6 @@ import {
   convertClaudeToOpenAIResponse,
   convertOpenAIToClaude,
   convertOpenAIToolsToAnthropicTools,
-  isDeclaredOpenAICustomTool,
   mapGeminiFinishReasonToOpenAIFinishReason,
   normalizeOpenAIChatToolCallIds,
 } from './chat/openai-claude-conversion';
@@ -116,6 +119,7 @@ export interface OpenAIResponsesExecutionContext {
   transient?: true;
   /** Trusted preparation has already normalized/admitted this request's inline media. */
   mediaAdmitted?: true;
+  mediaWindowProtectLatestUserTurn?: true;
   requestSessionId: string;
   responseId: string;
   routingSessionId: string;
@@ -147,6 +151,7 @@ export class OpenAIService extends BaseProxyService {
     responsesContext?: OpenAIResponsesExecutionContext,
     schemaPreparation?: PreparedOpenAISchemas,
     requestContext?: SignatureScopeContext,
+    observeImageOutput?: (failure: ImageOutputFailure | undefined) => void,
   ): Promise<OpenAIChatResponse | Observable<string>> {
     return runGenerationWithDeadline(
       (getServerConfig()?.request_timeout ?? 300) * 1000,
@@ -159,6 +164,7 @@ export class OpenAIService extends BaseProxyService {
           responsesContext,
           schemaPreparation,
           requestContext,
+          observeImageOutput,
         );
         return owner && result instanceof Observable ? owner.retainObservable(result) : result;
       },
@@ -172,12 +178,25 @@ export class OpenAIService extends BaseProxyService {
     responsesContext?: OpenAIResponsesExecutionContext,
     schemaPreparation?: PreparedOpenAISchemas,
     requestContext?: SignatureScopeContext,
+    observeImageOutput?: (failure: ImageOutputFailure | undefined) => void,
   ): Promise<OpenAIChatResponse | Observable<string>> {
     throwIfRequestAborted(signal);
+    const observeResponse = observeImageOutput
+      ? (response: GeminiResponse | undefined) =>
+          observeImageOutput(response && classifyMissingImage(response))
+      : undefined;
     const globalSystemPrompt = resolveGlobalSystemPrompt(getServerConfig()?.global_system_prompt);
     request = responsesContext?.mediaAdmitted ? request : admitOpenAIInlineMedia(request);
     validateOpenAIInputAudio(request);
     validateOpenAIResponseFormat(request);
+    if (isGeminiImageModel(request.model)) {
+      const { imageConfig } = resolveImageGenerationConfig(request.model, {
+        imageSize: request.image_size,
+        quality: request.quality,
+        size: request.size,
+      });
+      request = { ...request, image_size: imageConfig.imageSize, size: imageConfig.aspectRatio };
+    }
     request = normalizeOpenAIChatToolCallIds(request);
     assertOpenAIGenerationHistory(request.messages);
     const includeUsage =
@@ -187,7 +206,11 @@ export class OpenAIService extends BaseProxyService {
     const routingModel = request.model.toLowerCase().includes('-image')
       ? cleanImageModelName(request.model)
       : request.model;
-    const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(routingModel);
+    const routeResolution = this.resolveRequestModelRoute(
+      routingModel,
+      resolveOpenAIRequestEffort(request),
+      readTargetAccountHeader(requestContext?.headers),
+    );
     const explicitPhysicalTarget =
       routeResolution.source === 'configured' || routeResolution.source === 'dynamic-legacy';
     const appliedVariantRequest = applyOpenAIModelVariant(
@@ -247,7 +270,7 @@ export class OpenAIService extends BaseProxyService {
       routeResolution.resolvedModel,
     );
     const isImageRequest = isGeminiImageModel(routingModel) || isGeminiImageModel(targetModel);
-    const extraHeaders = this.createModelSpecificHeaders(request.model);
+    const extraHeaders = this.createModelSpecificHeaders(targetModel);
     this.logger.log(
       `OpenAI-compatible request received: model=${request.model}, mappedModel=${targetModel}, stream=${request.stream}, routeSource=${routeResolution.source}${
         targetAccountId ? `, targetAccount=${targetAccountId}` : ''
@@ -334,6 +357,7 @@ export class OpenAIService extends BaseProxyService {
             omitToolsWithResponseSchema: schemaProtocol === 'responses',
             globalSystemPrompt,
             mediaWindow: getServerConfig()?.image_scheduler,
+            mediaWindowProtectLatestUserTurn: responsesContext?.mediaWindowProtectLatestUserTurn,
             imageRequest: {
               imageSize: accountRequest.image_size,
               quality: accountRequest.quality,
@@ -465,6 +489,7 @@ export class OpenAIService extends BaseProxyService {
               signal,
               overloadThinkingRecovery,
             ),
+            observeResponse,
           );
           this.commitUpstreamSession(token, signal);
           this.markUpstreamSuccessForResponse(token, geminiBody.model, response);
@@ -491,6 +516,10 @@ export class OpenAIService extends BaseProxyService {
           );
         }
       } catch (err) {
+        if (err instanceof MediaWindowLimitError) {
+          this.releaseImagePermit(retryState);
+          throw new BadRequestException(err.message);
+        }
         if (err instanceof UpstreamProxyConfigurationError) {
           this.releaseImagePermit(retryState);
           throw err;
@@ -519,6 +548,8 @@ export class OpenAIService extends BaseProxyService {
                 omitToolsWithResponseSchema: schemaProtocol === 'responses',
                 globalSystemPrompt,
                 mediaWindow: getServerConfig()?.image_scheduler,
+                mediaWindowProtectLatestUserTurn:
+                  responsesContext?.mediaWindowProtectLatestUserTurn,
                 imageRequest: {
                   imageSize: accountRequest.image_size,
                   quality: accountRequest.quality,
@@ -586,6 +617,7 @@ export class OpenAIService extends BaseProxyService {
                 signal,
                 overloadThinkingRecovery,
               ),
+              observeResponse,
             );
             this.commitUpstreamSession(token, signal);
             this.markUpstreamSuccessForResponse(token, fallbackBody.model, response);
@@ -1050,16 +1082,15 @@ export class OpenAIService extends BaseProxyService {
                     const splitName = splitNamespaceToolName(functionCall.name, clientTools);
                     const functionName = splitName.name;
                     const rawArguments = toUnknownRecord(functionCall.args) ?? {};
-                    const functionArguments = isDeclaredOpenAICustomTool(
-                      functionCall.name,
-                      clientTools,
-                    )
-                      ? toCustomToolArguments(
-                          functionName,
-                          optimizeApplyPatch(extractCustomToolInput(functionName, rawArguments))
-                            .input,
-                        )
-                      : rawArguments;
+                    const toolPayload = isDeclaredOpenAICustomTool(functionCall.name, clientTools)
+                      ? {
+                          type: 'custom',
+                          custom: { name: functionName, input: readCustomToolInput(rawArguments) },
+                        }
+                      : {
+                          type: 'function',
+                          function: { name: functionName, arguments: JSON.stringify(rawArguments) },
+                        };
                     const toolCallId = toolCallIdentity.resolve(
                       functionCall.name,
                       rawArguments,
@@ -1092,11 +1123,7 @@ export class OpenAIService extends BaseProxyService {
                               {
                                 index: toolCallIndex,
                                 id: toolCallId,
-                                type: 'function',
-                                function: {
-                                  name: functionName,
-                                  arguments: JSON.stringify(functionArguments),
-                                },
+                                ...toolPayload,
                               },
                             ],
                           },
@@ -1360,6 +1387,7 @@ export class OpenAIService extends BaseProxyService {
     request: GeminiRequest,
     requestType: 'generate-content' | 'image_gen' = 'generate-content',
     signal?: AbortSignal,
+    observeResponse?: (response: GeminiResponse | undefined) => void,
   ): Promise<GeminiResponse> {
     return this.geminiService.handleGeminiGenerateContent(
       model,
@@ -1367,6 +1395,8 @@ export class OpenAIService extends BaseProxyService {
       requestType,
       signal,
       'openai',
+      undefined,
+      observeResponse,
     );
   }
 }

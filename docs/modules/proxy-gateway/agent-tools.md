@@ -141,7 +141,9 @@ it does not establish rollback and is never automatically replayed.
 Other composition patches and launch-environment values can override the saved profile. Disk
 persistence does not establish effective running configuration, credential availability in a
 separately launched client, or a successful request. Verify those through the original real-client
-acceptance when authorized. No real DSH client or profile was used for this source snapshot.
+acceptance when authorized. The installed Windows DSH client loaded a synthetic isolated profile
+through `--dump-config` and included its Manager provider, model and gateway address. Live
+credential use and generation require separate acceptance.
 
 The SOP accepts `--client-settings PATH` for Claude/Codex directories produced by one-click
 configuration. This mode does not supply model, provider, endpoint or authorization overrides
@@ -174,6 +176,48 @@ without that SOP flag.
 The CLI starts or connects to its selected core before an operation. Invalid tool/address/model
 arguments and missing recovery confirmation fail before starting the core. It prints safe status
 and fixed error categories rather than file contents or credentials.
+
+### Configure a DSH profile from the CLI
+
+Set `DSH_HOME` in the standalone Core environment before starting it. Use the name of an existing
+DSH profile. The CLI uses the same selected Core owner as the desktop DSH card.
+
+1. Check the profile and preview the change. Repeat `--model` to offer multiple models.
+
+   ```powershell
+   $dshOptions = @(
+     '--profile', 'web', '--protocol', 'openai-completions',
+     '--base-url', 'http://127.0.0.1:8045/v1',
+     '--credential-ref', 'manager_key', '--model', 'gemini-3.1-pro-high'
+   )
+   node dist/cli/main.cjs tools dsh status --profile web
+   node dist/cli/main.cjs tools dsh preview --action sync @dshOptions
+   ```
+
+   `--credential-ref` is a credential name in DSH. The default `existing-reference` mode keeps
+   credential provisioning with DSH. Use `--credential-mode manager-key` to ask the owner to
+   provision the existing Manager key when the profile supports the native store. Use
+   `--activate-model <id>` if you want to change the profile's default model.
+
+2. Review the endpoint, models, and credential and default actions in the JSON preview. Use the
+   same options for `apply` and copy the `sourceHash` from that preview.
+
+   ```powershell
+   node dist/cli/main.cjs tools dsh apply @dshOptions --source-hash '<preview hash>' --yes
+   ```
+
+   A conflict means the owner rejected the write because the reviewed source changed. Preview
+   again and review the latest state. A receipt failure may follow a partial write. Inspect the
+   profile and its first backup before retrying.
+
+3. Reopen DSH and send a request. Check Manager's Traffic Monitor to confirm which gateway and
+   model handled it.
+4. To remove the Manager connection, review a removal preview and use its own `sourceHash`.
+
+   ```powershell
+   node dist/cli/main.cjs tools dsh preview --profile web --action remove
+   node dist/cli/main.cjs tools dsh remove --profile web --source-hash '<removal preview hash>' --yes
+   ```
 
 ## Packaged desktop acceptance tutorial
 

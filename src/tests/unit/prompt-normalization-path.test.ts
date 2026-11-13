@@ -4,6 +4,7 @@ import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { setServerConfig } from '@/server/server-config';
 import { AnthropicController } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
 import { GeminiController } from '@/modules/proxy-gateway/server/modules/gemini/gemini.controller';
+import { toInternalGeminiRequest } from '@/modules/proxy-gateway/server/modules/gemini/gemini-request-envelope';
 import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
 import {
   createAccount,
@@ -21,8 +22,17 @@ vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', () => 
 }));
 
 const sdk = "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
+const code = "You are Claude Code, Anthropic's official CLI for Claude.";
+const sdkInCli =
+  "You are Claude Code, Anthropic's official CLI for Claude, running within the Claude Agent SDK.";
+const clientPolicy = [
+  'IMPORTANT: Assist with authorized security testing, defensive security, CTF challenges, and educational contexts.',
+  'Refuse requests for destructive techniques, DoS attacks, mass targeting, supply chain compromise, or detection evasion for malicious purposes.',
+  'Dual-use security tools (C2 frameworks, credential testing, exploit development) require clear authorization context: pentesting engagements, CTF competitions, security research, or defensive use cases.',
+].join(' ');
+const shortPolicy = 'IMPORTANT: Assist with security testing only after approval.';
 const billing = 'x-anthropic-billing-header: cc_entrypoint=controlled;';
-const user = 'Explain this literal line:\n' + billing + '\n[undefined]';
+const user = 'Explain this literal text:\n' + billing + '\n[undefined]\n' + clientPolicy;
 beforeEach(() => {
   setServerConfig(DEFAULT_APP_CONFIG.proxy);
   vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
@@ -38,7 +48,29 @@ describe.each(['chat', 'responses', 'messages', 'gemini'] as const)(
   '%s prompt normalization execution',
   (protocol) => {
     it.each([
-      [sdk, "You are Claude Code, Anthropic's official CLI for Claude."],
+      [sdk, code],
+      [sdkInCli, code],
+      [sdkInCli + '\nKeep the deployment checks.', sdkInCli + '\nKeep the deployment checks.'],
+      [
+        'You are Example, an AI assistant created by Example Labs; Keep all source paths relative.',
+        'You are an AI Agent; Keep all source paths relative.',
+      ],
+      [
+        'You are Example, an AI assistant created by Example Labs； Keep all source paths relative.',
+        'You are an AI Agent； Keep all source paths relative.',
+      ],
+      [clientPolicy, null],
+      [
+        '  Keep this.\r\n' +
+          clientPolicy.replace('authorized security testing', 'security testing') +
+          '\r\n\r\n# Harness\r\nKeep deployment checks.  ',
+        '  Keep this.\r\n\r\n# Harness\r\nKeep deployment checks.  ',
+      ],
+      [
+        `\`\`\`text\n${clientPolicy}\n\`\`\`\n<example>\n${clientPolicy}\n</example>\n${shortPolicy}\n# Harness`,
+        `\`\`\`text\n${clientPolicy}\n\`\`\`\n<example>\n${clientPolicy}\n</example>\n${shortPolicy}\n# Harness`,
+      ],
+      ['    ' + clientPolicy, '    ' + clientPolicy],
       [
         'You are Example, an AI assistant created by Example Labs.\r\nKeep this.  ',
         'You are an AI Agent.\r\nKeep this.  ',
@@ -101,13 +133,30 @@ describe.each(['chat', 'responses', 'messages', 'gemini'] as const)(
         }
         expect(reply.statusCode).toBe(200);
         expect(upstream.calls).toHaveLength(1);
-        expect(upstream.calls[0].body.request.systemInstruction).toEqual({
-          role: 'user',
-          parts: [{ text: expected }],
-        });
+        expect(upstream.calls[0].body.request.systemInstruction).toEqual(
+          expected === null ? undefined : { role: 'user', parts: [{ text: expected }] },
+        );
         expect(upstream.calls[0].body.request.contents[0].parts).toEqual([{ text: user }]);
         expect(lease.markModelSuccess).toHaveBeenCalledOnce();
       },
     );
   },
 );
+
+it('keeps signed, configured, tool and user prompt text outside the client policy cleanup', () => {
+  const signed = { text: clientPolicy, thoughtSignature: 'synthetic-signature' };
+  const request = {
+    contents: [{ role: 'user', parts: [{ text: clientPolicy }] }],
+    tools: [{ functionDeclarations: [{ name: 'read_file', description: clientPolicy }] }],
+    systemInstruction: { parts: [signed, { text: clientPolicy }] },
+  };
+  const original = structuredClone(request);
+  const outgoing = toInternalGeminiRequest(request, true, clientPolicy);
+  expect(outgoing.systemInstruction?.parts).toEqual([
+    { text: `<global_system_prompt>\n${clientPolicy}\n</global_system_prompt>` },
+    signed,
+  ]);
+  expect(outgoing.tools).toEqual(original.tools);
+  expect(outgoing.contents).toEqual(original.contents);
+  expect(request).toEqual(original);
+});

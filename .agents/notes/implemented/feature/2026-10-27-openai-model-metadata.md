@@ -23,6 +23,14 @@ published. The catalog preserves existing membership, raw-only filtering and
 configured alias-target resolution. Context/output field aliases carry the same
 values for clients that recognize different metadata names.
 
+Discovery now resolves alias targets through the generation router, including
+runtime replacements and normalized exact aliases. A common gateway projection
+serves the OpenAI and Gemini limit fields. Provider-declared image and thinking
+support is published when eligible account evidence agrees. Missing or conflicting
+facts stay omitted. An agreed provider output cap can lower the local published
+ceiling. These facts describe the current model evidence and do not grant an
+account permission to generate.
+
 `context_length` comes from a `context_window` field added to `model-specs.ts`, the catalog that
 already owns output limits and thinking budgets. An id the catalog does not register falls back
 to its family width (Gemini 1,048,576 and Claude 200,000 input tokens), then to 128,000 for an

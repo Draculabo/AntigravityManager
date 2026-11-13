@@ -112,11 +112,15 @@ export function CloudAccountAuthDialog({
                 id="code"
                 autoComplete="off"
                 maxLength={2048}
+                spellCheck={false}
+                aria-describedby="oauth-manual-input-instruction"
                 placeholder={t('cloud.authDialog.placeholder')}
                 value={authCode}
                 onChange={(event) => onAuthCodeChange(event.target.value)}
               />
-              <p className="text-muted-foreground text-xs">{t('cloud.authDialog.instruction')}</p>
+              <p id="oauth-manual-input-instruction" className="text-muted-foreground text-xs">
+                {t('cloud.authDialog.instruction')}
+              </p>
               <Button
                 variant="secondary"
                 onClick={onSubmitAuthCode}

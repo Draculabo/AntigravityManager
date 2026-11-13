@@ -3,6 +3,7 @@ import type { DesktopPreferences, DesktopPreferencesUpdate } from '../service-co
 import { syncAutoStart } from '@/modules/antigravity-runtime/utils/autoStart';
 import { setErrorReportingEnabled } from '@/shared/observability/errorReporting';
 import { getConfigAdapter } from './config-adapter';
+import { setTrayLanguage } from '@/modules/app-shell/ipc/tray/handler';
 
 export const loadDesktopPreferences = () => desktopPreferencesStore.load();
 let preferenceEffects: Promise<void> = Promise.resolve();
@@ -23,6 +24,9 @@ async function saveAndApplyDesktopPreferences(
 ): Promise<DesktopPreferences> {
   const previous = await desktopPreferencesStore.load();
   const saved = await desktopPreferencesStore.save(preferences);
+  if (previous.language !== saved.language) {
+    setTrayLanguage(saved.language);
+  }
   if (preferences.error_reporting_enabled !== undefined) {
     setErrorReportingEnabled(saved.error_reporting_enabled);
     await getConfigAdapter().errorReporting.setEnabled(saved.error_reporting_enabled);

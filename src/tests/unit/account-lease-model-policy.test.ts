@@ -39,15 +39,84 @@ function createPolicy(tokenCache: Map<string, AccountLeaseTokenData>) {
 }
 
 describe('AccountLeaseModelPolicy', () => {
-  it('selects the advertised automatic Flash route when no fixed tier is available', () => {
+  it('prefers the advertised current Pro High ID and retains the legacy account recipe', () => {
+    const { policy } = createPolicy(
+      new Map([
+        [
+          'current',
+          createToken({
+            account_id: 'current',
+            model_quotas: { 'gemini-3.1-pro-high': 100, 'gemini-pro-agent': 100 },
+          }),
+        ],
+        [
+          'legacy',
+          createToken({ account_id: 'legacy', model_quotas: { 'gemini-pro-agent': 100 } }),
+        ],
+        ['low', createToken({ account_id: 'low', model_quotas: { 'gemini-3.1-pro-low': 100 } })],
+      ]),
+    );
+    expect([
+      policy.resolveDynamicModelForAccount('current', 'gemini-pro-agent', undefined, true),
+      policy.resolveDynamicModelForAccount('legacy', 'gemini-pro-agent', undefined, true),
+      policy.getModelAvailabilityForAccount('low', 'gemini-pro-agent', undefined, true),
+    ]).toEqual(['gemini-3.1-pro-high', 'gemini-pro-agent', 'unavailable']);
+  });
+
+  it('publishes only capabilities that agree across eligible accounts', () => {
+    const token = createToken({
+      quota: {
+        models: {
+          'gemini-pro-agent': {
+            percentage: 100,
+            resetTime: '',
+            supports_images: true,
+            supports_thinking: true,
+            max_output_tokens: 8192,
+          },
+        },
+      },
+    });
+    const cache = new Map([['acc-1', token]]);
+    const { policy } = createPolicy(cache);
+    expect(policy.getModelDiscoveryCapabilities('gemini-pro-agent', true)).toEqual({
+      supports_images: true,
+      supports_thinking: true,
+      max_output_tokens: 8192,
+    });
+    cache.set(
+      'second',
+      createToken({
+        account_id: 'second',
+        quota: {
+          models: {
+            'gemini-pro-agent': {
+              percentage: 100,
+              resetTime: '',
+              supports_images: false,
+              supports_thinking: true,
+              max_output_tokens: 4096,
+            },
+          },
+        },
+      }),
+    );
+    expect(policy.getModelDiscoveryCapabilities('gemini-pro-agent', true)).toEqual({
+      supports_thinking: true,
+    });
+    cache.set('unknown', createToken({ account_id: 'unknown' }));
+    expect(policy.getModelDiscoveryCapabilities('gemini-pro-agent', true)).toEqual({});
+  });
+
+  it('does not substitute automatic Flash for an unavailable explicit fixed High profile', () => {
     const { policy } = createPolicy(
       new Map([['acc-1', createToken({ model_quotas: { 'gemini-3.7-flash-tiered': 100 } })]]),
     );
     expect(policy.getModelAvailabilityForAccount('acc-1', 'gemini-3.7-flash-high')).toBe(
-      'available',
+      'unavailable',
     );
     expect(policy.resolveDynamicModelForAccount('acc-1', 'gemini-3.7-flash-high')).toBe(
-      'gemini-3.7-flash-tiered',
+      'gemini-3.7-flash-high',
     );
     expect(policy.getModelAvailabilityForAccount('acc-1', 'gemini-3.8-flash-high')).toBe(
       'unavailable',
@@ -304,7 +373,7 @@ describe('AccountLeaseModelPolicy', () => {
     );
   });
 
-  it('allows a registered same-family physical fallback with complete parameters', () => {
+  it('preserves the complete tier profile when a registered sibling is available', () => {
     const tokenCache = new Map([
       [
         'acc-1',
@@ -317,8 +386,13 @@ describe('AccountLeaseModelPolicy', () => {
     ]);
     const { policy } = createPolicy(tokenCache);
 
-    expect(policy.getModelAvailabilityForAccount('acc-1', 'gemini-3.1-pro-low')).toBe('available');
+    expect(policy.getModelAvailabilityForAccount('acc-1', 'gemini-3.1-pro-low')).toBe(
+      'unavailable',
+    );
     expect(policy.resolveDynamicModelForAccount('acc-1', 'gemini-3.1-pro-low')).toBe(
+      'gemini-3.1-pro-low',
+    );
+    expect(policy.resolveDynamicModelForAccount('acc-1', 'gemini-3.1-pro-high')).toBe(
       'gemini-pro-agent',
     );
   });
@@ -416,6 +490,7 @@ describe('AccountLeaseModelPolicy', () => {
       {
         modelId: 'claude-sonnet-4-6',
         source: 'provider-catalog',
+        details: { supportsThinking: true },
       },
       {
         modelId: 'gemini-3-flash-agent',
@@ -530,14 +605,16 @@ describe('AccountLeaseModelPolicy', () => {
         'acc-1',
         createToken({
           model_quotas: {
-            'gemini-3-flash': 80,
+            'gemini-3-flash-agent': 80,
           },
         }),
       ],
     ]);
     const { policy } = createPolicy(tokenCache);
 
-    expect(policy.getModelAvailabilityForAccount('acc-1', 'gemini-3-flash')).toBe('available');
+    expect(policy.getModelAvailabilityForAccount('acc-1', 'gemini-3-flash-agent')).toBe(
+      'available',
+    );
     expect(policy.getModelAvailabilityForAccount('acc-1', 'gpt-oss-120b-medium')).toBe(
       'unavailable',
     );
@@ -753,7 +830,10 @@ describe('AccountLeaseModelPolicy', () => {
       'gemini-3.6-flash-low',
     );
     expect(policy.resolveDynamicModelForAccount('acc-2', 'gemini-3.6-flash-low')).toBe(
-      'gemini-3.6-flash-tiered',
+      'gemini-3.6-flash-low',
+    );
+    expect(policy.getModelAvailabilityForAccount('acc-2', 'gemini-3.6-flash-low')).toBe(
+      'unavailable',
     );
   });
 
@@ -807,9 +887,11 @@ describe('AccountLeaseModelPolicy', () => {
     expect(policy.resolveDynamicModelForAccount('acc-1', 'gemini-4-argon-high')).toBe(
       'gemini-4-argon-high',
     );
-    expect(policy.getModelAvailabilityForAccount('acc-1', 'gemini-4-argon-low')).toBe('available');
+    expect(policy.getModelAvailabilityForAccount('acc-1', 'gemini-4-argon-low')).toBe(
+      'unavailable',
+    );
     expect(policy.resolveDynamicModelForAccount('acc-1', 'gemini-4-argon-low')).toBe(
-      'gemini-4-argon-high',
+      'gemini-4-argon-low',
     );
   });
 });

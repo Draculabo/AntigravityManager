@@ -6,6 +6,10 @@ Run commands from the repository root unless a step specifies another directory.
 
 ## Desktop workspace checks
 
+Run `desktop-autostart.test.ts` to verify Windows login item diagnostics. The check covers
+registration with the `--autostart` argument, removal, and detection of a failed registry update.
+The packaged Windows login procedure still verifies startup from an actual user login.
+
 Run `diagnostic-logs.test.ts` and `diagnostic-log-attachment.test.ts` for optional log attachments.
 They cover whole-record removal, strict diagnostic projection, the ten-minute window, rotation,
 size/missing flags, selected-owner failure, exact snapshot export, cancellation, retry and expiry.

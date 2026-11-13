@@ -11,7 +11,9 @@ export const DesktopOAuthCodeSchema = z
   .min(1)
   .max(2048)
   .regex(/^[A-Za-z0-9._~+/-]+$/);
-export const DesktopOAuthCodeInputSchema = z.strictObject({ code: DesktopOAuthCodeSchema });
+/** The owning login session parses this text without losing callback state at transport. */
+export const DesktopOAuthManualInputSchema = z.string().trim().min(1).max(2048);
+export const DesktopOAuthCodeInputSchema = z.strictObject({ code: DesktopOAuthManualInputSchema });
 
 export const DesktopOAuthLoginErrorCodeSchema = z.enum([
   'authorization-denied',
@@ -20,6 +22,7 @@ export const DesktopOAuthLoginErrorCodeSchema = z.enum([
   'login-timeout',
   'duplicate-account',
   'browser-open-failed',
+  'invalid-manual-input',
   'proxy-configuration-invalid',
   'login-failed',
 ]);

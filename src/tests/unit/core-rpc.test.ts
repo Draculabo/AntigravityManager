@@ -178,6 +178,11 @@ function operations(): CoreRpcOperations {
     accountClearServiceDisabled: vi.fn(),
     accountSyncFromIde: vi.fn(async () => accountView),
     accountSetProxy: vi.fn(async () => ({ success: true as const })),
+    accountProjectId: {
+      getAccountProjectId: vi.fn(async () => ({ projectId: null })),
+      setAccountProjectId: vi.fn(async (input) => ({ projectId: input.projectId })),
+      fetchAccountProjectId: vi.fn(async () => ({ projectId: 'discovered-project' })),
+    },
     accountDelete: vi.fn(async () => ({ success: true as const })),
     oauthClientList: vi.fn(() => [
       {
@@ -480,6 +485,26 @@ describe('core application RPC', () => {
     expect(await client.contextCacheStatus()).toEqual(rpc.contextCacheStatus());
     expect(await client.accountSummaries()).toEqual([account]);
     expect(await client.accountViews()).toEqual([accountView]);
+    const agyPreview = {
+      sessionId: '11111111-1111-4111-8111-111111111111',
+      expiresAt: 60_000,
+      accounts: [],
+      validationFailures: [],
+      discoveryFailures: [],
+      merged: [],
+      sourceSummaries: [
+        {
+          id: 'antigravity-agy-file' as const,
+          candidateCount: 1,
+          failureCount: 0,
+          inspectedLocations: 1,
+        },
+      ],
+      duplicateCount: 0,
+      emailCollisionGroups: [],
+    };
+    vi.mocked(rpc.localImport.preview).mockResolvedValueOnce(agyPreview);
+    expect(await client.localImportPreview()).toEqual(agyPreview);
     expect(await client.accountSecurityStatus()).toEqual({
       state: 'secure',
       masterKeySource: 'keytar',
@@ -516,6 +541,17 @@ describe('core application RPC', () => {
     const proxyUrl = 'http://proxy-user:proxy-password@127.0.0.1:7890';
     expect(await client.setAccountProxy(account.id, proxyUrl)).toBeUndefined();
     expect(await client.setAccountProxy(account.id, null)).toBeUndefined();
+    const project = { accountId: account.id, expectedProjectId: null };
+    expect(await client.getAccountProjectId({ accountId: account.id })).toEqual({ projectId: null });
+    expect(await client.setAccountProjectId({ ...project, projectId: 'manual-project' })).toEqual({
+      projectId: 'manual-project',
+    });
+    expect(await client.fetchAccountProjectId(project)).toEqual({ projectId: 'discovered-project' });
+    expect(rpc.accountProjectId.setAccountProjectId).toHaveBeenCalledWith({
+      ...project,
+      projectId: 'manual-project',
+    });
+    expect(rpc.accountProjectId.fetchAccountProjectId).toHaveBeenCalledWith(project);
     expect(await client.deleteCloudAccount(account.id)).toBeUndefined();
     expect(rpc.accountSetProxy).toHaveBeenCalledWith(account.id, proxyUrl);
     expect(rpc.accountSetProxy).toHaveBeenCalledWith(account.id, null);

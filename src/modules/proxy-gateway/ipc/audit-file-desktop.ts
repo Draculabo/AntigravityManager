@@ -2,8 +2,28 @@ import { getAuditFileAdapter } from './audit-file-adapter';
 import {
   SaveAuditBodyInputSchema,
   SaveAuditSessionInputSchema,
+  SaveAuditHarInputSchema,
 } from '../audit/save-audit-body-input';
 import { AuditFileOwnerError } from '../audit/audit-file-owner.schema';
+
+export async function exportSelectedAuditHar(
+  requestId: string,
+  suggestedName: string,
+  selectPath: (safeName: string) => Promise<string | null>,
+) {
+  try {
+    const [id, name] = SaveAuditHarInputSchema.parse([requestId, suggestedName]);
+    const owner = getAuditFileAdapter();
+    const safeName = name.replace(/[^a-z0-9._-]+/giu, '-').slice(0, 120);
+    const filePath = await selectPath(safeName || `traffic-${id}.har`);
+    if (!filePath) {
+      return { status: 'cancelled' as const };
+    }
+    return await owner.exportHar({ requestId: id, filePath });
+  } catch {
+    throw new AuditFileOwnerError();
+  }
+}
 
 export async function exportSelectedAuditSession(
   sessionId: string,

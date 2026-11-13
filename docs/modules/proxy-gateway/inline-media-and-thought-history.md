@@ -50,6 +50,19 @@ Every current image remains protected, so current images above N leave no histor
 slots. The count strategy does not apply the memory strategy's soft budget. Remote
 images join count selection only when enabled, and current remote images stay protected.
 
+For Responses full-transcript replay, the latest user message and all subsequent
+tool results form the protected current operation. Earlier screenshots participate
+in the configured history window even when they arrive in the same HTTP body.
+Without a user message, the supplied tool results remain protected. Identical images
+in separate turns are matched as separate occurrences. The Responses and mapped
+Gemini windows preserve the same current user-and-tool boundary.
+
+Each submitted structured inline image is validated before window selection, with
+the 20 MiB single-image ceiling. The protected operation and the final send retain
+the 16-image and 32 MiB aggregate ceilings. The optional memory-window limit returns
+HTTP 400 for an oversized protected operation. Window omission changes only the
+outbound copy, including the supported object form of an `input_image` URL.
+
 The separate memory strategy retains the newest continuous historical suffix within its
 exact decoded-file-byte budget. Current inline images above that budget fail explicitly.
 It ignores the count preference and retains remote URLs, whose file size is unknown.
@@ -60,6 +73,16 @@ window can reuse originals that remain within the private store's retention cont
 Configuration without `send_window_strategy` resolves to `count`. The new explicit
 strategy replaces the earlier controlled implementation's combined soft limits; see
 the [upgrade guide](../../upgrade-guides/next/strict-inline-images.md).
+
+## Image output failures
+
+The OpenAI image generation and edit endpoints return a stable error code when
+an upstream generation result contains no usable image. An explicit provider
+policy marker returns HTTP 400 with `image_policy_blocked`. Text-only output,
+an empty candidate list, and a candidate with missing image data return HTTP 502
+with `image_text_only`, `image_empty_response`, and `image_missing_data`, respectively.
+The public message contains only a fixed gateway description. Existing provider
+transport and HTTP errors retain their normal handling and audit controls.
 
 ## Durable Responses media
 
@@ -131,6 +154,14 @@ the queue is healthy. A crash or restart near the retention cutoff can therefore
 session slightly earlier than its last in-memory access suggests. Retention settings, the
 SQLite schema and thought record encoding remain unchanged. This optimization reduces
 access writes, not record saves, and does not recover a failed thought-record save.
+
+When recent memory cannot match older turns, the Thought Store Worker selects the
+session's causal candidates in one query. It checks record counts and the aggregate
+stored-byte budget before loading candidate bodies in one batch. Candidate order
+follows the request's distinct anchors and ascending record IDs within each anchor.
+More than 64 records for one anchor, 256 records overall, or 64 MiB of stored
+content and metadata fails the lookup before loading any candidate body. Returning
+only part of a candidate set could hide an ambiguity.
 
 Request-local restore diagnostics use fixed counters in the existing audit context.
 Signature-cache hits and misses count tool-signature lookups. Store hits count turns

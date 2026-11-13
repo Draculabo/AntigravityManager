@@ -21,6 +21,8 @@ import {
   isModelPayloadRoute,
 } from '../modules/proxy-gateway/server/proxy.constants';
 import { registerTrafficAuditHttpHooks } from '@/modules/proxy-gateway/audit/traffic-audit-context';
+import { registerGzipJsonIngress } from '@/modules/proxy-gateway/server/common/gzip-json-ingress';
+import { registerGeminiQueryCredentialIngress } from '@/modules/proxy-gateway/server/guards/gemini-query-credential-ingress';
 import { trafficAuditService } from '@/modules/proxy-gateway/audit/traffic-audit.service';
 import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
 
@@ -137,8 +139,10 @@ async function cleanupFailedServerStart() {
 
 export function createFastifyAdapter(): FastifyAdapter {
   const adapter = new FastifyAdapter();
+  registerGeminiQueryCredentialIngress(adapter.getInstance());
   registerImageGenerationBodyLimit(adapter.getInstance());
   registerModelRouteBodyLimits(adapter.getInstance());
+  registerGzipJsonIngress(adapter.getInstance());
   return adapter;
 }
 
@@ -321,7 +325,10 @@ export function getNestServerRestartFields(config: ProxyConfig): string[] {
       fields.push(`proxy.network.${key}`);
     }
   }
-  if (startupConfig.image_scheduler.per_account_concurrency !== config.image_scheduler.per_account_concurrency) {
+  if (
+    startupConfig.image_scheduler.per_account_concurrency !==
+    config.image_scheduler.per_account_concurrency
+  ) {
     fields.push('proxy.image_scheduler.per_account_concurrency');
   }
   if (hasConfiguredApiKey(startupConfig.api_key) !== hasConfiguredApiKey(config.api_key)) {
@@ -369,6 +376,12 @@ export function evictNestServerAccountLeaseAccount(
   }
 
   return app.get(AccountLeaseService).evictAccount(accountId, context);
+}
+
+export function replaceNestServerAccountLeaseToken(
+  account: Parameters<AccountLeaseService['replaceAccountToken']>[0],
+): void {
+  app?.get(AccountLeaseService).replaceAccountToken(account);
 }
 
 /** The availability store outlives the running gateway and also needs cleanup while stopped. */

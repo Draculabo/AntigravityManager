@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { readFile } from 'node:fs/promises';
+import fs, { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 import type { SQL } from 'drizzle-orm';
 const installation = z
@@ -214,7 +214,10 @@ vi.mock('@/modules/antigravity-runtime/credentials/googleOAuthCredentialStore', 
 }));
 
 import { prepareClientAccountWrite } from '@/modules/antigravity-runtime/credentials/clientAccountWrite';
-import { readClientAccountToken } from '@/modules/antigravity-runtime/credentials/antigravityCredentialStore';
+import {
+  readAgyAccountToken,
+  readClientAccountToken,
+} from '@/modules/antigravity-runtime/credentials/antigravityCredentialStore';
 import { readMacOSCredentialStore } from '@/modules/antigravity-runtime/credentials/macosCredentialStore';
 
 const originalPlatform = process.platform;
@@ -487,6 +490,20 @@ describe('macOS account credential chain', () => {
     expect(await readClientAccountToken('agy')).toEqual({ refreshToken: 'synthetic-cli' });
     state.files.set(cliFile, '{invalid');
     expect(readMacOSCredentialStore(true)).toEqual({ refreshToken: 'synthetic-oauth' });
+  });
+
+  it('reads the dedicated agy session on macOS without consulting Keychain', async () => {
+    state.keychain = JSON.stringify({ refresh_token: 'synthetic-keychain' });
+    const readAgyFile = vi
+      .spyOn(fs, 'readFile')
+      .mockResolvedValue(JSON.stringify({ token: { refresh_token: 'synthetic-cli' } }));
+    try {
+      expect(await readAgyAccountToken()).toEqual({ refreshToken: 'synthetic-cli' });
+      expect(readAgyFile).toHaveBeenCalledExactlyOnceWith(cliFile, 'utf8');
+      expect(state.commands).toEqual([]);
+    } finally {
+      readAgyFile.mockRestore();
+    }
   });
 
   it('does not fall back to files for spawn errors or malformed successful Keychain output', () => {

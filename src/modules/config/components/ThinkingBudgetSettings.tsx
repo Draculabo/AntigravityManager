@@ -15,11 +15,11 @@ import { useToast } from '@/components/ui/use-toast';
 import { ipc } from '@/ipc/manager';
 import {
   readServiceConfigErrorCode,
+  GatewayThinkingBudgetPatchSchema,
   type ServiceConfigSnapshot,
   type ServiceConfigUpdate,
   type ServiceConfigWriteResult,
 } from '../service-config.schema';
-import { ThinkingBudgetConfigSchema } from '../types';
 
 type ThinkingBudgetConfig = ServiceConfigSnapshot['proxy']['thinking_budget'];
 
@@ -29,7 +29,8 @@ const BUDGET_MAX = 131072;
 
 /**
  * Gateway budget keys that map a model family/level to an explicit budget. A value of
- * -1 means "let the upstream model choose" and 0 is not a legal gateway budget.
+ * Flash Low and Medium use their registered defaults for -1; other fields use adaptive thinking.
+ * Zero is not a legal gateway budget.
  */
 const GATEWAY_FIELDS = [
   { key: 'flash_low', level: 'low', family: 'flash' },
@@ -58,7 +59,7 @@ function normalizeBudgetDraft(raw: string): number | null {
     return null;
   }
   const parsed = Number.parseInt(trimmed, 10);
-  if (!Number.isSafeInteger(parsed) || parsed < BUDGET_MIN || parsed > BUDGET_MAX) {
+  if (!Number.isSafeInteger(parsed) || parsed === 0 || parsed < BUDGET_MIN || parsed > BUDGET_MAX) {
     return null;
   }
   return parsed;
@@ -70,7 +71,12 @@ function parseDraft(value: ThinkingBudgetConfig) {
   for (const field of GATEWAY_FIELDS) {
     const current = value[field.key];
     drafts[field.key] = String(current);
-    if (!Number.isSafeInteger(current) || current < BUDGET_MIN || current > BUDGET_MAX) {
+    if (
+      !Number.isSafeInteger(current) ||
+      current === 0 ||
+      current < BUDGET_MIN ||
+      current > BUDGET_MAX
+    ) {
       invalid.push(field.key);
     }
   }
@@ -97,6 +103,7 @@ export function ThinkingBudgetSettings({
   const baseline = useRef({ ...initial.drafts });
   const [invalid, setInvalid] = useState<string[]>(initial.invalid);
   const [busy, setBusy] = useState(false);
+  const pending = useRef(false);
 
   const reportFailure = (error: unknown) => {
     toast({
@@ -111,26 +118,33 @@ export function ThinkingBudgetSettings({
   };
 
   const save = async (change: ServiceConfigUpdate) => {
+    if (pending.current) {
+      return;
+    }
+    pending.current = true;
     setBusy(true);
     try {
       const result = await ipc.client.config.service.update(change);
       onApplicationResult?.(result);
-      for (const [key, value] of Object.entries(change.proxy?.thinking_budget ?? {})) {
-        baseline.current[key] = String(value);
-      }
       await onSaved();
+      if (result.state !== 'partial-failure') {
+        for (const [key, value] of Object.entries(change.proxy?.thinking_budget ?? {})) {
+          baseline.current[key] = String(value);
+        }
+      }
       toast({
         title:
           result.state === 'partial-failure'
             ? t('settings.service-apply-failed')
             : result.state === 'applied'
-            ? t('settings.toast.saved.title')
-            : t('settings.service-restart-required'),
+              ? t('settings.toast.saved.title')
+              : t('settings.service-restart-required'),
         ...(result.state === 'partial-failure' ? { variant: 'destructive' as const } : {}),
       });
     } catch (error) {
       reportFailure(error);
     } finally {
+      pending.current = false;
       setBusy(false);
     }
   };
@@ -152,7 +166,8 @@ export function ThinkingBudgetSettings({
 
   const saveAll = async () => {
     const patch: Record<string, number | string> = {};
-    for (const field of GATEWAY_FIELDS) {
+    const source = drafts.control_source ?? config.control_source;
+    for (const field of source === 'gateway' ? GATEWAY_FIELDS : []) {
       const normalized = normalizeBudgetDraft(drafts[field.key] ?? '');
       if (normalized === null) {
         setInvalid((previous) =>
@@ -164,14 +179,13 @@ export function ThinkingBudgetSettings({
         patch[field.key] = normalized;
       }
     }
-    const source = drafts.control_source ?? config.control_source;
     if (source !== baseline.current.control_source) {
       patch.control_source = source;
     }
     if (Object.keys(patch).length === 0) {
       return;
     }
-    const parsed = ThinkingBudgetConfigSchema.partial().safeParse(patch);
+    const parsed = GatewayThinkingBudgetPatchSchema.safeParse(patch);
     if (!parsed.success) {
       setInvalid(GATEWAY_FIELDS.map((field) => field.key));
       return;
@@ -180,7 +194,7 @@ export function ThinkingBudgetSettings({
   };
 
   const controlSource = drafts.control_source ?? config.control_source;
-  const hasInvalid = invalid.length > 0;
+  const hasInvalid = controlSource === 'gateway' && invalid.length > 0;
 
   return (
     <Card className="shadow-none">
@@ -203,9 +217,6 @@ export function ThinkingBudgetSettings({
             disabled={!available || busy}
             onValueChange={(next) => {
               setDrafts((previous) => ({ ...previous, control_source: next }));
-              void save({
-                proxy: { thinking_budget: { control_source: next as 'gateway' | 'client' } },
-              });
             }}
           >
             <SelectTrigger id="thinking-budget-control-source">
@@ -257,7 +268,11 @@ export function ThinkingBudgetSettings({
                         >
                           {fieldInvalid
                             ? t('settings.thinkingBudget.invalid')
-                            : t('settings.thinkingBudget.adaptiveHint')}
+                            : field.key === 'flash_low'
+                              ? t('settings.thinkingBudget.flash-low-default-hint')
+                              : field.key === 'flash_medium'
+                                ? t('settings.thinkingBudget.flash-medium-default-hint')
+                                : t('settings.thinkingBudget.adaptiveHint')}
                         </p>
                       </div>
                     );
@@ -265,20 +280,20 @@ export function ThinkingBudgetSettings({
                 </div>
               </div>
             ))}
-            <div className="flex items-center gap-3">
-              <Button disabled={!available || busy || hasInvalid} onClick={() => void saveAll()}>
-                {busy ? t('settings.service-save') + '…' : t('settings.service-save')}
-              </Button>
-              {hasInvalid ? (
-                <p className="text-destructive text-sm" role="alert">
-                  {t('settings.thinkingBudget.invalid')}
-                </p>
-              ) : null}
-            </div>
           </fieldset>
         ) : (
           <p className="text-muted-foreground text-sm">{t('settings.thinkingBudget.clientHint')}</p>
         )}
+        <div className="flex items-center gap-3">
+          <Button disabled={!available || busy || hasInvalid} onClick={() => void saveAll()}>
+            {busy ? t('settings.service-save') + '…' : t('settings.service-save')}
+          </Button>
+          {hasInvalid ? (
+            <p className="text-destructive text-sm" role="alert">
+              {t('settings.thinkingBudget.invalid')}
+            </p>
+          ) : null}
+        </div>
       </CardContent>
     </Card>
   );

@@ -125,7 +125,7 @@ describe('real request path, OpenAI chat surface', () => {
     expect(upstream.calls[0]?.body.model).toBe('gemini-3.7-flash-high');
     expect(upstream.calls[0]?.body.request.generationConfig).toEqual(
       expect.objectContaining({
-        maxOutputTokens: 65536,
+        maxOutputTokens: 11024,
         thinkingConfig: {
           includeThoughts: true,
           thinkingBudget: 10000,
@@ -156,6 +156,7 @@ describe('real request path, OpenAI chat surface', () => {
       'acc-1',
       'gemini-3.8-flash',
       'low',
+      false,
     );
   });
 
@@ -208,7 +209,7 @@ describe('real request path, OpenAI chat surface', () => {
     expect(upstream.calls[0]?.body.model).toBe('gemini-pro-agent');
     expect(upstream.calls[0]?.body.request.generationConfig).toEqual(
       expect.objectContaining({
-        maxOutputTokens: 65_535,
+        maxOutputTokens: 11_025,
         thinkingConfig: {
           includeThoughts: true,
           thinkingBudget: 10_001,
@@ -233,6 +234,7 @@ describe('real request path, OpenAI chat surface', () => {
       'acc-1',
       'gemini-3-pro-image',
       undefined,
+      false,
     );
     expect(upstream.calls[0]?.body.model).toBe('gemini-3.1-pro-image');
     expect(upstream.calls[0]?.body.request.generationConfig?.imageConfig).toEqual({

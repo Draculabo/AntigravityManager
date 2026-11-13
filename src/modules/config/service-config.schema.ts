@@ -1,13 +1,23 @@
 import { z } from 'zod';
-import { AppConfigSchema, ProxyConfigSchema } from './types';
+import { AppConfigSchema, ProxyConfigSchema, ThinkingBudgetConfigSchema } from './types';
 import type { CloudAccountAlertPolicy } from '@/modules/cloud-account/services/cloud-account-alert-policy.schema';
 import { ErrorWindowBudgetSchema } from '@/modules/error-diagnostics/configuration';
+import {
+  DEFAULT_DESKTOP_ZOOM,
+  DESKTOP_ZOOM_LEVELS,
+  normalizeDesktopLanguage,
+} from '@/modules/app-shell/desktop-appearance';
 
 export const SERVICE_CONFIG_MAX_BYTES = 128 * 1024;
 export const ServiceConfigErrorCodeSchema = z.enum(['unavailable', 'invalid-input', 'conflict']);
 export class AuditConfigConflictError extends Error {
   constructor() {
     super('Audit settings changed. Refresh before retrying.');
+  }
+}
+export class InvalidGatewayThinkingBudgetError extends Error {
+  constructor() {
+    super('Gateway thinking budgets must be -1 or a positive whole number.');
   }
 }
 const ServiceConfigErrorDataSchema = z.strictObject({ configCode: ServiceConfigErrorCodeSchema });
@@ -45,7 +55,14 @@ export const ServiceProxySchema = ProxyConfigSchema.omit({ api_key: true, upstre
     parity_no_go_error_rate: z.number().finite().min(0).max(1),
     circuit_breaker_backoff_steps: z.array(z.number().finite().nonnegative().max(86400)).max(32),
     model_aliases: z
-      .array(z.strictObject({ alias: model.min(1), target: model.min(1), enabled: z.boolean() }))
+      .array(
+        z.strictObject({
+          alias: model.min(1),
+          target: model.min(1),
+          enabled: z.boolean(),
+          published: z.boolean().optional(),
+        }),
+      )
       .max(256),
     custom_mapping: mapping,
     anthropic_mapping: mapping,
@@ -86,11 +103,13 @@ export const ServiceRuntimeSchema = AppConfigSchema.pick({
   .strict();
 
 export const ServiceConfigSnapshotSchema = ServiceRuntimeSchema.extend({
-  initialization: z.strictObject({
-    source: z.enum(['missing', 'blank']),
-    writeback: z.enum(['saved', 'failed']),
-    diagnosticId: z.string().uuid().optional(),
-  }).optional(),
+  initialization: z
+    .strictObject({
+      source: z.enum(['missing', 'blank']),
+      writeback: z.enum(['saved', 'failed']),
+      diagnosticId: z.string().uuid().optional(),
+    })
+    .optional(),
   errorDiagnosticsBudget: ErrorWindowBudgetSchema,
   auditRevision: z
     .string()
@@ -104,6 +123,34 @@ export const ServiceConfigSnapshotSchema = ServiceRuntimeSchema.extend({
 const bounded = (value: object) =>
   new TextEncoder().encode(JSON.stringify(value)).byteLength <= SERVICE_CONFIG_MAX_BYTES;
 
+// Durable defaults must not overwrite fields omitted from an incremental update.
+const coworkCompactionFields = ServiceProxySchema.shape.cowork_compaction.shape;
+const CoworkCompactionPatchSchema = z
+  .strictObject({
+    auto_enabled: coworkCompactionFields.auto_enabled.removeDefault(),
+    manual_enabled: coworkCompactionFields.manual_enabled.removeDefault(),
+    auto_threshold: coworkCompactionFields.auto_threshold.removeDefault(),
+    trusted_client_key_hashes: coworkCompactionFields.trusted_client_key_hashes.removeDefault(),
+  })
+  .partial();
+
+const thinkingBudgetFields = ThinkingBudgetConfigSchema.shape;
+const ThinkingBudgetPatchSchema = z
+  .strictObject({
+    control_source: thinkingBudgetFields.control_source.removeDefault(),
+    flash_low: thinkingBudgetFields.flash_low.removeDefault(),
+    flash_medium: thinkingBudgetFields.flash_medium.removeDefault(),
+    flash_high: thinkingBudgetFields.flash_high.removeDefault(),
+    flash_tiered: thinkingBudgetFields.flash_tiered.removeDefault(),
+    pro_low: thinkingBudgetFields.pro_low.removeDefault(),
+    pro_high: thinkingBudgetFields.pro_high.removeDefault(),
+    claude_budget: thinkingBudgetFields.claude_budget.removeDefault(),
+    claude_low: thinkingBudgetFields.claude_low.removeDefault(),
+    claude_medium: thinkingBudgetFields.claude_medium.removeDefault(),
+    claude_high: thinkingBudgetFields.claude_high.removeDefault(),
+  })
+  .partial();
+
 const ServiceProxyUpdateSchema = ServiceProxySchema.partial().extend({
   global_system_prompt: ServiceProxySchema.shape.global_system_prompt.partial().optional(),
   upstream_proxy: ServiceProxySchema.shape.upstream_proxy.partial().optional(),
@@ -111,10 +158,25 @@ const ServiceProxyUpdateSchema = ServiceProxySchema.partial().extend({
   traffic_audit: ServiceProxySchema.shape.traffic_audit.partial().optional(),
   thought_store: ServiceProxySchema.shape.thought_store.partial().optional(),
   image_scheduler: ServiceProxySchema.shape.image_scheduler.partial().optional(),
-  cowork_compaction: ServiceProxySchema.shape.cowork_compaction.partial().optional(),
-  thinking_budget: ServiceProxySchema.shape.thinking_budget.partial().optional(),
+  cowork_compaction: CoworkCompactionPatchSchema.optional(),
+  thinking_budget: ThinkingBudgetPatchSchema.optional(),
   network: ProxyConfigSchema.shape.network.unwrap().partial().optional(),
 });
+
+/** Write-only validation preserves readable legacy configuration without accepting new zero budgets. */
+export const GatewayThinkingBudgetPatchSchema = ThinkingBudgetPatchSchema.superRefine(
+  (patch, context) => {
+    for (const [field, value] of Object.entries(patch)) {
+      if (value === 0) {
+        context.addIssue({
+          code: 'custom',
+          path: [field],
+          message: 'Use -1 or a positive gateway thinking budget',
+        });
+      }
+    }
+  },
+);
 
 export const ServiceConfigUpdateSchema = ServiceRuntimeSchema.partial()
   .extend({ proxy: ServiceProxyUpdateSchema.optional() })
@@ -150,6 +212,8 @@ export type ServiceSecretName = z.infer<typeof ServiceSecretNameSchema>;
 export type ServiceSecretWrite = z.infer<typeof ServiceSecretWriteSchema>;
 export type ServiceConfigWriteResult = z.infer<typeof ServiceConfigWriteResultSchema>;
 
+const DesktopZoomSchema = z.literal(DESKTOP_ZOOM_LEVELS);
+
 export const DesktopPreferencesSchema = AppConfigSchema.omit({
   error_diagnostics: true,
   proxy: true,
@@ -165,7 +229,8 @@ export const DesktopPreferencesSchema = AppConfigSchema.omit({
 })
   .extend({
     owner_mode: z.enum(['desktop-embedded', 'standalone-core']).optional(),
-    language: z.string().max(32),
+    language: z.string().max(32).overwrite(normalizeDesktopLanguage),
+    zoom_percent: DesktopZoomSchema.default(DEFAULT_DESKTOP_ZOOM),
     theme: z.string().max(32),
     refresh_interval: z.number().finite().min(1).max(1440),
     sync_interval: z.number().finite().min(1).max(1440),
@@ -178,6 +243,7 @@ export const DesktopPreferencesSchema = AppConfigSchema.omit({
   .strict();
 export type DesktopPreferences = z.infer<typeof DesktopPreferencesSchema>;
 export const DesktopPreferencesUpdateSchema = DesktopPreferencesSchema.extend({
+  zoom_percent: DesktopZoomSchema,
   start_in_tray: z.boolean(),
   telemetry_enabled: z.boolean(),
   clarity_enabled: z.boolean(),

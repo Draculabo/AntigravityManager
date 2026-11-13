@@ -21,6 +21,7 @@ export {
 export type { ClientAccountStorage } from './credentials/clientAccountWrite';
 export type { ClientAccountCredentials } from './credentials/clientAccount';
 export {
+  readAgyAccountToken,
   readAntigravityCredentialStoreToken,
   readClientAccountToken,
   CredentialStoreReadError,

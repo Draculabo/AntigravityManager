@@ -10,7 +10,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { isEmpty, isNil, isPlainObject, isString } from 'lodash-es';
 import { z } from 'zod';
-import { ApplyPatchFailureCompactor } from '@/modules/proxy-gateway/antigravity/ApplyPatchFailureCompaction';
 import {
   OpenAIChatRequest,
   OpenAIContentPart,
@@ -70,6 +69,7 @@ const OpenAIToolSchema: z.ZodType<OpenAITool> = z.lazy(() =>
       type: z.string(),
       name: z.string().optional(),
       tools: z.array(OpenAIToolSchema).optional(),
+      custom: z.object({ name: z.string(), description: z.string().optional() }).optional(),
       function: z
         .object({
           name: z.string(),
@@ -298,7 +298,6 @@ export function buildResponsesChatRequest(body: ResponsesRequestBody): OpenAICha
 
   const callIdToToolName = new Map<string, string>();
   const incompleteCustomCallIds = new Set<string>();
-  const applyPatchFailureCompactor = new ApplyPatchFailureCompactor();
   const inputItems = Array.isArray(body.input)
     ? parseResponsesInputItems(normalizeResponsesToolCallIds(body.input).items)
     : null;
@@ -365,15 +364,14 @@ export function buildResponsesChatRequest(body: ResponsesRequestBody): OpenAICha
         }
         callIdToToolName.delete(callId);
         const normalizedOutput = normalizeResponsesToolOutput(item.output);
-        const outputText =
-          toolName === 'apply_patch'
-            ? applyPatchFailureCompactor.compact(normalizedOutput.text)
-            : normalizedOutput.text;
         messages.push({
           role: 'tool',
           tool_call_id: callId,
           name: toolName,
-          content: buildResponsesToolOutputContent(outputText, normalizedOutput.mediaParts),
+          content: buildResponsesToolOutputContent(
+            normalizedOutput.text,
+            normalizedOutput.mediaParts,
+          ),
         });
         continue;
       }

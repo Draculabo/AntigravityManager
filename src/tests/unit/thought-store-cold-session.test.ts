@@ -26,7 +26,7 @@ const state = vi.hoisted(() => ({
   drain: vi.fn<() => Promise<void>>(),
 }));
 vi.mock('@/shared/platform/paths', () => ({ getProxyStateDir: () => state.directory }));
-vi.mock('@/shared/logging/logger', () => ({ logger: { warn: vi.fn() } }));
+vi.mock('@/shared/logging/logger', () => ({ logger: { debug: vi.fn(), warn: vi.fn() } }));
 vi.mock('@/server/server-config', async () => {
   const { DEFAULT_APP_CONFIG } = await import('@/modules/config/types');
   return {

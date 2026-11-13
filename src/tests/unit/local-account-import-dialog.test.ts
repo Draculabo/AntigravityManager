@@ -41,7 +41,10 @@ const PREVIEW = {
   accounts: [
     {
       fingerprint: 'fingerprint-a',
-      sources: [{ id: 'antigravity-keyring' as const, location: 'system-keyring' }],
+      sources: [
+        { id: 'antigravity-keyring' as const, location: 'system-keyring' },
+        { id: 'antigravity-agy-file' as const },
+      ],
       emailHints: ['person@example.com'],
       hasAccessToken: true,
       hasIdToken: false,
@@ -64,6 +67,12 @@ const PREVIEW = {
   sourceSummaries: [
     {
       id: 'antigravity-keyring' as const,
+      candidateCount: 1,
+      failureCount: 0,
+      inspectedLocations: 1,
+    },
+    {
+      id: 'antigravity-agy-file' as const,
       candidateCount: 1,
       failureCount: 0,
       inspectedLocations: 1,
@@ -104,6 +113,9 @@ describe('LocalAccountImportDialog', () => {
     );
 
     expect(await screen.findByText('person@example.com')).toBeTruthy();
+    expect(
+      screen.getAllByText('cloud.localImport.sources.antigravity-agy-file').length,
+    ).toBeGreaterThan(0);
     expect(mocks.preview.mutateAsync).toHaveBeenCalledTimes(1);
 
     fireEvent.click(

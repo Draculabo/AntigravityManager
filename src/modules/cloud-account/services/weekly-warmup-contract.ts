@@ -18,6 +18,8 @@ export const DEFAULT_WEEKLY_WARMUP_CONFIG: WeeklyWarmupConfig = {
 export interface WeeklyWarmupRequest {
   accessToken: string;
   model: 'claude-sonnet-4-6' | 'gemini-3-flash';
+  /** Normalized physical IDs advertised for this account and the selected quota group. */
+  availableModels: readonly string[];
   projectId?: string;
   upstreamProxyUrl?: string;
   signal?: AbortSignal;

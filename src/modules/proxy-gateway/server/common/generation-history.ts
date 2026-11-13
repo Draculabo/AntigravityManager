@@ -223,7 +223,7 @@ export function prepareGoogleGenerationContents(
       message: output.length,
       part: null,
     });
-    output.push({ role: 'user', parts: [{ text: 'ok go on' }] });
+    output.push({ role: 'user', parts: [{ text: '.' }] });
   }
   return output;
 }

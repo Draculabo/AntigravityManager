@@ -195,6 +195,7 @@ const MODEL_VARIANT_FAMILIES: ModelVariantFamily[] = [
   {
     canonicalModel: 'gemini-3.1-pro',
     variants: GEMINI_31_PRO_VARIANTS,
+    physicalAliases: { 'gemini-3.1-pro-high': 'high' },
     aliases: {
       'gemini-3.1-pro-high': 'tier',
       'gemini-pro': 'tier',
@@ -362,13 +363,18 @@ function resolveNonVariantModel(
 export function resolveModelVariant(input: ResolveModelVariantInput): ResolvedModelVariant | null {
   const model = input.model.trim().toLowerCase();
   if (input.physicalTarget) {
-    const physicalFamily = MODEL_VARIANT_FAMILIES.find((candidate) =>
-      Object.values(candidate.variants).some((variant) => variant.model === model) ||
-      Object.prototype.hasOwnProperty.call(candidate.physicalAliases ?? {}, model),
+    const physicalFamily = MODEL_VARIANT_FAMILIES.find(
+      (candidate) =>
+        Object.values(candidate.variants).some((variant) => variant.model === model) ||
+        Object.prototype.hasOwnProperty.call(candidate.physicalAliases ?? {}, model),
     );
     if (physicalFamily) {
       return rebindModelVariant(
-        { canonicalModel: physicalFamily.canonicalModel, tier: 'high', ...physicalFamily.variants.high },
+        {
+          canonicalModel: physicalFamily.canonicalModel,
+          tier: 'high',
+          ...physicalFamily.variants.high,
+        },
         model,
       );
     }
@@ -390,7 +396,11 @@ export function resolveModelVariant(input: ResolveModelVariantInput): ResolvedMo
     );
     if (physicalFamily) {
       return rebindModelVariant(
-        { canonicalModel: physicalFamily.canonicalModel, tier: 'high', ...physicalFamily.variants.high },
+        {
+          canonicalModel: physicalFamily.canonicalModel,
+          tier: 'high',
+          ...physicalFamily.variants.high,
+        },
         model,
       );
     }
@@ -448,15 +458,12 @@ export function isModelTierBindingAllowed(
   const isPhysicalRecipe = MODEL_VARIANT_FAMILIES.some((family) =>
     Object.values(family.variants).some((variant) => variant.model === requested),
   );
-  if (!requestedSuffix && isPhysicalRecipe) {
-    return false;
-  }
   if (requestedVariant) {
     if (!reboundVariant) {
       return false;
     }
     return (
-      (!physicalTarget && !requestedSuffix) ||
+      (!physicalTarget && !requestedSuffix && !isPhysicalRecipe) ||
       (reboundVariant.tier === requestedVariant.tier &&
         reboundVariant.thinkingBudget === requestedVariant.thinkingBudget &&
         reboundVariant.maxOutputTokens === requestedVariant.maxOutputTokens &&

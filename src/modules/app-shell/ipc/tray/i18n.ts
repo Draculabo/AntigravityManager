@@ -11,7 +11,7 @@ export type TrayTexts = {
 };
 
 const en: TrayTexts = {
-  current: 'Current',
+  current: 'Current Classic Account',
   quota: 'Quota',
   switch_next: 'Switch to Next Account',
   refresh_current: 'Refresh Current Quota',
@@ -23,7 +23,7 @@ const en: TrayTexts = {
 };
 
 const zh: TrayTexts = {
-  current: '当前账号',
+  current: '当前 Classic 账号',
   quota: '当前额度',
   switch_next: '切换到下一个账号',
   refresh_current: '刷新当前额度',
@@ -35,7 +35,7 @@ const zh: TrayTexts = {
 };
 
 const ru: TrayTexts = {
-  current: 'Текущий',
+  current: 'Текущий аккаунт Classic',
   quota: 'Квота',
   switch_next: 'Переключить на следующий аккаунт',
   refresh_current: 'Обновить текущую квоту',
@@ -47,7 +47,7 @@ const ru: TrayTexts = {
 };
 
 const vi: TrayTexts = {
-  current: 'Hiện tại',
+  current: 'Tài khoản Classic hiện tại',
   quota: 'Quota',
   switch_next: 'Chuyển sang tài khoản tiếp theo',
   refresh_current: 'Làm mới quota hiện tại',
@@ -59,7 +59,7 @@ const vi: TrayTexts = {
 };
 
 const fr: TrayTexts = {
-  current: 'Actuel',
+  current: 'Compte Classic actuel',
   quota: 'Quota',
   switch_next: 'Basculer vers le compte suivant',
   refresh_current: 'Actualiser le quota actuel',
@@ -71,7 +71,7 @@ const fr: TrayTexts = {
 };
 
 const ptBR: TrayTexts = {
-  current: 'Atual',
+  current: 'Conta Classic atual',
   quota: 'Cota',
   switch_next: 'Alternar para o Próximo',
   refresh_current: 'Atualizar Cota Atual',
@@ -83,7 +83,7 @@ const ptBR: TrayTexts = {
 };
 
 const tr: TrayTexts = {
-  current: 'Mevcut',
+  current: 'Mevcut Classic Hesabı',
   quota: 'Kota',
   switch_next: 'Sonraki Hesaba Geç',
   refresh_current: 'Mevcut Kotayı Yenile',

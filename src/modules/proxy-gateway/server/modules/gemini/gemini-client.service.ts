@@ -2,10 +2,13 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { resolveInternalEndpoints } from './internal-endpoints';
 import type { OverloadThinkingRecovery } from '../../common/overload-thinking-recovery';
 import { GeminiHttpTransport } from './gemini-http-transport';
+import { GeminiUpstreamStageTiming } from './gemini-upstream-stage-timing';
 import { isGoogleProjectConsumerDenial } from '@/shared/auth/google-project-denial';
 import {
+  admitUpstreamGenerationSend,
   generationAttemptTimeout,
   generationDeadlineAt,
+  LARGE_GENERATION_SEND_BYTES,
   observeGenerationStreamProgress,
   runGenerationWithDeadline,
 } from '../../common/generation-deadline';
@@ -179,6 +182,7 @@ export class GeminiClient {
       'Content-Type': 'application/json',
     };
     let attempt: CurrentUpstreamAttemptHandle | null = null;
+    let stages: GeminiUpstreamStageTiming | undefined;
 
     try {
       const response = await this.httpTransport.post<Readable>(
@@ -189,6 +193,11 @@ export class GeminiClient {
           responseType: 'stream',
           timeout: 60000,
           proxy: axiosProxy,
+          onDownloadProgress: (progress) => {
+            if (progress.loaded > 0) {
+              stages?.observeFirstByte();
+            }
+          },
         },
         () => {
           attempt = startCurrentUpstreamAttempt({
@@ -199,7 +208,9 @@ export class GeminiClient {
             usageScope: 'generation',
             requestBody: content,
           });
+          stages = new GeminiUpstreamStageTiming(attempt);
         },
+        (request) => stages?.observeRequest(request),
       );
       return captureGeminiStreamResult(response.data, {
         attempt,
@@ -208,9 +219,11 @@ export class GeminiClient {
         status: response.status,
         outcome: this.outcomeForStatus(response.status),
         validateSignatures: true,
+        stages,
       });
     } catch (error) {
-      await this.completeFailedAttempt(attempt, error);
+      await this.completeFailedAttempt(attempt, error, stages);
+      stages?.report();
       if (axios.isAxiosError(error)) {
         return await this.throwUpstreamRequestError(error, 'gemini-stream-generate', {
           endpoint: url,
@@ -236,6 +249,7 @@ export class GeminiClient {
       'Content-Type': 'application/json',
     };
     let attempt: CurrentUpstreamAttemptHandle | null = null;
+    let stages: GeminiUpstreamStageTiming | undefined;
 
     try {
       const response = await this.httpTransport.post<GeminiResponse>(
@@ -245,6 +259,11 @@ export class GeminiClient {
           headers,
           timeout: 60000, // 60s timeout
           proxy: axiosProxy,
+          onDownloadProgress: (progress) => {
+            if (progress.loaded > 0) {
+              stages?.observeFirstByte();
+            }
+          },
         },
         () => {
           attempt = startCurrentUpstreamAttempt({
@@ -255,7 +274,9 @@ export class GeminiClient {
             usageScope: 'generation',
             requestBody: content,
           });
+          stages = new GeminiUpstreamStageTiming(attempt);
         },
+        (request) => stages?.observeRequest(request),
       );
       captureUpstreamAttemptUsage(attempt, response.data);
       const conflict = findUpstreamThoughtSignatureConflict(response.data);
@@ -263,12 +284,14 @@ export class GeminiClient {
         throw conflict;
       }
       completeCurrentUpstreamAttempt(attempt, {
+        timing: stages?.snapshot(),
         error: toolCallGenerationDiagnostic(response.data),
         outcome: this.outcomeForStatus(response.status),
         responseBody: response.data,
         responseHeaders: this.toPlainHeaders(response.headers),
         status: response.status,
       });
+      stages?.report();
       const output = new GenerationOutputState();
       output.observe(response.data);
       if (!output.failure()) {
@@ -280,7 +303,8 @@ export class GeminiClient {
       }
       return response.data;
     } catch (error) {
-      await this.completeFailedAttempt(attempt, error);
+      await this.completeFailedAttempt(attempt, error, stages);
+      stages?.report();
       if (axios.isAxiosError(error)) {
         return await this.throwUpstreamRequestError(error, 'gemini-generate', {
           endpoint: url,
@@ -1049,6 +1073,7 @@ export class GeminiClient {
         const url = `${baseUrl}${path}`;
         lastEndpoint = url;
         let attempt: CurrentUpstreamAttemptHandle | null = null;
+        let stages: GeminiUpstreamStageTiming | undefined;
         let sentProject: string | undefined;
         // Admission failure has no physical attempt and must retain its original typed error.
         const contentAttemptBody = isContentRequest ? createContentAttemptBody?.() : undefined;
@@ -1096,6 +1121,11 @@ export class GeminiClient {
             };
           }
           const serializedBody = JSON.stringify(attemptBody);
+          const generationSignal =
+            isContentRequest && generationDeadlineAt(config.signal) !== undefined
+              ? config.signal
+              : undefined;
+          const serializedBytes = generationSignal ? Buffer.byteLength(serializedBody) : 0;
           const attemptTimeout = generationAttemptTimeout(
             config.signal,
             Math.min(timeout, config.timeout && config.timeout > 0 ? config.timeout : timeout),
@@ -1109,13 +1139,18 @@ export class GeminiClient {
               proxy: axiosProxy,
               ...config,
               timeout: attemptTimeout,
+              ...(serializedBytes >= LARGE_GENERATION_SEND_BYTES && { maxRedirects: 0 }),
               onDownloadProgress: (progress) => {
                 if (progress.loaded > 0) {
+                  stages?.observeFirstByte();
                   markProxyUpstreamFirstByte(timing);
                 }
               },
             },
             () => {
+              if (generationSignal) {
+                admitUpstreamGenerationSend(generationSignal, serializedBytes);
+              }
               if (isContentRequest && config.responseType === 'stream') {
                 observeGenerationStreamProgress(config.signal, 'waiting_for_output');
               }
@@ -1127,6 +1162,9 @@ export class GeminiClient {
                 usageScope: isContentRequest ? 'generation' : 'non-generation',
                 requestBody: attemptBody,
               });
+              if (isContentRequest) {
+                stages = new GeminiUpstreamStageTiming(attempt);
+              }
               if (contentAttemptBody) {
                 recordGenerationRequestAttempt(
                   contentAttemptBody,
@@ -1136,6 +1174,7 @@ export class GeminiClient {
               }
               markProxyUpstreamStarted();
             },
+            isContentRequest ? (request) => stages?.observeRequest(request) : undefined,
           );
           if (!(response.data instanceof Readable)) {
             captureUpstreamAttemptUsage(attempt, response.data);
@@ -1153,6 +1192,7 @@ export class GeminiClient {
               response.data.destroy();
             }
             completeCurrentUpstreamAttempt(attempt, {
+              timing: stages?.snapshot(),
               outcome: 'upstream_error',
               responseHeaders: this.toPlainHeaders(response.headers),
               status: response.status,
@@ -1162,9 +1202,10 @@ export class GeminiClient {
             );
             hasTriggeredProjectHeaderDowngrade = true;
             shouldRetryWithoutProjectHeader = true;
+            stages?.report();
             break;
           }
-          return this.captureAxiosResponse(
+          const captured = this.captureAxiosResponse(
             response,
             attempt,
             this.extractRequestModel(body),
@@ -1172,13 +1213,19 @@ export class GeminiClient {
               operation === 'stream-generate' ||
               operation === 'weekly-warmup',
             config.signal,
+            stages,
           );
+          if (!(captured.data instanceof Readable)) {
+            stages?.report();
+          }
+          return captured;
         } catch (error) {
           if (config.signal?.aborted) {
             if (axios.isAxiosError(error) && !(error.response?.data instanceof Readable)) {
               captureUpstreamAttemptUsage(attempt, error.response?.data);
             }
             completeCurrentUpstreamAttempt(attempt, {
+              timing: stages?.snapshot(),
               error:
                 config.signal.reason instanceof GenerationDeadlineExceededError
                   ? config.signal.reason
@@ -1189,9 +1236,11 @@ export class GeminiClient {
                   : 'client_cancelled',
               partial: true,
             });
+            stages?.report();
             throwIfRequestAborted(config.signal);
           }
-          await this.completeFailedAttempt(attempt, error);
+          await this.completeFailedAttempt(attempt, error, stages);
+          stages?.report();
           if (
             error instanceof GenerationDeadlineExceededError ||
             isTerminalGenerationFailure(error)
@@ -1257,6 +1306,7 @@ export class GeminiClient {
     model: string | undefined,
     validateSignatures: boolean,
     signal?: AbortSignal,
+    stages?: GeminiUpstreamStageTiming,
   ): AxiosResponse<T> {
     if (response.data instanceof Readable) {
       response.data = captureGeminiStreamResult(response.data, {
@@ -1267,6 +1317,7 @@ export class GeminiClient {
         outcome: this.outcomeForStatus(response.status),
         validateSignatures,
         signal,
+        stages,
       }) as T;
       return response;
     }
@@ -1290,6 +1341,7 @@ export class GeminiClient {
       }
     }
     completeCurrentUpstreamAttempt(attempt, {
+      timing: stages?.snapshot(),
       error: generationFailure ?? toolCallGenerationDiagnostic(response.data),
       outcome: generationFailure ? 'upstream_error' : this.outcomeForStatus(response.status),
       responseBody: response.data,
@@ -1309,10 +1361,12 @@ export class GeminiClient {
   private async completeFailedAttempt(
     attempt: CurrentUpstreamAttemptHandle | null,
     error: unknown,
+    stages?: GeminiUpstreamStageTiming,
   ): Promise<void> {
     if (!axios.isAxiosError(error)) {
       if (attempt) {
         completeCurrentUpstreamAttempt(attempt, {
+          timing: stages?.snapshot(),
           error,
           outcome:
             error instanceof UpstreamGenerationError ||
@@ -1341,6 +1395,7 @@ export class GeminiClient {
     }
     const status = error.response?.status;
     completeCurrentUpstreamAttempt(attempt, {
+      timing: stages?.snapshot(),
       error,
       outcome: status ? this.outcomeForStatus(status, responseBody) : 'upstream_error',
       partial,

@@ -161,3 +161,11 @@ and explicitly accept limitations; reaching a round limit never clears an unreso
 If the scope expands, update the PR title and description so reviewers can assess the final
 change. Ask questions in the PR or [Discussions](https://github.com/Draculabo/AntigravityManager/discussions)
 when the next step is unclear.
+
+### Preserve contributor attribution
+
+Prefer reviewing and merging a contribution in its original PR when it can be accepted on its
+own. Keep the usual review and validation requirements. Put independent maintainer changes in a
+linked follow-up and describe what was added there. If a contribution needs to move to a different
+PR, link the original, identify which changes were carried over, and preserve verified authorship
+in the resulting commit.

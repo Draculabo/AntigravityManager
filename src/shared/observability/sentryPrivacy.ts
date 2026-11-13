@@ -1,3 +1,5 @@
+import { redactQueryCredentials } from './redact-query-credentials';
+
 const LOCAL_USER_PATH_PATTERNS = [
   { pattern: /([A-Za-z]:\\Users\\)[^\\/\r\n]+/gi, replacement: '$1***' },
   { pattern: /([A-Za-z]:\/Users\/)[^/\r\n]+/gi, replacement: '$1***' },
@@ -14,13 +16,9 @@ export function redactLocalUserPaths(value: string): string {
 
 /** Readable diagnostic text must not reveal credentials embedded in errors or commands. */
 export function redactDiagnosticText(text: string): string {
-  return redactLocalUserPaths(text)
+  return redactQueryCredentials(redactLocalUserPaths(text))
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/-]+=*/gi, '$1 [REDACTED]')
     .replace(/\b(go-keyring-base64:)[A-Za-z0-9+/=]+/g, '$1[REDACTED]')
-    .replace(
-      /([?&](?:access_token|refresh_token|id_token|api_key|key|client_secret|code)=)[^&#\s]*/gi,
-      '$1[REDACTED]',
-    )
     .replace(
       /(["']?\b(?:token|access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|x-api-key|x-goog-api-key|client[_-]?secret|password|authorization|cookie|session[_-]?id|auth[_-]?code|secret)["']?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s&,;]+)/gi,
       '$1[REDACTED]',

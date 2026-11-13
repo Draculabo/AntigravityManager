@@ -168,7 +168,7 @@ describe.each([false, true])('Responses input boundary, stream=%s', (stream) => 
     expect(upstream.calls[0].body.request.contents).toEqual([
       { role: 'user', parts: [{ text: 'controlled request' }] },
       { role: 'model', parts: [{ text: 'Partial answer:  ' }] },
-      { role: 'user', parts: [{ text: 'ok go on' }] },
+      { role: 'user', parts: [{ text: '.' }] },
     ]);
     expect(histories.chat).toStrictEqual(original);
   });
@@ -258,7 +258,7 @@ describe.each(['chat', 'responses', 'messages', 'gemini'] as const)(
         } else {
           expect(upstream.calls[0].body.request.contents.at(-1)).toEqual({
             role: 'user',
-            parts: [{ text: 'ok go on' }],
+            parts: [{ text: '.' }],
           });
           expect(upstream.calls[0].body.request.contents.at(-2)?.parts).toEqual([
             { text: 'Partial answer:  ' },
@@ -310,6 +310,6 @@ it('prepares an idempotent outbound copy before history hydration can modify par
   expect(contents).toStrictEqual(before);
   expect(prepareGoogleGenerationContents(contents, 'gemini-3-flash')).toStrictEqual([
     ...before,
-    { role: 'user', parts: [{ text: 'ok go on' }] },
+    { role: 'user', parts: [{ text: '.' }] },
   ]);
 });

@@ -2,7 +2,6 @@ import { isString } from 'lodash-es';
 import { z } from 'zod';
 import { InvalidToolResultAssociationError } from '@/modules/proxy-gateway/antigravity/ClaudeToolResultAssociation';
 import { qualifyNamespaceToolName } from '@/modules/proxy-gateway/antigravity/ToolNamespace';
-import { toCustomToolArguments } from '@/modules/proxy-gateway/antigravity/CustomToolCall';
 import { hashSessionAnchor } from '../../../common/session-anchor-hash';
 import { parseResponsesInputItem, type ResponsesToolCallItem } from './responses-input-item';
 import { getCallId, getStringField } from './responses-tool-call-repair';
@@ -34,7 +33,7 @@ export function resolveToolArguments(item: ResponsesToolCallItem): Record<string
     return { query: item.action?.query ?? '' };
   }
   if (item.type === 'custom_tool_call') {
-    return toCustomToolArguments(resolveResponsesToolName(item), item.input ?? '');
+    return { input: item.input ?? '' };
   }
   const raw = item.arguments;
   if (isString(raw)) {

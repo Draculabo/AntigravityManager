@@ -4,6 +4,20 @@ The `cloud-account` module owns the managed Google account pool, quota refresh a
 automatic switching policy, account import, and optional weekly warmup. Its desktop feature
 surfaces live under `src/modules/cloud-account/`.
 
+## Local Antigravity CLI sign-in
+
+Local account import can discover the Google sign-in saved by `agy` in
+`~/.gemini/antigravity-cli/antigravity-oauth-token` in the selected owner's operating system
+environment. It appears as **Antigravity CLI saved sign-in** in the import preview. The existing
+validation and deduplication apply before confirmation. The preview carries source and account
+information. Credentials stay in the process that owns the import. A missing CLI sign-in file is
+skipped. Read and format errors appear in the preview.
+
+When the account list refreshes, a valid file marks the managed Google account with the uniquely
+matching refresh token as active for CLI. An unmatched or ambiguous credential leaves the CLI badge
+unset. A missing, unreadable or malformed file uses the last CLI selection recorded by Manager.
+Checking this file is read-only and does not affect the Classic or IDE badge.
+
 ## Account pool and quota
 
 Users can add and import Google accounts, refresh account tokens and quota, inspect account
@@ -17,6 +31,18 @@ clients using that account; accounts without an active client show Not in use. E
 its account independently, so multiple accounts can have usage badges. The dropdown disables only
 targets already using that account, or all targets while its switch is pending. Quota refresh
 ordering and tier filters do not redefine client usage.
+
+For a manual recommendation, select Classic, IDE, or CLI in the account list. The
+recommendation uses the existing quota requirements and ranking and excludes the
+account already used by the selected client. An account used by a different client
+can still qualify. Applying the recommendation switches the selected client.
+
+Open **Project ID** from a Google account card to view, save, or clear its ID.
+**Fetch from Google** uses that account's credentials and network route and replaces
+the saved value only when Google returns a usable ID. Clearing allows the gateway to
+discover it again during later use. A Project ID edit does not select a different
+provider mode or change the account tier. If the account or ID changes concurrently,
+the editor reloads the current value and requires a fresh action.
 
 Desktop and standalone-core removal use one deletion service. After the database
 commit it evicts the account from the active gateway and clears its owned runtime
@@ -495,6 +521,14 @@ The selected Gemini or Claude group must be enabled. Weekly requests use `gemini
 `claude-sonnet-4-6` as the representative model. A group dedicated to one model family is warmed
 only when the representative model belongs to that family, so Gemini 4 Argon is not warmed.
 Missing weekly groups and unavailable project context are not replaced with guessed values.
+
+Each candidate includes advertised physical models from the selected account and
+quota group. Authoritative `model_ids` membership takes priority over legacy group
+labels. An empty or unknown account catalog is skipped with a diagnostic before
+project discovery and generation. The gateway executor resolves the representative
+through the generation route policy and binds only to an advertised model in that
+group. A configured replacement outside the group fails before sending. A skipped
+candidate does not write warmup success history.
 
 Warmup consumes real model quota and may use AI credits. An accepted HTTP response is recorded as
 success; it does not prove that the provider restarted a weekly timer or completed generation. The

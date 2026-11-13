@@ -166,6 +166,11 @@ describe('Electron gateway read adapter', () => {
       accountSecurityStatus: vi.fn(() => ({ state: 'secure' as const })),
       accountValidationUrl: vi.fn(async () => ({ url: 'https://accounts.google.com/verify' })),
       accountSyncFromIde: vi.fn(async () => null),
+      accountProjectId: {
+        getAccountProjectId: vi.fn(),
+        setAccountProjectId: vi.fn(),
+        fetchAccountProjectId: vi.fn(),
+      },
       localImport: {
         preview: vi.fn(),
         confirm: vi.fn(),

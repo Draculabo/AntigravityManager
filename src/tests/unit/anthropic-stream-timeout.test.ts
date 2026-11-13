@@ -12,6 +12,8 @@ import {
   geminiStreamFrame,
 } from './proxy-real-path.harness';
 
+const ping = 'event: ping\ndata: {"type":"ping"}\n\n';
+
 vi.mock(
   '@/modules/proxy-gateway/server/common/utils/request-user-agent',
   async (importOriginal) => ({
@@ -140,7 +142,7 @@ describe('Anthropic stream timeout compatibility', () => {
       'access-acc-2',
     ]);
     expect(lease.markModelSuccess).not.toHaveBeenCalled();
-    expect(delivered).not.toContain(': ping\n\n');
+    expect(delivered).not.toContain(ping);
     expect(firstStream.destroyed).toBe(true);
     subscription.unsubscribe();
   });
@@ -162,7 +164,7 @@ describe('Anthropic stream timeout compatibility', () => {
     observable.subscribe().unsubscribe();
   });
 
-  it('rotates accounts when the upstream errors before a meaningful mapped event', async () => {
+  it('rotates accounts when the upstream errors after a ping and before a mapped event', async () => {
     vi.useFakeTimers();
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
     const firstStream = new PassThrough();
@@ -176,6 +178,8 @@ describe('Anthropic stream timeout compatibility', () => {
     const lease = createLease([createAccount('acc-1'), createAccount('acc-2')]);
     const request = createAnthropicStream(createGateway(upstream, lease).anthropicService);
 
+    await vi.advanceTimersByTimeAsync(20_001);
+    expect(upstream.calls.map((call) => call.accessToken)).toEqual(['access-acc-1']);
     firstStream.destroy(new Error('preflight stream failure'));
     await vi.advanceTimersByTimeAsync(1_000);
     const observable = await request;
@@ -215,16 +219,19 @@ describe('Anthropic stream timeout compatibility', () => {
 
     for (let interval = 1; interval < 5; interval++) {
       await vi.advanceTimersByTimeAsync(20_000);
-      const pings = chunks.filter((chunk) => chunk === ': ping\n\n');
+      const pings = chunks.filter((chunk) => chunk === ping);
       expect(pings).toHaveLength(interval);
       expect(completed).toBe(false);
     }
 
     await vi.advanceTimersByTimeAsync(20_000);
     expect(completed).toBe(true);
-    expect(
-      chunks.filter((chunk) => chunk === ': ping\n\n' || chunk.includes('event: error')),
-    ).toEqual([': ping\n\n', ': ping\n\n', ': ping\n\n', ': ping\n\n']);
+    expect(chunks.filter((chunk) => chunk === ping || chunk.includes('event: error'))).toEqual([
+      ping,
+      ping,
+      ping,
+      ping,
+    ]);
     expect(chunks.join('')).toContain('"stop_reason":"max_tokens"');
     expect(chunks.filter((chunk) => chunk.includes('event: message_stop'))).toHaveLength(1);
     expect(chunks.some((chunk) => chunk.includes('data: [DONE]'))).toBe(false);
@@ -300,7 +307,7 @@ describe('Anthropic stream timeout compatibility', () => {
       await vi.advanceTimersByTimeAsync(39_999);
       expect(complete).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(1);
-      expect(chunks.filter((chunk) => chunk === ': ping\n\n')).toHaveLength(5);
+      expect(chunks.filter((chunk) => chunk === ping)).toHaveLength(5);
       expect(chunks.filter((chunk) => chunk.includes('event: error'))).toEqual([]);
       expect(chunks.join('')).toContain('"stop_reason":"max_tokens"');
       expect(chunks.filter((chunk) => chunk.includes('event: message_stop'))).toHaveLength(1);
@@ -343,7 +350,7 @@ describe('Anthropic stream timeout compatibility', () => {
     await vi.advanceTimersByTimeAsync(1);
 
     expect(completed).toBe(true);
-    expect(chunks.filter((chunk) => chunk === ': ping\n\n')).toEqual([]);
+    expect(chunks.filter((chunk) => chunk === ping)).toEqual([]);
     expect(chunks.filter((chunk) => chunk.includes('event: error'))).toEqual([]);
     expect(chunks.join('')).toContain('"stop_reason":"max_tokens"');
     expect(chunks.filter((chunk) => chunk.includes('event: message_stop'))).toHaveLength(1);

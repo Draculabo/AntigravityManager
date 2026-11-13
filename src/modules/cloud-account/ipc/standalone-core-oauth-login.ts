@@ -57,6 +57,14 @@ export class StandaloneCoreOAuthLogin {
       );
     } catch (error) {
       const cause = error instanceof GoogleLoginStepError ? error.cause : error;
+      if (cause instanceof OAuthManagementError && cause.code === 'INVALID_REQUEST') {
+        operation.accountCommit = 'not-attempted';
+        operation.enter('authorization');
+        throw new DesktopOAuthLoginError(
+          'invalid-manual-input',
+          operation.finish(undefined, 'malformed-response', true),
+        );
+      }
       const expected =
         cause instanceof OAuthManagementError &&
         ['UNKNOWN_SESSION', 'INVALID_REQUEST'].includes(cause.code);

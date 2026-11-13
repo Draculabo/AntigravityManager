@@ -43,7 +43,7 @@ export function inferProtocol(url: string): string {
   if (url.startsWith('/v1/messages') || url.startsWith('/v1/complete')) {
     return 'anthropic';
   }
-  if (url.startsWith('/v1/responses')) {
+  if (url.startsWith('/v1/responses') || url.split('?')[0] === '/responses') {
     return 'openai-responses';
   }
   if (url.startsWith('/v1/')) {

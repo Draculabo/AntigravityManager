@@ -10,6 +10,7 @@ function appendRoute(
   aliasValue: unknown,
   targetValue: unknown,
   enabled: boolean,
+  published?: boolean,
 ): void {
   const alias = normalizeRoutePart(aliasValue);
   const target = normalizeRoutePart(targetValue);
@@ -23,7 +24,7 @@ function appendRoute(
   }
 
   seenAliases.add(alias);
-  routes.push({ alias, target, enabled });
+  routes.push({ alias, target, enabled, ...(published === undefined ? {} : { published }) });
 }
 
 function legacyEntries(value: unknown): Array<[string, unknown]> {
@@ -52,7 +53,14 @@ export function migrateLegacyModelAliases(proxy: ProxyConfig): ProxyConfig {
 
   if (Array.isArray(proxy.model_aliases)) {
     for (const route of proxy.model_aliases) {
-      appendRoute(routes, seenAliases, route?.alias, route?.target, route?.enabled !== false);
+      appendRoute(
+        routes,
+        seenAliases,
+        route?.alias,
+        route?.target,
+        route?.enabled !== false,
+        route?.published,
+      );
     }
   }
 
@@ -92,12 +100,7 @@ function projectRoutesToLegacyMapping(routes: ModelAliasRoute[]): Record<string,
 }
 
 /**
- * The user's aliases in the exact-map shape the routing engine and both model catalogs already
- * consume, so adding the alias list did not have to change their signatures.
- *
- * Disabled routes are dropped here rather than at every call site: a retired alias must not
- * route a request and must not appear in a published catalog, and one projection is what keeps
- * those two answers from drifting apart.
+ * All enabled aliases for generation, independently of catalog publication.
  *
  * The legacy maps are still read for a config held in memory that never went through
  * {@link migrateLegacyModelAliases} -- notably `setServerConfig` called with a literal in tests
@@ -126,6 +129,40 @@ export function getConfiguredModelMapping(
     mapping[route.alias] = route.target;
   }
 
+  return mapping;
+}
+
+/** Patterns and strategy identifiers are routing controls, never concrete catalog entries. */
+export function isModelAliasPublished(
+  route: Pick<ModelAliasRoute, 'alias' | 'target' | 'published'>,
+): boolean {
+  if (route.alias.includes('*') || route.alias.toLowerCase().startsWith('auto:')) {
+    return false;
+  }
+  return route.published ?? !route.target.toLowerCase().startsWith('auto:');
+}
+
+/** Publication has its own projection so hiding an alias cannot disable generation. */
+export function getPublishedModelMapping(
+  proxy:
+    | Pick<ProxyConfig, 'model_aliases' | 'custom_mapping' | 'anthropic_mapping'>
+    | null
+    | undefined,
+): Record<string, string> {
+  const mapping = getConfiguredModelMapping(proxy);
+  for (const [alias, target] of Object.entries(mapping)) {
+    if (!isModelAliasPublished({ alias, target })) {
+      delete mapping[alias];
+    }
+  }
+  for (const route of proxy?.model_aliases ?? []) {
+    // An explicit route owns visibility even when a rollback projection contains its name.
+    if (route.enabled === false || !isModelAliasPublished(route)) {
+      delete mapping[route.alias];
+    } else if (route.alias && route.target) {
+      mapping[route.alias] = route.target;
+    }
+  }
   return mapping;
 }
 

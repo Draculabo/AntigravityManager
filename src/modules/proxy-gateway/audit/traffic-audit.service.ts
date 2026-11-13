@@ -14,8 +14,9 @@ import { DiagnosticStoreShutdown } from '../diagnostics/store-shutdown';
 import {
   MAX_AUDIT_BODY_BYTES,
   sanitizeAuditHeaders,
+  serializeAuditQuery,
+  redactUrlCredentials,
   sanitizeAuditUrl,
-  snapshotAuditPayload,
 } from './audit-sanitizer';
 import {
   AUDIT_BODY_CHUNK_BYTES,
@@ -54,8 +55,13 @@ import { auditDiskRejection } from './traffic-audit-disk-budget';
 import { AuditCaptureGenerations } from './audit-capture-generations';
 import { auditBodyForExport } from './audit-body-export';
 import { auditSessionForExport } from './audit-session-export';
+import { auditHarForExport } from './audit-har-export';
 import { AuditSessionSnapshotSchema } from './audit-session-export.schema';
-import { UsageTrendsInputSchema, UsageTrendsResultSchema, type UsageTrendsInput } from './usage-trends.schema';
+import {
+  UsageTrendsInputSchema,
+  UsageTrendsResultSchema,
+  type UsageTrendsInput,
+} from './usage-trends.schema';
 import {
   UsageRangeInputSchema,
   UsageRangeResultSchema,
@@ -152,7 +158,7 @@ export class TrafficAuditService {
         operation: input.operation ?? null,
         protocol: input.protocol,
         requestHeaders: JSON.stringify(sanitizeAuditHeaders(input.headers)),
-        requestQuery: serializeQuery(input.query),
+        requestQuery: serializeAuditQuery(input.query),
         sessionId: input.sessionId ?? null,
         timestamp: startedAt,
         trafficClass: input.trafficClass,
@@ -353,6 +359,7 @@ export class TrafficAuditService {
         error: serializeAuditError(input.error),
         id: handle.id,
         outcome: input.outcome,
+        timing: input.timing ?? null,
         responseHeaders: input.responseHeaders
           ? JSON.stringify(sanitizeAuditHeaders(input.responseHeaders))
           : null,
@@ -395,7 +402,11 @@ export class TrafficAuditService {
 
   public async list(input: TrafficAuditListInput) {
     const result = await this.request('list', input);
-    return TrafficAuditListResultSchema.parse(result);
+    const parsed = TrafficAuditListResultSchema.parse(result);
+    return {
+      ...parsed,
+      items: parsed.items.map((item) => ({ ...item, url: sanitizeAuditUrl(item.url) })),
+    };
   }
 
   public async filterOptions() {
@@ -404,9 +415,12 @@ export class TrafficAuditService {
   }
 
   public async usageTrends(input: UsageTrendsInput) {
-    return UsageTrendsResultSchema.parse(await this.request('usageTrends', {
-      ...UsageTrendsInputSchema.parse(input), asOf: Date.now(),
-    }));
+    return UsageTrendsResultSchema.parse(
+      await this.request('usageTrends', {
+        ...UsageTrendsInputSchema.parse(input),
+        asOf: Date.now(),
+      }),
+    );
   }
 
   public async usageRange(input: UsageRangeInput) {
@@ -424,8 +438,12 @@ export class TrafficAuditService {
         }),
       );
       const current = await readCurrentCloudAccountUsageIdentity(range.accountId);
-      if (!current || current.accountGenerationHash !== identity.accountGenerationHash ||
-          current.accountSubjectHash !== identity.accountSubjectHash || current.accountGrantHash !== identity.accountGrantHash) {
+      if (
+        !current ||
+        current.accountGenerationHash !== identity.accountGenerationHash ||
+        current.accountSubjectHash !== identity.accountSubjectHash ||
+        current.accountGrantHash !== identity.accountGrantHash
+      ) {
         throw new Error('Account incarnation changed during retained usage query');
       }
       return result;
@@ -440,7 +458,24 @@ export class TrafficAuditService {
     if (result === null) {
       return null;
     }
-    return TrafficAuditDetailSchema.parse(result);
+    const detail = TrafficAuditDetailSchema.parse(result);
+    if (detail.recordKind !== 'request') {
+      return detail;
+    }
+    return {
+      ...detail,
+      request: {
+        ...detail.request,
+        url: sanitizeAuditUrl(detail.request.url),
+        requestQuery: serializeAuditQuery(detail.request.requestQuery),
+        error: detail.request.error === null ? null : redactUrlCredentials(detail.request.error),
+      },
+      attempts: detail.attempts.map((attempt) => ({
+        ...attempt,
+        endpoint: sanitizeAuditUrl(attempt.endpoint),
+        error: attempt.error === null ? null : redactUrlCredentials(attempt.error),
+      })),
+    };
   }
 
   public async bodyPage(input: TrafficAuditBodyPageInput): Promise<TrafficAuditBodyPage | null> {
@@ -450,6 +485,13 @@ export class TrafficAuditService {
 
   public bodyContent(bodyId: string): AsyncGenerator<string> {
     return auditBodyForExport(bodyId, (input) => this.bodyPage(input));
+  }
+
+  public harContent(requestId: string): AsyncGenerator<string> {
+    return auditHarForExport(requestId, {
+      detail: (id) => this.detail(id),
+      body: (id) => this.bodyContent(id),
+    });
   }
 
   public sessionContent(sessionId: string): AsyncGenerator<string> {
@@ -1133,16 +1175,6 @@ function toWorkerPriority(trafficClass: TrafficClass): 'model' | 'auxiliary' | '
     return 'auxiliary';
   }
   return 'background';
-}
-
-function serializeQuery(query: Record<string, unknown> | string | undefined): string | null {
-  if (query === undefined) {
-    return null;
-  }
-  if (typeof query === 'string') {
-    return sanitizeAuditUrl(`/?${query}`).slice(2);
-  }
-  return snapshotAuditPayload(query, 1024 * 1024).text;
 }
 
 function sha256Hex(value: string): string {

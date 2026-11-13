@@ -140,7 +140,9 @@ This policy runs independently of the experimental parity scheduler. The account
 
 Model conversation, completion, token-counting, batch creation, and enabled diagnostic routes accept JSON bodies up to 64 MiB through the production adapter's route hooks. One byte above that ceiling is rejected with HTTP 413 before handler execution. Administrative, cancellation, and other non-model routes retain Fastify's 1 MiB default. Image generation keeps its dedicated Base64-sized ceiling; raw-media, multipart, and decoded image/file limits remain independent.
 
-Fastify parses model request bodies before the Nest authentication guards execute. Limiting administrative routes reduces unnecessary parsing memory, but model requests can still allocate substantial memory before authentication. These are per-request limits, not a concurrent process memory budget or a guarantee that upstream services accept every payload of that size.
+For `application/json` POST requests on guarded model routes, including both Responses paths and image generation, `Content-Encoding: gzip` is supported. The existing IP and credential policy runs before decompression. The route's byte ceiling applies separately to the compressed stream and to the decoded JSON. A limit violation returns 413, a corrupt gzip stream returns 400, and an unsupported encoding returns 415. Fastify parses the decoded JSON normally and the audit sees the parsed request body. Multipart and raw-media uploads use their existing parsers.
+
+Fastify parses uncompressed model request bodies before the Nest authentication guards execute. Limiting administrative routes reduces unnecessary parsing memory, but uncompressed model requests can still allocate substantial memory before authentication. These are per-request limits, not a concurrent process memory budget or a guarantee that upstream services accept every payload of that size.
 
 ## 4a. Durable Proxy State
 

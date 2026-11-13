@@ -99,7 +99,7 @@ describe('desktop owner-side OAuth login', () => {
     await expect(pending).rejects.toMatchObject({ loginCode: 'proxy-configuration-invalid' });
   });
 
-  it('accepts a manual code while the browser login is pending', async () => {
+  it('keeps a rejected manual callback retryable and accepts the current browser session', async () => {
     vi.spyOn(GoogleAPIService, 'getActiveOAuthClientKey').mockReturnValue('client-a');
     vi.spyOn(GoogleAPIService, 'getAuthUrl').mockImplementation((_key, session) => {
       const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
@@ -122,7 +122,27 @@ describe('desktop owner-side OAuth login', () => {
     const pending = login.start();
     await vi.waitFor(() => expect(openExternal).toHaveBeenCalledOnce());
     const redirect = new URL(openExternal.mock.calls[0][0]).searchParams.get('redirect_uri');
-    login.submitCode('4/manual-code');
+    const state = new URL(openExternal.mock.calls[0][0]).searchParams.get('state');
+    let invalid: unknown;
+    try {
+      login.submitCode(`${redirect}?code=private-rejected-code&state=wrong-private-state`);
+    } catch (error) {
+      invalid = error;
+    }
+    expect(invalid).toMatchObject({
+      loginCode: 'invalid-manual-input',
+      diagnostic: {
+        stage: 'authorization',
+        reason: 'malformed-response',
+        accountCommit: 'not-attempted',
+        reporting: { state: 'not-reported', reason: 'expected-outcome' },
+      },
+    });
+    const publicError = toDesktopOAuthLoginORPCError(invalid);
+    expect(publicError.status).toBe(400);
+    expect(JSON.stringify(publicError)).not.toMatch(/private-rejected-code|wrong-private-state/u);
+    expect(enroll).not.toHaveBeenCalled();
+    login.submitCode(`${redirect}?code=4%2Fmanual-code&state=${state}`);
     await vi.waitFor(() => expect(enroll).toHaveBeenCalledOnce());
     let rejectedCode: unknown;
     try {
@@ -148,6 +168,103 @@ describe('desktop owner-side OAuth login', () => {
       operation: expect.any(GoogleLoginOperation),
     });
     expect(() => login.submitCode('4/replay')).toThrow();
+  });
+
+  it('retires a failed manual authorization and lets the same login owner start fresh', async () => {
+    vi.spyOn(GoogleAPIService, 'getActiveOAuthClientKey').mockReturnValue('client-a');
+    vi.spyOn(GoogleAPIService, 'getAuthUrl').mockImplementation((_key, session) => {
+      const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+      url.searchParams.set('redirect_uri', session.redirectUri);
+      url.searchParams.set('state', session.state);
+      return url.toString();
+    });
+    const exchange = Promise.withResolvers<CloudAccount>();
+    void exchange.promise.catch(() => undefined);
+    const enroll = vi
+      .fn(async () => ({ id: view.id, email: view.email }) as CloudAccount)
+      .mockImplementationOnce(() => exchange.promise);
+    const reload = vi.fn(async () => true);
+    const session = new HeadlessOAuthSessionService(enroll, reload);
+    sessions.push(session);
+    const startSession = vi.spyOn(session, 'start');
+    const openExternal = vi.fn(async (_url: string) => {});
+    const loadView = vi.fn(async () => view);
+    const login = new DesktopOAuthLogin({
+      session,
+      selectClient: vi.fn(),
+      openExternal,
+      loadView,
+    });
+
+    const pending = login.start();
+    const failed = pending.catch((error: unknown) => error);
+    await vi.waitFor(() => expect(openExternal).toHaveBeenCalledOnce());
+    const first = await startSession.mock.results[0].value;
+    const authorization = new URL(openExternal.mock.calls[0][0]);
+    const redirect = authorization.searchParams.get('redirect_uri');
+    const state = authorization.searchParams.get('state');
+    expect(redirect).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/oauth-callback$/);
+    expect(state).toBeTruthy();
+    expect(await callback(`${redirect}?code=4/failed-manual-code&state=incorrect`)).toBe(400);
+    expect(enroll).not.toHaveBeenCalled();
+    try {
+      login.submitCode('4/failed-manual-code');
+      await vi.waitFor(() => expect(enroll).toHaveBeenCalledOnce());
+      expect(session.status(first.sessionId)).toEqual({ state: 'pending' });
+      expect(session.completeCode(first.sessionId, '4/failed-manual-code')).toBe(false);
+      await expect(
+        callback(`${redirect}?code=4/failed-manual-code&state=${state}`),
+      ).rejects.toThrow();
+    } finally {
+      exchange.reject(new Error('Synthetic token exchange failure'));
+    }
+    expect(await failed).toMatchObject({ loginCode: 'login-failed' });
+    const terminal = session.status(first.sessionId);
+    expect(terminal).toMatchObject({ state: 'failed', loginCode: 'login-failed' });
+    expect(session.completeCode(first.sessionId, '4/failed-manual-code')).toBe(false);
+    expect(() => login.submitCode('4/failed-manual-code')).toThrow(DesktopOAuthLoginError);
+    await expect(
+      callback(`${redirect}?code=4/failed-manual-code&state=${state}`),
+    ).rejects.toThrow();
+    expect(enroll).toHaveBeenCalledOnce();
+    expect(reload).not.toHaveBeenCalled();
+    expect(loadView).not.toHaveBeenCalled();
+
+    const restarted = login.start();
+    void restarted.catch(() => undefined);
+    await vi.waitFor(() => expect(openExternal).toHaveBeenCalledTimes(2));
+    const fresh = await startSession.mock.results[1].value;
+    const freshAuthorization = new URL(openExternal.mock.calls[1][0]);
+    const freshRedirect = freshAuthorization.searchParams.get('redirect_uri');
+    const freshState = freshAuthorization.searchParams.get('state');
+    expect(fresh.sessionId).not.toBe(first.sessionId);
+    expect(freshAuthorization.toString()).not.toBe(authorization.toString());
+    expect(freshState).toBeTruthy();
+    expect(freshState).not.toBe(state);
+    expect(session.completeCode(first.sessionId, '4/failed-manual-code')).toBe(false);
+    expect(await callback(`${freshRedirect}?code=4/failed-manual-code&state=${state}`)).toBe(400);
+    expect(session.status(fresh.sessionId)).toEqual({ state: 'pending' });
+    expect(enroll).toHaveBeenCalledOnce();
+
+    expect(await callback(`${freshRedirect}?code=4/fresh-code&state=${freshState}`)).toBe(200);
+    await expect(restarted).resolves.toEqual(view);
+    expect(session.status(first.sessionId)).toEqual(terminal);
+    expect(enroll).toHaveBeenNthCalledWith(1, '4/failed-manual-code', {
+      oauthClientKey: 'client-a',
+      redirectUri: redirect,
+      operation: expect.any(GoogleLoginOperation),
+    });
+    expect(enroll).toHaveBeenNthCalledWith(2, '4/fresh-code', {
+      oauthClientKey: 'client-a',
+      redirectUri: freshRedirect,
+      operation: expect.any(GoogleLoginOperation),
+    });
+    expect(enroll).toHaveBeenCalledTimes(2);
+    expect(reload).toHaveBeenCalledOnce();
+    expect(loadView).toHaveBeenCalledExactlyOnceWith(view.id);
+    await expect(
+      callback(`${freshRedirect}?code=4/fresh-code&state=${freshState}`),
+    ).rejects.toThrow();
   });
 
   it('opens a trusted browser URL, keeps the code owner-side, and returns only the account view', async () => {

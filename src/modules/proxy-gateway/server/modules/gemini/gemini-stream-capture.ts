@@ -19,6 +19,7 @@ import { UpstreamGenerationError } from '../../../antigravity/UpstreamGeneration
 import { upstreamGenerationFailure } from '../../common/upstream-generation-failure';
 import { GenerationDeadlineExceededError } from '../../common/exceptions/generation-deadline.exception';
 import { observeGenerationStreamProgress } from '../../common/generation-deadline';
+import type { GeminiUpstreamStageTiming } from './gemini-upstream-stage-timing';
 
 /** Own the upstream stream until validated frames are released or the consumer closes. */
 export function captureGeminiStreamResult(
@@ -31,6 +32,7 @@ export function captureGeminiStreamResult(
     outcome: 'completed' | 'auth_failed' | 'upstream_error';
     validateSignatures?: boolean;
     signal?: AbortSignal;
+    stages?: GeminiUpstreamStageTiming;
   },
 ): Readable {
   let sourceEnded = false;
@@ -68,6 +70,9 @@ export function captureGeminiStreamResult(
         } else if (decoded.kind === 'response') {
           generation.observe(decoded.response);
           observeGenerationStreamProgress(input.signal, generation.streamPhase);
+          if (generation.streamPhase === 'output_started') {
+            input.stages?.observeUsableOutput();
+          }
         }
       }
       if (!signatureConflict && !generationFailure) {
@@ -154,6 +159,7 @@ export function captureGeminiStreamResult(
       terminalStatus: outcome,
     });
     completeCurrentUpstreamAttempt(input.attempt, {
+      timing: input.stages?.snapshot(),
       error: error ?? toolCallWarning,
       outcome,
       partial: auditPartial,
@@ -161,11 +167,13 @@ export function captureGeminiStreamResult(
       responseHeaders: input.responseHeaders,
       status: input.status,
     });
+    input.stages?.report();
   };
   const transform = new Transform({
     transform(chunk: Buffer | string, _encoding, callback) {
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       if (buffer.byteLength > 0) {
+        input.stages?.observeFirstByte();
         markProxyUpstreamFirstByte(timing);
       }
       totalBytes += buffer.byteLength;

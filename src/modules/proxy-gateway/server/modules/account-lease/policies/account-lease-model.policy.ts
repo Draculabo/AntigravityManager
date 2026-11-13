@@ -1,5 +1,11 @@
-import { AccountModelCatalog, type AccountModelEvidence } from './account-model-catalog';
+import {
+  AccountModelCatalog,
+  consistentCapability,
+  type AccountModelEvidence,
+  type ModelDiscoveryCapabilities,
+} from './account-model-catalog';
 import { getPublicModelIdForDisplayName } from '../../../../antigravity/ModelMapping';
+import type { ModelThinkingTransport } from '../../../common/model-thinking-transport';
 import {
   isModelTierBindingAllowed,
   rebindModelVariant,
@@ -65,6 +71,50 @@ export class AccountLeaseModelPolicy {
     return this.catalog.getAllRawQuotaModels();
   }
 
+  getModelDiscoveryCapabilities(model: string, physicalTarget = false): ModelDiscoveryCapabilities {
+    const profile = resolveModelVariant({ model, physicalTarget });
+    const requestedModel = profile?.model ?? model.toLowerCase();
+    const facts = [...this.options.getTokenCache().values()].flatMap<ModelDiscoveryCapabilities>(
+      (token) => {
+        const available = this.filterRequestableModels(
+          this.getAvailableModelsFromToken(token),
+          token.account_id,
+        );
+        if (available.size === 0) {
+          return this.getAvailableModelsFromToken(token).size === 0 ? [{}] : [];
+        }
+        const physical = this.resolveAvailableModel(
+          token,
+          requestedModel,
+          available,
+          undefined,
+          physicalTarget || profile !== null,
+        );
+        if (!physical) {
+          return [];
+        }
+        const evidence = this.getPositiveModelEvidenceFromToken(token).find(
+          (entry) => entry.modelId === physical,
+        );
+        return [
+          {
+            supports_images: evidence?.details?.modalities?.supportsImages,
+            supports_thinking: evidence?.details?.supportsThinking,
+            max_output_tokens: evidence?.details?.maxOutputTokens,
+          },
+        ];
+      },
+    );
+    const supportsImages = consistentCapability(facts.map((fact) => fact.supports_images));
+    const supportsThinking = consistentCapability(facts.map((fact) => fact.supports_thinking));
+    const maxOutputTokens = consistentCapability(facts.map((fact) => fact.max_output_tokens));
+    return {
+      ...(supportsImages !== undefined ? { supports_images: supportsImages } : {}),
+      ...(supportsThinking !== undefined ? { supports_thinking: supportsThinking } : {}),
+      ...(maxOutputTokens !== undefined ? { max_output_tokens: maxOutputTokens } : {}),
+    };
+  }
+
   getAvailableModelsFromToken(token: AccountLeaseTokenData): Set<string> {
     return this.catalog.getAvailableModelsFromToken(token);
   }
@@ -119,8 +169,14 @@ export class AccountLeaseModelPolicy {
       }
     };
 
-    // Antigravity routes the public high-effort preset through its self-routing
-    // agent id. Keep that id first when it is advertised by the leased account.
+    // Prefer the current High ID when advertised; the legacy agent has the same
+    // registered operating profile and remains usable on older account catalogs.
+    if (
+      !physicalTarget &&
+      ['gemini-pro-agent', 'gemini-3.1-pro-high', 'gemini-3.1-pro'].includes(normalizedModel)
+    ) {
+      pushCandidate('gemini-3.1-pro-high');
+    }
     if (normalizedModel === 'gemini-pro-agent') {
       pushCandidate(normalizedModel);
     } else if (normalizedModel === 'gemini-3.1-pro-high' || normalizedModel === 'gemini-3.1-pro') {
@@ -349,7 +405,10 @@ export class AccountLeaseModelPolicy {
       availableModels,
     );
     if (forwardedModel) {
-      const requestedVariant = resolveModelVariant({ model: normalizedMappedModel, physicalTarget });
+      const requestedVariant = resolveModelVariant({
+        model: normalizedMappedModel,
+        physicalTarget,
+      });
       if (!requestedVariant || rebindModelVariant(requestedVariant, forwardedModel)) {
         return forwardedModel;
       }
@@ -362,10 +421,16 @@ export class AccountLeaseModelPolicy {
       availableModels,
       physicalTarget,
     );
+    if (
+      normalizedMappedModel === 'gemini-pro-agent' &&
+      safeAvailableModels.has('gemini-3.1-pro-high')
+    ) {
+      return 'gemini-3.1-pro-high';
+    }
     if (physicalTarget) {
       return safeAvailableModels.has(normalizedMappedModel)
         ? normalizedMappedModel
-        : [...safeAvailableModels][0] ?? null;
+        : ([...safeAvailableModels][0] ?? null);
     }
     const displayPresetModel = this.resolveDisplayPresetForAccount(
       tokenData,
@@ -465,5 +530,12 @@ export class AccountLeaseModelPolicy {
 
   getModelThinkingBudgetForAccount(accountId: string, modelName: string): number | undefined {
     return this.catalog.getModelThinkingBudgetForAccount(accountId, modelName);
+  }
+
+  getModelThinkingTransportForAccount(
+    accountId: string,
+    modelName: string,
+  ): ModelThinkingTransport | undefined {
+    return this.catalog.getModelThinkingTransportForAccount(accountId, modelName);
   }
 }

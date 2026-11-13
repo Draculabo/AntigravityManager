@@ -9,7 +9,9 @@ For media admission and signed history restoration, see
 ## Streaming liveness and backpressure
 
 OpenAI Chat emits SSE comment heartbeats every 3 seconds, Responses every 15 seconds,
-and Anthropic after each 20-second upstream idle interval. Downstream backpressure
+and Anthropic emits an `event: ping` frame with `{"type":"ping"}` after each
+20-second upstream idle interval. The Anthropic first-event gate waits for a
+business event and discards pings during preflight. Downstream backpressure
 pauses the upstream and suppresses heartbeat generation. Draining resumes normal
 delivery without replaying missed heartbeats. Anthropic's first-event wrapper carries
 the same pause state into its mapper.
@@ -45,7 +47,9 @@ including multiline, CRLF, adjacent-record and supported EOF-tail input. This
 prevents an error prefix from reaching the client before its final fragment can
 be classified. Valid payload text, SSE field values and comments are retained;
 chunk boundaries and line endings are not a byte-for-byte passthrough contract.
-Invalid JSON fails explicitly instead of exposing its raw text.
+Invalid JSON fails explicitly instead of exposing its raw text. An error in an
+EOF tail without a final blank line retains the same validated code and status
+as a complete event.
 
 Responses normal upstream EOF/close allows suspended mapping iterators to drain
 before finalization. Premature close still fails, and EOF without a supported
@@ -210,9 +214,18 @@ rename `cmd`, `code` or `input` to `command`, add descriptions or metadata, or f
 placeholder commands and workflow scripts. An ordinary function named `shell` uses the
 Responses `function_call` lifecycle rather than becoming a custom tool by name alone.
 
-Namespace flattening/restoration and the existing custom `apply_patch` representation and
-preflight remain separate protocol contracts. They are not removed by ordinary command
-tool passthrough.
+The matching client declaration determines whether an OpenAI tool is custom. Chat emits
+`type: custom` with a `custom` payload, while Responses emits `custom_tool_call` and its
+input events. For a declared custom tool, the gateway unwraps the upstream string `input`
+field without changing its content. If the upstream returns an argument object without a
+string `input`, the gateway forwards the whole object as JSON text. This preserves its
+fields for the tool to handle. Ordinary functions named `apply_patch` retain their
+function arguments. Namespace mapping and explicit built-in tool handling remain in their
+existing protocol adapters.
+
+The gateway does not repair or preflight patch syntax. The tool executor reports any patch
+failure through its own result. [Upgrade instructions](../../upgrade-guides/next/openai-custom-tool-payloads.md)
+cover clients that relied on the previous response shape or automatic repairs.
 
 ## Cloud Code content request identity
 

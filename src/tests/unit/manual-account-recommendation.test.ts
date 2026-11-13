@@ -84,6 +84,7 @@ describe('manual account recommendation', () => {
 
     expect(
       getManualAccountRecommendation(accounts, {
+        appTarget: 'classic',
         sortKey: 'quota-pro3',
         modelVisibility: {},
         now: NOW,
@@ -91,11 +92,40 @@ describe('manual account recommendation', () => {
     ).toEqual(
       expect.objectContaining({
         accountId: 'same-day-high-balance',
+        appTarget: 'classic',
         context: 'pro3',
         fiveHourPercentage: 70,
         weeklyPercentage: 80,
       }),
     );
+  });
+
+  it('excludes only the current account of the requested client', () => {
+    const candidate = (id: string, balance: number) =>
+      createAccount(id, {
+        active: true,
+        models: { 'gemini-3-pro': model(90) },
+        quotaGroups: [weeklyGroup('Gemini Models', balance, '2026-09-28T10:00:00Z')],
+      });
+    const accounts = [
+      { ...candidate('classic-current', 100), is_active_classic: true, is_active_ide: false },
+      { ...candidate('ide-current', 90), is_active_ide: true },
+      { ...candidate('cli-current', 80), is_active_agy: true },
+    ];
+    const options = { sortKey: 'recently-used', modelVisibility: {}, now: NOW } as const;
+
+    expect(
+      (['classic', 'ide', 'agy'] as const).map((appTarget) =>
+        getManualAccountRecommendation(accounts, { ...options, appTarget }),
+      ),
+    ).toEqual([
+      expect.objectContaining({ appTarget: 'classic', accountId: 'ide-current' }),
+      expect.objectContaining({ appTarget: 'ide', accountId: 'classic-current' }),
+      expect.objectContaining({ appTarget: 'agy', accountId: 'classic-current' }),
+    ]);
+    expect(
+      getManualAccountRecommendation(accounts.slice(2), { ...options, appTarget: 'agy' }),
+    ).toBeNull();
   });
 
   it('uses the selected model family and requires more than five percent five-hour quota', () => {
@@ -112,6 +142,7 @@ describe('manual account recommendation', () => {
 
     expect(
       getManualAccountRecommendation(accounts, {
+        appTarget: 'classic',
         sortKey: 'quota-claude',
         modelVisibility: {},
         now: NOW,
@@ -140,6 +171,7 @@ describe('manual account recommendation', () => {
 
     expect(
       getManualAccountRecommendation(accounts, {
+        appTarget: 'classic',
         sortKey: 'quota-flash',
         modelVisibility: {},
         now: NOW,
@@ -168,6 +200,7 @@ describe('manual account recommendation', () => {
 
     expect(
       getManualAccountRecommendation(accounts, {
+        appTarget: 'classic',
         sortKey: 'quota-flash',
         modelVisibility: {},
         now: NOW,
@@ -187,11 +220,31 @@ describe('manual account recommendation', () => {
     expect(
       prioritizeRecommendedAccount(accounts, {
         accountId: 'recommended',
+        appTarget: 'classic',
         context: 'overall',
         fiveHourPercentage: 60,
         weeklyPercentage: 80,
         weeklyResetTime: '2026-09-28T10:00:00Z',
       }).map((account) => account.id),
     ).toEqual(['active-a', 'active-b', 'recommended', 'other-a', 'other-b']);
+  });
+
+  it('preserves the order of active accounts when one is recommended for another client', () => {
+    const accounts = [
+      { ...createAccount('recommended', { active: true }), is_active_ide: true },
+      { ...createAccount('classic-current', { active: true }), is_active_classic: true },
+      createAccount('other'),
+    ];
+
+    expect(
+      prioritizeRecommendedAccount(accounts, {
+        accountId: 'recommended',
+        appTarget: 'classic',
+        context: 'overall',
+        fiveHourPercentage: 90,
+        weeklyPercentage: 80,
+        weeklyResetTime: '2026-09-28T10:00:00Z',
+      }),
+    ).toEqual(accounts);
   });
 });

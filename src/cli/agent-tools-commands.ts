@@ -8,10 +8,13 @@ import {
   AgentToolStatusInputSchema,
 } from '@/modules/proxy-gateway/agent-tools/agent-tools.schema';
 import type { OpenCodeOperations } from '@/modules/proxy-gateway/opencode-sync/opencode-owner.service';
+import type { DshOperations } from '@/modules/proxy-gateway/dsh-sync/dsh-owner.service';
+import { registerDshCommands } from './dsh-commands';
 
 export interface AgentToolsCommandClient {
   agentTools: AgentToolsOperations;
   openCode: OpenCodeOperations;
+  dsh?: DshOperations;
 }
 export function registerAgentToolsCommands(
   command: Command,
@@ -22,6 +25,7 @@ export function registerAgentToolsCommands(
   const tools = command
     .command('tools')
     .description('Configure coding tools to use Antigravity Manager');
+  registerDshCommands(tools, start, output, client?.dsh);
   const ready = async () => {
     if (!client) {
       throw new Error('Tool settings are unavailable.');

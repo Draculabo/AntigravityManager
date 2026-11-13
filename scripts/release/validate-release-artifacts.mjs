@@ -3,15 +3,14 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Command } from 'commander';
 import { z } from 'zod';
+import { releaseBuildTargets } from './release-source.mjs';
 
 const artifactPagesSchema = z.array(
   z.object({
     artifacts: z.array(z.object({ name: z.string(), expired: z.boolean() })),
   }),
 );
-const buildArtifacts = ['darwin', 'linux', 'win32']
-  .flatMap((platform) => ['arm64', 'x64'].map((arch) => `make-${platform}-${arch}`))
-  .sort();
+const buildArtifacts = releaseBuildTargets.map((target) => `make-${target}`);
 
 function validateInventory(file) {
   // gh api --paginate --slurp returns one object per response page.

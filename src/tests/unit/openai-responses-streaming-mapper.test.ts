@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import { OpenAIResponsesStreamingMapper } from '@/modules/proxy-gateway/antigravity/OpenAIResponsesStreamingMapper';
+import type { OpenAITool } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
 
 function parseEvent(serializedEvent: string): Record<string, unknown> {
@@ -20,8 +21,9 @@ function parseEventName(serializedEvent: string): string {
   return eventLine.slice('event: '.length);
 }
 
-function createMapper(): OpenAIResponsesStreamingMapper {
+function createMapper(clientTools?: OpenAITool[]): OpenAIResponsesStreamingMapper {
   return new OpenAIResponsesStreamingMapper({
+    clientTools,
     model: 'gemini-3-pro',
     responseId: 'resp_test',
     signatureSourceModel: 'gemini-3-pro',
@@ -163,20 +165,15 @@ describe('OpenAIResponsesStreamingMapper', () => {
     });
   });
 
-  it('emits apply_patch as a custom tool call with raw patch input', () => {
-    const mapper = createMapper();
-    const patch = '*** Begin Patch\n*** Update File: src/example.ts\n*** End Patch';
+  it('keeps declared custom input byte for byte across its complete streaming lifecycle', () => {
+    const mapper = createMapper([{ type: 'custom', name: 'apply_patch' }]);
+    const patch = '--- a/src/example.ts\r\n+++ b/src/example.ts\r\n@@ -1 +1 @@\r\n-x\r\n+y\r\n';
     const events = [
       ...mapper.processPart({
-        functionCall: {
-          args: { command: ['apply_patch', patch] },
-          id: 'call_patch_1',
-          name: 'apply_patch',
-        },
+        functionCall: { args: { input: patch }, id: 'call_patch_1', name: 'apply_patch' },
       }),
       ...mapper.complete(),
     ].map(parseEvent);
-
     expect(events.map((event) => event.type)).toEqual([
       'response.output_item.added',
       'response.custom_tool_call_input.delta',
@@ -184,108 +181,49 @@ describe('OpenAIResponsesStreamingMapper', () => {
       'response.output_item.done',
       'response.completed',
     ]);
-    expect(events[0]).toMatchObject({
-      item: {
-        call_id: 'call_patch_1',
-        id: 'item_resp_test_0',
-        input: '',
-        name: 'apply_patch',
-        type: 'custom_tool_call',
-      },
-    });
-    expect(events[1]).toMatchObject({
+    expect(events[1]).toMatchObject({ call_id: 'call_patch_1', delta: patch });
+    expect(events[2]).toMatchObject({ call_id: 'call_patch_1', input: patch });
+    const item = {
       call_id: 'call_patch_1',
-      delta: patch,
-      item_id: 'item_resp_test_0',
-    });
-    expect(events[4]).toMatchObject({
-      response: {
-        output: [
-          {
-            call_id: 'call_patch_1',
-            id: 'item_resp_test_0',
-            input: patch,
-            name: 'apply_patch',
-            type: 'custom_tool_call',
-          },
-        ],
-      },
-    });
+      id: 'item_resp_test_0',
+      input: patch,
+      name: 'apply_patch',
+      status: 'completed',
+      type: 'custom_tool_call',
+    };
+    expect(events[3]?.item).toEqual(item);
+    expect(events[4]).toMatchObject({ response: { output: [item] } });
   });
 
-  it('repairs apply_patch input before emitting the custom tool call', () => {
-    const mapper = createMapper();
-    const patch = [
-      '*** Begin Patch',
-      '--- a/src/example.ts',
-      '+++ b/src/example.ts',
-      '@@ -1 +1 @@',
-      '-const value = 1;',
-      '+const value = 2;',
-      '*** End Patch',
-    ].join('\n');
-    const repairedPatch = [
-      '*** Begin Patch',
-      '*** Update File: src/example.ts',
-      '@@',
-      '-const value = 1;',
-      '+const value = 2;',
-      '*** End Patch',
-    ].join('\n');
-
-    const events = [
-      ...mapper.processPart({
-        functionCall: {
-          args: { input: patch },
-          id: 'call_patch_repair',
-          name: 'apply_patch',
-        },
-      }),
-    ].map(parseEvent);
-
-    expect(events[1]).toMatchObject({
-      delta: repairedPatch,
-      type: 'response.custom_tool_call_input.delta',
-    });
-    expect(events[2]).toMatchObject({
-      input: repairedPatch,
-      type: 'response.custom_tool_call_input.done',
-    });
-    expect(events[3]).toMatchObject({
-      item: {
-        input: repairedPatch,
+  it.each([undefined, [{ type: 'function', function: { name: 'apply_patch' } }]])(
+    'keeps a same-name function call and its arguments without a custom declaration (%j)',
+    (tools) => {
+      const mapper = createMapper(tools);
+      const args = {
+        command: ['apply_patch', 'literal\r\npatch'],
+        context: { path: 'src/example.ts' },
+      };
+      const events = [
+        ...mapper.processPart({
+          functionCall: { args, id: 'call_patch', name: 'apply_patch' },
+        }),
+      ].map(parseEvent);
+      expect(events.map((event) => event.type)).toEqual([
+        'response.output_item.added',
+        'response.function_call_arguments.delta',
+        'response.function_call_arguments.done',
+        'response.output_item.done',
+      ]);
+      expect(events[3]?.item).toEqual({
+        arguments: JSON.stringify(args),
+        call_id: 'call_patch',
+        id: 'item_resp_test_0',
         name: 'apply_patch',
-      },
-      type: 'response.output_item.done',
-    });
-  });
-
-  it('emits a text diagnostic instead of an invalid apply_patch tool call', () => {
-    const mapper = createMapper();
-    const events = [
-      ...mapper.processPart({
-        functionCall: {
-          args: { input: 'this is not a patch' },
-          id: 'call_patch_invalid',
-          name: 'apply_patch',
-        },
-      }),
-    ].map(parseEvent);
-
-    expect(events.map((event) => event.type)).toEqual([
-      'response.output_item.added',
-      'response.content_part.added',
-      'response.output_text.delta',
-    ]);
-    expect(events[0]).toMatchObject({
-      item: {
-        type: 'message',
-      },
-    });
-    expect(events[2]).toMatchObject({
-      delta: expect.stringContaining('apply_patch rejected'),
-    });
-  });
+        status: 'completed',
+        type: 'function_call',
+      });
+    },
+  );
 
   it('allocates sequential output indexes across text and tool calls', () => {
     const mapper = createMapper();

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   ServiceConfigSnapshotSchema,
   AuditConfigConflictError,
+  InvalidGatewayThinkingBudgetError,
   readServiceConfigErrorCode,
   ServiceConfigUpdateSchema,
   ServiceSecretNameSchema,
@@ -42,6 +43,12 @@ async function safe<T>(work: () => Promise<T>): Promise<T> {
     if (error instanceof UpstreamProxyConfigurationError) {
       throw new ORPCError('BAD_REQUEST', {
         message: 'Upstream proxy configuration is invalid.',
+        data: { configCode: 'invalid-input' },
+      });
+    }
+    if (error instanceof InvalidGatewayThinkingBudgetError) {
+      throw new ORPCError('BAD_REQUEST', {
+        message: error.message,
         data: { configCode: 'invalid-input' },
       });
     }

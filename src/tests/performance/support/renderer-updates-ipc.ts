@@ -9,6 +9,7 @@ import type {
   TrafficAuditDetail,
   TrafficAuditBodyDescriptor,
   TrafficAuditBodyPage,
+  TrafficAuditStats,
 } from '@/modules/proxy-gateway/audit/traffic-audit.types';
 import { DEFAULT_WEEKLY_WARMUP_CONFIG } from '@/modules/cloud-account/services/weekly-warmup-contract';
 import type { AgentTool } from '@/modules/proxy-gateway/agent-tools/agent-tools.schema';
@@ -85,7 +86,20 @@ export function releaseFeedbackReads() {
   accountRead.resolve(accounts);
   trafficRead.resolve({ items: trafficItems, total: 100 });
 }
-export const statistics = { rows: 100, databaseBytes: 1024, droppedCount: 0, bodyStoredBytes: 0 };
+export const statistics: TrafficAuditStats = {
+  rows: 100,
+  databaseBytes: 1024,
+  droppedCount: 0,
+  bodyStoredBytes: 0,
+  archives: { status: 'complete', bytes: 0, files: 0 },
+  incompleteBodies: 0,
+  lastDropReason: null,
+  oldestTimestamp: null,
+  workerAlive: true,
+  workerPendingBytes: 0,
+  workerPendingCommands: 0,
+  maintenanceState: 'idle',
+};
 export const desktopPreferences = DesktopPreferencesSchema.strip().parse({
   ...DEFAULT_APP_CONFIG,
   grid_layout: 'list',

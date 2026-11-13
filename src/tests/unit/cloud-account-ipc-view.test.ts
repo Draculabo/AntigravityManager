@@ -44,6 +44,9 @@ function mockAdapter(): CloudAccountAdapter {
     getSecurityStatus: vi.fn(),
     openValidationLink: vi.fn(),
     setProxy: vi.fn(),
+    getAccountProjectId: vi.fn(),
+    setAccountProjectId: vi.fn(),
+    fetchAccountProjectId: vi.fn(),
     delete: vi.fn(),
     listOAuthClients: vi.fn(),
     getActiveOAuthClient: vi.fn(),
@@ -61,6 +64,29 @@ function mockAdapter(): CloudAccountAdapter {
 }
 
 describe('cloud account renderer IPC', () => {
+  it('keeps the Project ID result strict and validates edits before calling the owner', async () => {
+    const adapter = mockAdapter();
+    const accountId = '11111111-1111-4111-8111-111111111111';
+    const client = createRouterClient(cloudRouter);
+    vi.mocked(adapter.getAccountProjectId).mockResolvedValueOnce({ projectId: 'current-project' });
+    vi.mocked(adapter.setAccountProjectId).mockResolvedValueOnce({ projectId: 'new-project' });
+    await expect(client.getAccountProjectId({ accountId })).resolves.toEqual({
+      projectId: 'current-project',
+    });
+    const input = { accountId, expectedProjectId: 'current-project' };
+    await expect(
+      client.setAccountProjectId({ ...input, projectId: ' new-project ' }),
+    ).resolves.toEqual({ projectId: 'new-project' });
+    expect(adapter.setAccountProjectId).toHaveBeenCalledExactlyOnceWith({
+      ...input,
+      projectId: 'new-project',
+    });
+    await expect(
+      client.setAccountProjectId({ ...input, projectId: 'projects/invalid' }),
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    expect(adapter.setAccountProjectId).toHaveBeenCalledTimes(1);
+  });
+
   it('serializes the selected account adapter view for listing', async () => {
     const adapter = mockAdapter();
     vi.mocked(adapter.listViews).mockResolvedValueOnce([

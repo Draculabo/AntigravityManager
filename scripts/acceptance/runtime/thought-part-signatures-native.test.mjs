@@ -3,9 +3,12 @@ import { test } from 'node:test';
 import { createHash } from 'node:crypto';
 import { openWorker } from './diagnostic-worker-fixture.mjs';
 
-for (const operation of ['save', 'ingestHistory']) {
+for (const [operation, signature] of [
+  ['save', 'skip_thought_signature_validator'],
+  ['ingestHistory', 'c2tpcF90aG91Z2h0X3NpZ25hdHVyZV92YWxpZGF0b3I='],
+]) {
   test(
-    `independent part signatures survive actual worker ${operation} and restart`,
+    `actual worker ${operation} omits the placeholder and preserves part signatures across restart`,
     { timeout: 30000 },
     async () => {
       const name = `part-signatures-${operation}`;
@@ -40,7 +43,7 @@ for (const operation of ['save', 'ingestHistory']) {
         createdAt: 1,
         fingerprint: 'parallel',
         model: 'gemini-pro-agent',
-        signature: null,
+        signature,
         partSignatures,
         sourceFamily: 'gemini-pro',
         thought: 'reasoning 中😀  ',
@@ -68,7 +71,7 @@ for (const operation of ['save', 'ingestHistory']) {
       }
       const reopened = openWorker(name, 'thought-store');
       try {
-        const records = await reopened.command('load', { sessionKey: input.sessionKey });
+        const records = await reopened.command('getSession', { sessionKey: input.sessionKey });
         const expected = [
           {
             createdAt: 1,
@@ -88,6 +91,14 @@ for (const operation of ['save', 'ingestHistory']) {
           },
         ];
         assert.deepEqual(records, expected);
+        assert.deepEqual(await reopened.command('load', { sessionKey: input.sessionKey }), [
+          {
+            ...expected[0],
+            partSignatures: partSignatures.map((part) =>
+              part.kind === 'tool' ? { ...part, signature: null } : part,
+            ),
+          },
+        ]);
         await assert.rejects(reopened.command('save', { ...input, partSignatures: undefined }));
         assert.deepEqual(
           await reopened.command('getSession', { sessionKey: input.sessionKey }),

@@ -77,6 +77,9 @@ describe('saved audit export consistency', () => {
       });
       const filePath = path.join(directory, 'saved.txt');
       const owner = createAuditFileOwner({
+        harContent: async function* () {
+          throw new Error('HAR is outside this body fixture');
+        },
         bodyContent: (id) => auditBodyForExport(id, read),
         sessionContent: () => {
           throw new Error('Session export is outside this body fixture');
@@ -130,6 +133,9 @@ describe('saved audit export consistency', () => {
         read.mockResolvedValueOnce(page('abcdef', null)).mockResolvedValue(null);
       }
       const owner = createAuditFileOwner({
+        harContent: async function* () {
+          throw new Error('HAR is outside this body fixture');
+        },
         bodyContent: (id) => auditBodyForExport(id, read),
         sessionContent: () => {
           throw new Error('Session export is outside this body fixture');

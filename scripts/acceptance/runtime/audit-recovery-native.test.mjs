@@ -19,6 +19,10 @@ test('production Worker reconciles old captures, preserves live replacements and
     await audit.command('insertAttempt', {
       accountId: null,
       accountIdHash: null,
+      accountGenerationHash: null,
+      accountSubjectHash: null,
+      accountGrantHash: null,
+      usageScope: null,
       attemptIndex: 1,
       endpoint: 'https://example.test',
       id: 'abandoned-attempt',
@@ -93,7 +97,7 @@ test('production Worker reconciles old captures, preserves live replacements and
     assert.equal((await audit.command('detail', { id: 'live' })).request.id, 'live');
     const db = new Database(audit.databasePath, { readonly: true });
     try {
-      assert.equal(db.pragma('user_version', { simple: true }), 4);
+      assert.equal(db.pragma('user_version', { simple: true }), 7);
       assert.deepEqual(db.pragma('foreign_key_check'), []);
     } finally {
       db.close();

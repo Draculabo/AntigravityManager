@@ -4,6 +4,7 @@ import { TrafficClassSchema } from './traffic-classifier';
 import { UsageRangeWorkerInputSchema } from './usage-range.schema';
 import { UsageTrendsWorkerInputSchema } from './usage-trends.schema';
 import { AuditScopedSessionIdSchema } from './audit-session-export.schema';
+import { UpstreamAttemptTimingSchema } from './upstream-attempt-timing';
 
 const NullableString = z.string().nullable();
 const NullableInteger = z.number().int().nullable();
@@ -89,9 +90,18 @@ export const TrafficAuditWorkerCommandSchema = z.discriminatedUnion('operation',
     payload: z.object({
       accountId: NullableString,
       accountIdHash: NullableString,
-      accountGenerationHash: z.string().regex(/^[a-f0-9]{64}$/u).nullable(),
-      accountSubjectHash: z.string().regex(/^[a-f0-9]{64}$/u).nullable(),
-      accountGrantHash: z.string().regex(/^[a-f0-9]{64}$/u).nullable(),
+      accountGenerationHash: z
+        .string()
+        .regex(/^[a-f0-9]{64}$/u)
+        .nullable(),
+      accountSubjectHash: z
+        .string()
+        .regex(/^[a-f0-9]{64}$/u)
+        .nullable(),
+      accountGrantHash: z
+        .string()
+        .regex(/^[a-f0-9]{64}$/u)
+        .nullable(),
       usageScope: z.enum(['generation', 'non-generation']).nullable(),
       attemptIndex: z.number().int().positive(),
       endpoint: z.string(),
@@ -106,6 +116,7 @@ export const TrafficAuditWorkerCommandSchema = z.discriminatedUnion('operation',
   z.object({
     operation: z.literal('completeAttempt'),
     payload: z.object({
+      timing: UpstreamAttemptTimingSchema.nullable().optional(),
       inputTokens: NullableUsageCount,
       outputTokens: NullableUsageCount,
       cachedTokens: NullableUsageCount,

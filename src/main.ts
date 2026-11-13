@@ -26,7 +26,11 @@ import {
 import { desktopCoreConnection } from '@/modules/app-shell/services/desktop-core-connection';
 import { selectDesktopOwners } from '@/modules/app-shell/services/desktop-owner-selection';
 import { getDesktopStartupErrorTexts } from '@/modules/app-shell/services/desktop-startup-text';
-import { desktopPreferencesStore, getDesktopPreferencesLanguage } from '@/modules/config/ipc/desktop-preferences';
+import {
+  desktopPreferencesStore,
+  getDesktopPreferencesLanguage,
+  getDesktopPreferencesZoom,
+} from '@/modules/config/ipc/desktop-preferences';
 import { createDesktopShutdownCoordinator } from '@/modules/app-shell/services/desktop-shutdown';
 import { ProfileLease, ProfileOwnershipError } from '@/core/ownership/profile-lease';
 import { initDatabase } from '@/modules/account/public';
@@ -43,6 +47,7 @@ import { connectionProfilesOwner } from '@/modules/proxy-gateway/connection-prof
 import { dshOwner } from '@/modules/proxy-gateway/dsh-sync/dsh-owner.service';
 import { localAccountOwner } from '@/modules/account/services/local-account-owner.service';
 import { loadDesktopPreferences } from '@/modules/config/ipc/handlers';
+import { installDesktopMenu } from '@/modules/app-shell/ipc/desktop-menu';
 import { getConfigAdapter } from '@/modules/config/ipc/config-adapter';
 import { errorProcessOwner, errorDiagnosticOwner } from '@/modules/error-diagnostics/public';
 import { serviceConfigService } from '@/modules/config/service-config.service';
@@ -58,6 +63,7 @@ import { createWeeklyWarmupExecutor } from '@/modules/proxy-gateway/weekly-warmu
 import { subscribeSelectedAuditEvents } from '@/modules/proxy-gateway/ipc/audit-presentation';
 import {
   exportSelectedAuditBody,
+  exportSelectedAuditHar,
   exportSelectedAuditSession,
 } from '@/modules/proxy-gateway/ipc/audit-file-desktop';
 
@@ -71,7 +77,10 @@ import {
   setTrayMainWindow,
   isTrayReady,
 } from '@/modules/app-shell/ipc/tray/handler';
-import { restoreExistingWindow } from '@/modules/app-shell/utils/windowActivation';
+import {
+  restoreExistingWindow,
+  restoreHiddenStartupWindow,
+} from '@/modules/app-shell/utils/windowActivation';
 import { rpcHandler } from './ipc/handler';
 import { ConfigManager, ConfigLoadError } from '@/modules/config/ipc/manager';
 import { gatewayLifecycleService } from '@/modules/proxy-gateway/services/gateway-lifecycle.service';
@@ -131,11 +140,6 @@ function logPacket(data: unknown) {
     }
   }
 }
-ipcMain.on(IPC_CHANNELS.CHANGE_LANGUAGE, (event, lang) => {
-  logger.info(`IPC: Received CHANGE_LANGUAGE: ${lang}`);
-  setTrayLanguage(lang);
-});
-
 const gpuSwitchResult = applyStartupGpuSwitches(app, process.platform, process.env);
 if (gpuSwitchResult.disabledHardwareAcceleration || gpuSwitchResult.appliedSwitches.length > 0) {
   logger.info(
@@ -350,6 +354,23 @@ ipcMain.handle(
   },
 );
 
+ipcMain.handle(
+  IPC_CHANNELS.SAVE_TRAFFIC_AUDIT_HAR,
+  async (_event, requestId: string, suggestedName: string) => {
+    return exportSelectedAuditHar(requestId, suggestedName, async (safeName) => {
+      const options = {
+        defaultPath: safeName,
+        title: 'Save traffic HAR',
+        filters: [{ name: 'HTTP Archive', extensions: ['har'] }],
+      };
+      const result = globalMainWindow
+        ? await dialog.showSaveDialog(globalMainWindow, options)
+        : await dialog.showSaveDialog(options);
+      return result.canceled ? null : (result.filePath ?? null);
+    });
+  },
+);
+
 ipcMain.handle(IPC_CHANNELS.GET_OBSERVABILITY_CONFIG, () => {
   return getQuickObservabilityConfig(
     (message, error) => {
@@ -443,6 +464,7 @@ function createWindow({ startHidden }: { startHidden: boolean }) {
     show: !startHidden,
     autoHideMenuBar: true,
     webPreferences: {
+      zoomFactor: getDesktopPreferencesZoom() / 100,
       backgroundThrottling: true,
       devTools: inDevelopment,
       sandbox: true,
@@ -796,6 +818,7 @@ process.on('unhandledRejection', (reason) => {
 app
   .whenReady()
   .then(async () => {
+    installDesktopMenu();
     if (process.platform === 'win32' && process.env.DISABLE_WINDOWS_POWER_THROTTLING === 'true') {
       disableWindowsPowerThrottling()
         .then(() => {
@@ -830,7 +853,10 @@ app
           if (!(error instanceof ConfigLoadError)) {
             throw error;
           }
-          logger.error('Service settings are unavailable; desktop features remain available.', error);
+          logger.error(
+            'Service settings are unavailable; desktop features remain available.',
+            error,
+          );
         }
         if (shouldStartHidden) {
           logger.info('Startup: Auto-start detected, window will start hidden');
@@ -918,8 +944,13 @@ app
   })
   .then(async () => {
     logger.info('Step: Startup Complete');
-    if (globalMainWindow) {
-      initTray(globalMainWindow, requestTrayShutdown);
+    const mainWindow = globalMainWindow;
+    if (mainWindow && !mainWindow.isDestroyed() && !isQuitting) {
+      setTrayLanguage(getDesktopPreferencesLanguage(app.getLocale()));
+      const trayReady = initTray(mainWindow, requestTrayShutdown);
+      if (shouldStartHidden) {
+        restoreHiddenStartupWindow(mainWindow, trayReady);
+      }
     }
     await startAccountOwnerPresentation();
   })

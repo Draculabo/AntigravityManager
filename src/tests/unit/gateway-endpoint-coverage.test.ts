@@ -216,6 +216,11 @@ const CENSUS: readonly CensusEntry[] = [
   },
   {
     method: 'POST',
+    routePath: '/responses',
+    testFile: 'responses-media-http.integration.test.ts',
+  },
+  {
+    method: 'POST',
     routePath: '/v1/images/generations',
     testFile: 'proxy-controller.integration.test.ts',
   },
@@ -346,6 +351,7 @@ describe('gateway endpoint coverage census', () => {
     '/v1/completions',
     '/v1/complete',
     '/v1/responses',
+    '/responses',
     '/v1/messages',
     '/v1/messages/count_tokens',
     '/v1/batches',

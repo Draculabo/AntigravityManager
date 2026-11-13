@@ -77,7 +77,7 @@ describe('desktop OAuth composition', () => {
     expect(JSON.stringify(await result)).not.toMatch(/private-access|private-refresh|private-code/);
     expect(setActiveOAuthClient).toHaveBeenCalledExactlyOnceWith('client-b');
     expect(enrollGoogleAccount).toHaveBeenCalledOnce();
-    expect(notifyTrayUpdate).toHaveBeenCalledExactlyOnceWith(account);
+    expect(notifyTrayUpdate).toHaveBeenCalledExactlyOnceWith();
     expect(reloadNestServerAccountLeaseCache).toHaveBeenCalledOnce();
   });
 });

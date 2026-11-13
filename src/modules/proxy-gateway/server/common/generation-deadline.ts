@@ -8,8 +8,11 @@ import { FlowControlledSseStream } from './flow-controlled-sse-stream';
 import { inheritObservableFlowControl } from './observable-flow-control';
 import { awaitRequestOperation, throwIfRequestAborted } from './request-cancellation';
 import { GenerationDeadlineExceededError } from './exceptions/generation-deadline.exception';
+import { GenerationReplayLimitError } from './exceptions/generation-replay-limit.exception';
 
 const scopes = new WeakMap<AbortSignal, GenerationDeadlineScope>();
+export const LARGE_GENERATION_SEND_BYTES = 4 * 1024 * 1024;
+const LARGE_GENERATION_SEND_LIMIT = 3;
 const streamProgressOrder: Record<GenerationStreamPhase, number> = {
   waiting_for_output: 0,
   thinking_only: 1,
@@ -27,6 +30,7 @@ export class GenerationDeadlineScope {
   private disposed = false;
   private streamPhase: GenerationStreamPhase | undefined;
   private streamTimeoutReported = false;
+  private admittedSends = 0;
 
   constructor(
     timeoutMs: number,
@@ -51,6 +55,16 @@ export class GenerationDeadlineScope {
     if (!this.streamPhase || streamProgressOrder[phase] > streamProgressOrder[this.streamPhase]) {
       this.streamPhase = phase;
     }
+  }
+
+  admitUpstreamSend(serializedBytes: number): void {
+    if (
+      serializedBytes >= LARGE_GENERATION_SEND_BYTES &&
+      this.admittedSends >= LARGE_GENERATION_SEND_LIMIT
+    ) {
+      throw new GenerationReplayLimitError();
+    }
+    this.admittedSends += 1;
   }
 
   deadlineError(): GenerationDeadlineExceededError {
@@ -176,6 +190,10 @@ export class GenerationDeadlineScope {
 
 export function generationDeadlineAt(signal?: AbortSignal): number | undefined {
   return signal ? scopes.get(signal)?.deadlineAt : undefined;
+}
+
+export function admitUpstreamGenerationSend(signal: AbortSignal, serializedBytes: number): void {
+  scopes.get(signal)?.admitUpstreamSend(serializedBytes);
 }
 
 export function observeGenerationStreamProgress(

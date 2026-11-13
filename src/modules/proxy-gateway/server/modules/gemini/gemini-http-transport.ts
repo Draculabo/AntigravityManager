@@ -1,4 +1,5 @@
 import axios, { AxiosError, type AxiosRequestConfig, type AxiosResponse } from 'axios';
+import type { ClientRequest } from 'node:http';
 import { Readable } from 'node:stream';
 import {
   GeminiTransportPool,
@@ -30,6 +31,7 @@ export class GeminiHttpTransport {
     body: unknown,
     options: AxiosRequestConfig & { signal?: AbortSignal },
     onAdmitted?: () => void,
+    observeRequest?: (request: ClientRequest) => void,
   ): Promise<AxiosResponse<T>> {
     throwIfRequestAborted(options.signal);
     const lease = this.pool.acquire(url, options.proxy);
@@ -46,7 +48,7 @@ export class GeminiHttpTransport {
     let responseBody: unknown;
     try {
       onAdmitted?.();
-      const response = await withGeminiConnectionSignal(signal, () =>
+      const response = await withGeminiConnectionSignal({ signal, observeRequest }, () =>
         axios.post<T>(url, body, {
           ...options,
           proxy: false,

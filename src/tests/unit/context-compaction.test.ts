@@ -41,6 +41,8 @@ describe('Cowork context compaction coordination', () => {
       resolveManualCompactionCommand('<system-reminder>x</system-reminder>\n./compact now'),
     ).toBe('./compact now');
     expect(resolveManualCompactionCommand('/compact')).toBe('/compact');
+    expect(resolveManualCompactionCommand('/compact.')).toBe('/compact.');
+    expect(resolveManualCompactionCommand('/compact. followed by prose')).toBeNull();
   });
 
   it('deduplicates concurrent work for one tenant, session and generation', () => {

@@ -14,6 +14,7 @@ import {
 } from '../settings-change';
 import { DEFAULT_CLOUD_ACCOUNT_ALERT_POLICY } from '@/modules/cloud-account/services/cloud-account-alert-policy.schema';
 import type { CloudAccountAlertPolicy } from '@/modules/cloud-account/services/cloud-account-alert-policy.schema';
+import { desktopPreferencesQuery, saveDesktopPreferences } from '../desktop-preferences-client';
 
 const SAVE_DEBOUNCE_MS = 400;
 const emptyChange = (): SettingsChange => ({ service: null, desktop: null, accountAlertPolicy: null });
@@ -23,7 +24,7 @@ type SaveOutcome = { owner: SettingsOwner; state: 'saved' } | { owner: SettingsO
 export function useAppConfig() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const desktop = useQuery({ queryKey: ['desktopPreferences'], queryFn: () => ipc.client.config.desktop.load() });
+  const desktop = useQuery(desktopPreferencesQuery);
   const service = useQuery({ queryKey: ['serviceConfig'], queryFn: () => ipc.client.config.service.read(), retry: false });
   const accountAlertPolicy = useQuery({ queryKey: ['accountAlertPolicy'], queryFn: () => ipc.client.config.accountAlertPolicy.read(), retry: false });
   const [draft, setDraft] = useState<SettingsConfig | null>(null);
@@ -73,8 +74,7 @@ export function useAppConfig() {
             queryClient.setQueryData(['serviceConfig'], applied.snapshot);
             result = { ...result, ...applied.snapshot };
           } else if (owner === 'desktop' && change.desktop) {
-            const saved = await ipc.client.config.desktop.save(change.desktop);
-            queryClient.setQueryData(['desktopPreferences'], saved);
+            const saved = await saveDesktopPreferences(queryClient, change.desktop);
             result = { ...result, ...saved };
           } else if (owner === 'accountAlertPolicy' && change.accountAlertPolicy) {
             if (!accountAlertPolicy.data) {

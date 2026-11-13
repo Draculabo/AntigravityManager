@@ -4,7 +4,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ProxyGuard } from '../../../guards/proxy.guard';
 import { OpenAIOperations, type ResponsesRequestBody } from '../openai-operations.service';
 
-@Controller('v1/responses')
+@Controller(['v1/responses', 'responses'])
 @UseGuards(ProxyGuard)
 export class OpenAIResponsesController {
   public constructor(@Inject(OpenAIOperations) private readonly operations: OpenAIOperations) {}

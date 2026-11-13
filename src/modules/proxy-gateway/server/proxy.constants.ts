@@ -23,6 +23,7 @@ export function isModelPayloadRoute(url: string): boolean {
     url === '/v1/messages' ||
     url === '/v1/messages/count_tokens' ||
     url === '/v1/responses' ||
+    url === '/responses' ||
     url === '/v1/batches' ||
     url === '/v1/messages/batches' ||
     url.startsWith('/v1beta/models/') ||

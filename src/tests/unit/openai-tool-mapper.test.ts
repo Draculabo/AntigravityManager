@@ -24,8 +24,7 @@ describe('OpenAI tool mapper compatibility', () => {
           properties: {
             input: {
               type: 'string',
-              description:
-                'The exact freeform V4A patch text to pass to Codex apply_patch. It must start with *** Begin Patch and end with *** End Patch. Do not wrap it in a shell command or command array.',
+              description: 'Pass the exact freeform text in this field.',
             },
           },
           required: ['input'],

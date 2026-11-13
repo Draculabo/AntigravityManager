@@ -24,9 +24,8 @@ import * as oauthSettings from '@/modules/cloud-account/services/cloud-account-o
 import * as quotaService from '@/modules/cloud-account/services/cloud-account-quota-refresh.service';
 import { cloudAccountWeeklyWarmupRunner } from '@/modules/cloud-account/services/cloud-account-weekly-warmup-runner';
 import { WeeklyWarmupService } from '@/modules/cloud-account/services/WeeklyWarmupService';
-import { CloudAccountSettingsStore } from '@/modules/cloud-account/persistence/cloud-account-settings-store';
 import { readIdeAccountSyncErrorCode } from '@/modules/cloud-account/services/ide-account-sync.schema';
-import { updateTrayMenu } from '@/modules/app-shell/ipc/tray/handler';
+import { refreshTrayAccount } from '@/modules/app-shell/ipc/tray/handler';
 import { readAccountValidationLinkErrorCode } from '@/modules/cloud-account/services/account-validation-link.schema';
 import { desktopOAuthLogin } from '@/modules/cloud-account/ipc/desktop-oauth-login';
 import { GoogleLoginOperation } from '@/modules/cloud-account/services/google-login-operation';
@@ -36,7 +35,7 @@ import { mockCoreGatewayLifecycle } from '../support/core-gateway-lifecycle';
 
 vi.mock('electron', () => ({ shell: { openExternal: vi.fn() } }));
 vi.mock('@/modules/cloud-account/ipc/handler', () => ({}));
-vi.mock('@/modules/app-shell/ipc/tray/handler', () => ({ updateTrayMenu: vi.fn() }));
+vi.mock('@/modules/app-shell/ipc/tray/handler', () => ({ refreshTrayAccount: vi.fn() }));
 
 const closeables: Array<{ close(): Promise<void> }> = [];
 const directories: string[] = [];
@@ -611,14 +610,13 @@ describe('cloud account read adapter', () => {
     const warmup = vi
       .spyOn(cloudAccountWeeklyWarmupRunner, 'schedule')
       .mockImplementation(() => {});
-    vi.spyOn(CloudAccountSettingsStore, 'getSetting').mockReturnValue('en');
     vi.spyOn(cloudAccountListService, 'listViews').mockImplementation(async () => [
       projectCloudAccountView(stored),
     ]);
 
     const embedded = await rendererCloud.refreshAccountQuota({ accountId: stored.id });
     expect(embedded).toEqual(projectCloudAccountView(stored));
-    expect(updateTrayMenu).toHaveBeenCalledOnce();
+    expect(refreshTrayAccount).toHaveBeenCalledExactlyOnceWith();
     expect(warmup).toHaveBeenCalledWith([stored]);
 
     const socketPath = await endpoint();
@@ -644,7 +642,7 @@ describe('cloud account read adapter', () => {
     const remote = await rendererCloud.refreshAccountQuota({ accountId: stored.id });
     expect(remote).toEqual(embedded);
     expect(await rendererCloud.listCloudAccounts()).toEqual([remote]);
-    expect(updateTrayMenu).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(refreshTrayAccount).toHaveBeenCalledTimes(2));
     expect(warmup).toHaveBeenCalledTimes(2);
     expect(refresh).toHaveBeenCalledTimes(2);
     expect(JSON.stringify(remote)).not.toMatch(
@@ -947,6 +945,15 @@ describe('cloud account read adapter', () => {
             throw error;
           }),
           setAccountProxy: vi.fn(async () => {
+            throw error;
+          }),
+          getAccountProjectId: vi.fn(async () => {
+            throw error;
+          }),
+          setAccountProjectId: vi.fn(async () => {
+            throw error;
+          }),
+          fetchAccountProjectId: vi.fn(async () => {
             throw error;
           }),
           deleteCloudAccount: vi.fn(async () => {

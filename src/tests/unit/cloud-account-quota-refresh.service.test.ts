@@ -138,6 +138,8 @@ describe('Node-safe cloud account quota refresh', () => {
       stored.id,
       expect.objectContaining({ refresh_token: 'old-refresh' }),
       result.token,
+      expect.any(Function),
+      true,
     );
     expect(result.token.refresh_token).toBe('new-refresh');
     expect(result.quota?.ai_credits).toEqual({ credits: 4, expiryDate: 'later' });

@@ -1,5 +1,11 @@
 import type { AuditFileOperations } from '@/modules/proxy-gateway/audit/audit-file-owner.service';
-import { GatewayRememberChoiceSchema, GatewayManualStartResultSchema, GatewayManualStopResultSchema, GatewayChoicePersistenceSchema, type GatewayRememberChoice } from '@/modules/proxy-gateway/services/gateway-management.schema';
+import {
+  GatewayRememberChoiceSchema,
+  GatewayManualStartResultSchema,
+  GatewayManualStopResultSchema,
+  GatewayChoicePersistenceSchema,
+  type GatewayRememberChoice,
+} from '@/modules/proxy-gateway/services/gateway-management.schema';
 import {
   PlaygroundExecuteResultSchema,
   PlaygroundCompareResultSchema,
@@ -62,6 +68,12 @@ import { getManagementEndpoint } from '@/core/management/endpoint';
 import { CloudAccountSummarySchema } from '@/modules/cloud-account/services/cloud-account-summary.schema';
 import { CloudAccountViewSchema } from '@/modules/cloud-account/services/cloud-account-view';
 import { CloudAccountMutationResultSchema } from '@/modules/cloud-account/services/cloud-account-mutation.schema';
+import {
+  AccountProjectIdResultSchema,
+  type FetchAccountProjectIdInput,
+  type GetAccountProjectIdInput,
+  type SetAccountProjectIdInput,
+} from '@/modules/cloud-account/services/cloud-account-project-id.schema';
 import {
   CloudAccountRoutingResultSchema,
   type SetCloudAccountRoutingInput,
@@ -208,6 +220,15 @@ export class CoreRpcClient {
     this.errorDiagnostics = createErrorDiagnosticClient(this.accountMutationRpc.errorDiagnostics);
     this.auditCurl = createAuditCurlClient(this.accountMutationRpc.auditCurl);
     this.auditFile = {
+      exportHar: async (input) => {
+        try {
+          return AuditFileExportResultSchema.parse(
+            await this.accountMutationRpc.auditFile.exportHar(input),
+          );
+        } catch {
+          throw new AuditFileOwnerError();
+        }
+      },
       exportSession: async (input) => {
         try {
           return AuditFileExportResultSchema.parse(
@@ -230,7 +251,9 @@ export class CoreRpcClient {
     this.openCode = createOpenCodeClient(this.accountMutationRpc.openCode);
     this.agentTools = createAgentToolsClient(this.accountMutationRpc.agentTools);
     this.clientConfig = createClientConfigClient(this.accountMutationRpc.clientConfig);
-    this.connectionProfiles = createConnectionProfilesClient(this.accountMutationRpc.connectionProfiles);
+    this.connectionProfiles = createConnectionProfilesClient(
+      this.accountMutationRpc.connectionProfiles,
+    );
     this.dsh = {
       status: async (input: DshProfileInput) =>
         DshStatusSchema.parse(await this.accountMutationRpc.dsh.status(input)),
@@ -336,7 +359,9 @@ export class CoreRpcClient {
   }
 
   async manualStartGateway(port: number) {
-    return GatewayManualStartResultSchema.parse(await this.accountMutationRpc.gatewayManualStart({ port }));
+    return GatewayManualStartResultSchema.parse(
+      await this.accountMutationRpc.gatewayManualStart({ port }),
+    );
   }
 
   async manualStopGateway() {
@@ -344,7 +369,11 @@ export class CoreRpcClient {
   }
 
   async retryGatewaySaveChoice(choice: GatewayRememberChoice) {
-    return GatewayChoicePersistenceSchema.parse(await this.accountMutationRpc.gatewayRetrySaveChoice(GatewayRememberChoiceSchema.parse(choice)));
+    return GatewayChoicePersistenceSchema.parse(
+      await this.accountMutationRpc.gatewayRetrySaveChoice(
+        GatewayRememberChoiceSchema.parse(choice),
+      ),
+    );
   }
 
   async stopGateway(): Promise<z.infer<typeof GatewayStopResultSchema>> {
@@ -470,6 +499,18 @@ export class CoreRpcClient {
 
   async setAccountProxy(accountId: string, proxyUrl: string | null): Promise<void> {
     CloudAccountMutationResultSchema.parse(await this.rpc.accountSetProxy({ accountId, proxyUrl }));
+  }
+
+  async getAccountProjectId(input: GetAccountProjectIdInput) {
+    return AccountProjectIdResultSchema.parse(await this.rpc.getAccountProjectId(input));
+  }
+
+  async setAccountProjectId(input: SetAccountProjectIdInput) {
+    return AccountProjectIdResultSchema.parse(await this.accountMutationRpc.setAccountProjectId(input));
+  }
+
+  async fetchAccountProjectId(input: FetchAccountProjectIdInput) {
+    return AccountProjectIdResultSchema.parse(await this.accountMutationRpc.fetchAccountProjectId(input));
   }
 
   async setAccountRouting(input: SetCloudAccountRoutingInput): Promise<void> {

@@ -4,6 +4,7 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TrafficAuditRepository } from '@/modules/proxy-gateway/audit/traffic-audit.repository';
+import { UsageTrendsResultSchema } from '@/modules/proxy-gateway/audit/usage-trends.schema';
 import {
   UsageRangeInputSchema,
   UsageRangeResultSchema,
@@ -129,6 +130,71 @@ afterEach(() => {
   repository?.execute({ operation: 'shutdown', payload: null });
   fs.rmSync(directory, { recursive: true, force: true });
 });
+
+it('counts distinct retained requests by local start day with the selected account and model', () => {
+  const asOf = new Date(2026, 2, 9, 12).getTime();
+  const firstDay = new Date(2026, 1, 8).getTime();
+  const midnight = new Date(2026, 2, 9).getTime();
+  const model = 'claude-sonnet';
+  insert({ timestamp: firstDay - 1 });
+  insert({ timestamp: firstDay });
+  const retried = insert({
+    timestamp: midnight - 1,
+    attempts: [
+      { accountId: 'account-a', model },
+      { accountId: 'account-a', model },
+      { accountId: 'account-b', model },
+    ],
+  });
+  raw.prepare('UPDATE upstream_attempts SET timestamp=? WHERE id=?').run(midnight, `${retried}-1`);
+  const nextDay = insert({ timestamp: midnight });
+  raw.prepare('UPDATE request_logs SET model=? WHERE id=?').run('client-alias', nextDay);
+  insert({ timestamp: midnight, model: 'claude-sonnet-other' });
+  insert({ timestamp: midnight, accountId: 'account-b' });
+  insert({ timestamp: midnight, trafficClass: 'auxiliary' });
+  insert({ timestamp: midnight, attempts: [] });
+  insert({ timestamp: asOf + 1 });
+  insert({ timestamp: asOf });
+
+  const payload = {
+    window: '1h',
+    modelView: 'actual',
+    accountId: 'account-a',
+    model,
+    asOf,
+  } as const;
+  const collapsed = UsageTrendsResultSchema.parse(
+    repository.execute({ operation: 'usageTrends', payload }),
+  );
+  const { activity, ...expanded } = UsageTrendsResultSchema.parse(
+    repository.execute({
+      operation: 'usageTrends',
+      payload: { ...payload, includeActivity: true },
+    }),
+  );
+  expect(collapsed).not.toHaveProperty('activity');
+  expect(expanded).toEqual(collapsed);
+  expect(expanded.totals.requests).toBe(1);
+  expect(activity).toHaveLength(30);
+  expect(activity?.[0]).toEqual({ date: '2026-02-08', requests: 1 });
+  expect(activity?.[1]).toEqual({ date: '2026-02-09', requests: 0 });
+  expect(activity?.slice(-2)).toEqual([
+    { date: '2026-03-08', requests: 1 },
+    { date: '2026-03-09', requests: 2 },
+  ]);
+  expect(activity?.reduce((total, day) => total + day.requests, 0)).toBe(4);
+
+  const requested = UsageTrendsResultSchema.parse(
+    repository.execute({
+      operation: 'usageTrends',
+      payload: { ...payload, modelView: 'requested', model: 'client-alias', includeActivity: true },
+    }),
+  );
+  expect(requested.activity?.filter(({ requests }) => requests > 0)).toEqual([
+    { date: '2026-03-09', requests: 1 },
+  ]);
+});
+
 describe('retained usage range in the native audit repository', () => {
   it('keeps an empty retained range distinct from complete official zero', () => {
     expect(read()).toEqual(empty);

@@ -43,7 +43,11 @@ import {
   restoreCloudIdentityProfileRevision,
 } from '@/modules/cloud-account/services/cloud-account-identity-profile.service';
 
-export interface CloudAccountAdapter {
+import type { CloudAccountProjectIdOperations } from '../services/cloud-account-project-id.schema';
+import { cloudAccountProjectId } from '../services/cloud-account-project-id.service';
+import { logger } from '@/shared/logging/logger';
+
+export interface CloudAccountAdapter extends CloudAccountProjectIdOperations {
   getSwitchStatus(): Promise<CloudAccountSwitchStatus>;
   localImport: LocalAccountImportOwner;
   getAutoSwitchEnabled(): Promise<boolean>;
@@ -105,6 +109,9 @@ type StandaloneCoreCloudAccountClient = Pick<
   | 'accountSecurityStatus'
   | 'resolveAccountValidationUrl'
   | 'setAccountProxy'
+  | 'getAccountProjectId'
+  | 'setAccountProjectId'
+  | 'fetchAccountProjectId'
   | 'deleteCloudAccount'
   | 'listOAuthClients'
   | 'getActiveOAuthClient'
@@ -183,6 +190,7 @@ function createDesktopEmbeddedAdapter(): CloudAccountAdapter {
       await openTrustedAccountValidationUrl(url);
     },
     setProxy: async (accountId, proxyUrl) => CloudAccountRepo.setAccountProxy(accountId, proxyUrl),
+    ...cloudAccountProjectId,
     setRouting: async (accountId, proxyPriority, proxyEnabled) =>
       CloudAccountRepo.setAccountRouting(accountId, proxyPriority, proxyEnabled),
     delete: deleteCloudAccount,
@@ -239,7 +247,13 @@ function createStandaloneCoreAdapter(
     },
     switchAccount: (accountId, appTarget) => client.switchCloudAccount(accountId, appTarget),
     listViews: () => client.accountViews(),
-    refreshQuota: (accountId) => client.refreshAccountQuota(accountId),
+    refreshQuota: async (accountId) => {
+      const account = await client.refreshAccountQuota(accountId);
+      void import('@/modules/app-shell/ipc/tray/handler')
+        .then(({ refreshTrayAccount }) => refreshTrayAccount())
+        .catch(() => logger.warn('Failed to load tray presentation after quota refresh'));
+      return account;
+    },
     clearServiceDisabled: (accountId) => client.clearServiceDisabled(accountId),
     syncFromIde: (appTarget) => client.syncFromIde(appTarget),
     getSecurityStatus: () => client.accountSecurityStatus(),
@@ -249,6 +263,9 @@ function createStandaloneCoreAdapter(
       await openTrustedAccountValidationUrl(url);
     },
     setProxy: (accountId, proxyUrl) => client.setAccountProxy(accountId, proxyUrl),
+    getAccountProjectId: (input) => client.getAccountProjectId(input),
+    setAccountProjectId: (input) => client.setAccountProjectId(input),
+    fetchAccountProjectId: (input) => client.fetchAccountProjectId(input),
     setRouting: async (accountId, proxyPriority, proxyEnabled) => {
       if (!client.setAccountRouting) {
         throw new Error('Standalone core does not support account routing settings');

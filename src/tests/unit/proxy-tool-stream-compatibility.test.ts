@@ -162,8 +162,8 @@ describe('stream options and tool failure through production request paths', () 
     expect(upstream.calls).toEqual([]);
   });
 
-  it('does not send usage or DONE after a stream ends without a terminal reason', async () => {
-    const { sse } = await chat(
+  it('preserves partial text and observed usage when upstream ends without a terminal reason', async () => {
+    const { sse, upstream } = await chat(
       [
         geminiStreamFrame({
           candidates: [{ content: { parts: [{ text: 'partial' }] } }],
@@ -172,9 +172,21 @@ describe('stream options and tool failure through production request paths', () 
       ],
       { include_usage: true },
     );
-    expect(chunks(sse).at(-1)).toMatchObject({ error: { code: 'upstream_interrupted' } });
-    expect(chunks(sse).some((event) => event.choices?.length === 0)).toBe(false);
-    expect(sse).not.toContain('[DONE]');
+    const events = chunks(sse);
+    const choices = events.flatMap((event) => event.choices ?? []);
+    expect(choices.map((choice) => choice.delta.content ?? '').join('')).toBe('partial');
+    expect(choices.flatMap((choice) => choice.finish_reason ?? [])).toEqual(['length']);
+    expect(events.at(-2)).toMatchObject({
+      choices: [{ delta: {}, finish_reason: 'length' }],
+      usage: null,
+    });
+    expect(events.at(-1)).toMatchObject({ choices: [], usage });
+    expect(events.flatMap((event) => event.usage ?? [])).toEqual([usage]);
+    expect(events.every((event) => event.error === undefined)).toBe(true);
+    expect(sse.endsWith('data: [DONE]\n\n')).toBe(true);
+    expect(sse.match(/^data: \[DONE\]$/gm)).toHaveLength(1);
+    expect(upstream.streamGenerateInternal).toHaveBeenCalledTimes(1);
+    expect(upstream.generateInternal).not.toHaveBeenCalled();
   });
 
   it('does not present final usage after a transport error following the finish frame', async () => {

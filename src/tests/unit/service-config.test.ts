@@ -9,6 +9,7 @@ import {
   ServiceConfigUpdateSchema,
   ServiceConfigSnapshotSchema,
   DesktopPreferencesSchema,
+  DesktopPreferencesUpdateSchema,
 } from '@/modules/config/service-config.schema';
 import { splitSettingsChange } from '@/modules/config/settings-change';
 import { mockCoreGatewayLifecycle } from '../support/core-gateway-lifecycle';
@@ -18,7 +19,9 @@ const fixture = vi.hoisted(() => ({
   apply: vi.fn(async () => {}),
   port: 0,
   listenAddress: '',
-  restartFields: vi.fn<(config: import('@/modules/config/types').ProxyConfig) => string[]>(() => []),
+  restartFields: vi.fn<(config: import('@/modules/config/types').ProxyConfig) => string[]>(
+    () => [],
+  ),
   policy: new Map<string, unknown>(),
 }));
 vi.mock('@/modules/cloud-account/persistence/cloud-account-settings-store', () => ({
@@ -128,6 +131,78 @@ async function connected() {
 }
 
 describe('service configuration', () => {
+  it('round trips alias publication through Core and persists route removal without resurrecting legacy projections', async () => {
+    const { client } = await connected();
+    const aliases = [
+      { alias: 'private-fast', target: 'gemini-3-flash', enabled: true, published: false },
+      { alias: 'auto-opus', target: 'auto:claude-opus', enabled: true, published: true },
+      { alias: 'legacy-public', target: 'gemini-3-flash', enabled: true },
+    ];
+    const saved = await client.updateServiceConfig({ proxy: { model_aliases: aliases } });
+    expect(saved.state).toBe('applied');
+    expect(saved.snapshot.proxy.model_aliases).toEqual(aliases);
+    expect((await client.readServiceConfig()).proxy.model_aliases).toEqual(aliases);
+    expect((await readDisk()).proxy.model_aliases).toEqual(aliases);
+    expect((await readDisk()).proxy.custom_mapping).toEqual({
+      'private-fast': 'gemini-3-flash',
+      'auto-opus': 'auto:claude-opus',
+      'legacy-public': 'gemini-3-flash',
+    });
+    const removed = await client.updateServiceConfig({
+      proxy: { model_aliases: [], custom_mapping: {}, anthropic_mapping: {} },
+    });
+    expect(removed.state).toBe('applied');
+    expect(removed.snapshot.proxy.model_aliases).toEqual([]);
+    expect((await readDisk()).proxy.custom_mapping).toEqual({});
+    expect((await client.readServiceConfig()).proxy.model_aliases).toEqual([]);
+  }, 15000);
+
+  it('keeps omitted Cowork fields out of partial configuration writes', () => {
+    const patch = { proxy: { cowork_compaction: { manual_enabled: true } } };
+    expect(ServiceConfigUpdateSchema.parse(patch)).toEqual(patch);
+  });
+
+  it('rejects new zero Gateway budgets over RPC while preserving readable legacy values', async () => {
+    const stored = await readDisk();
+    stored.proxy.thinking_budget.claude_budget = 0;
+    await fs.writeFile(legacy(), JSON.stringify(stored));
+    const { client } = await connected();
+    expect((await client.readServiceConfig()).proxy.thinking_budget.claude_budget).toBe(0);
+    const before = await readDisk();
+    await expect(
+      client.updateServiceConfig({ proxy: { thinking_budget: { claude_high: 0 } } }),
+    ).rejects.toThrow('positive whole number');
+    expect(await readDisk()).toEqual(before);
+    await client.updateServiceConfig({ proxy: { thinking_budget: { control_source: 'client' } } });
+    const clientMode = await readDisk();
+    expect(clientMode.proxy.thinking_budget.claude_budget).toBe(0);
+    await expect(
+      client.updateServiceConfig({ proxy: { thinking_budget: { control_source: 'gateway' } } }),
+    ).rejects.toThrow('positive whole number');
+    expect(await readDisk()).toEqual(clientMode);
+    const saved = await client.updateServiceConfig({
+      proxy: {
+        thinking_budget: { control_source: 'gateway', claude_budget: -1, claude_high: 8192 },
+      },
+    });
+    expect(saved.snapshot.proxy.thinking_budget).toEqual({
+      ...before.proxy.thinking_budget,
+      claude_budget: -1,
+      claude_high: 8192,
+    });
+  }, 15000);
+
+  it('maps a Gateway budget write failure to a fixed invalid-input response through ORPC', async () => {
+    const { serviceConfigService } = await import('@/modules/config/service-config.service');
+    const { createServiceConfigRouter } = await import('@/modules/config/service-config.router');
+    const router = createServiceConfigRouter(serviceConfigService);
+    const before = await readDisk();
+    await expect(
+      call(router.update, { proxy: { thinking_budget: { flash_low: 0 } } }),
+    ).rejects.toMatchObject({ data: { configCode: 'invalid-input' } });
+    expect(await readDisk()).toEqual(before);
+  });
+
   it('persists the API account strategy through real RPC and applies it without changing client auto-switch', async () => {
     const { client } = await connected();
     const { getServerConfig } = await import('@/server/server-config');
@@ -149,6 +224,43 @@ describe('service configuration', () => {
       ServiceConfigUpdateSchema.safeParse({ proxy: { account_selection_strategy: 'invalid' } })
         .success,
     ).toBe(false);
+  }, 15000);
+
+  it('keeps Cowork trust and switches independent across partial RPC updates', async () => {
+    const { client } = await connected();
+    const { getServerConfig } = await import('@/server/server-config');
+    const trustedFingerprints = ['a'.repeat(64)];
+    const expected = {
+      manual_enabled: true,
+      auto_enabled: false,
+      auto_threshold: 85_000,
+      trusted_client_key_hashes: trustedFingerprints,
+    };
+
+    await client.updateServiceConfig({
+      proxy: { cowork_compaction: { manual_enabled: true, auto_threshold: 85_000 } },
+    });
+    const trusted = await client.updateServiceConfig({
+      proxy: { cowork_compaction: { trusted_client_key_hashes: trustedFingerprints } },
+    });
+    expect(trusted.snapshot.proxy.cowork_compaction).toEqual(expected);
+
+    const automatic = await client.updateServiceConfig({
+      proxy: { cowork_compaction: { auto_enabled: true } },
+    });
+    const expectedAutomatic = { ...expected, auto_enabled: true };
+    expect(automatic.state).toBe('applied');
+    expect(automatic.snapshot.proxy.cowork_compaction).toEqual(expectedAutomatic);
+    expect((await readDisk()).proxy.cowork_compaction).toEqual(expectedAutomatic);
+    expect(getServerConfig()?.cowork_compaction).toEqual(expectedAutomatic);
+
+    const revoked = await client.updateServiceConfig({
+      proxy: { cowork_compaction: { trusted_client_key_hashes: [] } },
+    });
+    expect(revoked.snapshot.proxy.cowork_compaction).toEqual({
+      ...expectedAutomatic,
+      trusted_client_key_hashes: [],
+    });
   }, 15000);
 
   it('persists a partial image-window strategy through RPC without changing scheduler concurrency', async () => {
@@ -367,7 +479,9 @@ describe('service configuration', () => {
     );
     fixture.apply.mockResolvedValue(undefined);
     fixture.port = 8045;
-    fixture.restartFields.mockImplementation((proxy) => proxy.port !== fixture.port ? ['proxy.port'] : []);
+    fixture.restartFields.mockImplementation((proxy) =>
+      proxy.port !== fixture.port ? ['proxy.port'] : [],
+    );
     expect((await client.updateServiceConfig({ proxy: { port: 8048 } })).state).toBe(
       'restart-required',
     );
@@ -377,7 +491,9 @@ describe('service configuration', () => {
     const { client } = await connected();
     fixture.port = 8045;
     fixture.listenAddress = '::';
-    fixture.restartFields.mockImplementation((proxy) => proxy.network.lan_access ? [] : ['proxy.network.lan_access']);
+    fixture.restartFields.mockImplementation((proxy) =>
+      proxy.network.lan_access ? [] : ['proxy.network.lan_access'],
+    );
     await client.writeServiceSecret({ name: 'api-key', value: 'fixture-key-private' });
     await client.updateServiceConfig({ proxy: { network: { lan_access: true } } });
     const result = await client.updateServiceConfig({
@@ -589,6 +705,28 @@ describe('service configuration', () => {
     await fs.writeFile(preferences(), '{invalid');
     await expect(desktopPreferencesStore.load()).rejects.toThrow('Desktop preferences are invalid');
     expect(await fs.readFile(preferences(), 'utf8')).toBe('{invalid');
+  });
+
+  it('restores saved appearance, defaults older profiles to 100%, and drops default zoom on reset', async () => {
+    const { configRouter } = await import('@/modules/config/ipc/router');
+    const initial = await call(configRouter.desktop.load, undefined);
+    expect(initial.zoom_percent).toBe(100);
+    expect(await fs.readFile(preferences(), 'utf8')).not.toContain('zoom_percent');
+
+    const saved = await call(configRouter.desktop.save, { language: 'pt_BR', zoom_percent: 125 });
+    expect(saved).toEqual({ ...initial, language: 'pt-BR', zoom_percent: 125 });
+    const { createDesktopPreferencesStore } = await import('@/modules/config/ipc/desktop-preferences');
+    const reopened = createDesktopPreferencesStore(preferences, legacy);
+    expect(await reopened.load()).toEqual(saved);
+    await call(configRouter.desktop.save, { theme: 'dark' });
+    expect((await reopened.load()).zoom_percent).toBe(125);
+
+    expect(DesktopPreferencesUpdateSchema.safeParse({ zoom_percent: 175 }).success).toBe(false);
+    expect((await reopened.load()).zoom_percent).toBe(125);
+    await call(configRouter.desktop.save, { zoom_percent: 100 });
+    expect((await reopened.load()).zoom_percent).toBe(100);
+    const raw = JSON.parse(await fs.readFile(preferences(), 'utf8'));
+    expect(DesktopPreferencesSchema.omit({ zoom_percent: true }).parse(raw.preferences).language).toBe('pt-BR');
   });
 
   it('keeps effective SQLite alert policy independent of stale GUI copies', async () => {

@@ -13,7 +13,9 @@ export function switchCloudAccountForDesktop(
   if (!acceptingSwitches) {
     return Promise.reject(new CloudAccountSwitchError('switch-failed'));
   }
-  const task = switchCloudAccountCore(accountId, appTarget, { onSuccess: notifyTrayUpdate });
+  const task = switchCloudAccountCore(accountId, appTarget, {
+    onSuccess: !appTarget || appTarget === 'classic' ? notifyTrayUpdate : undefined,
+  });
   inFlightSwitches.add(task);
   void task.then(
     () => inFlightSwitches.delete(task),

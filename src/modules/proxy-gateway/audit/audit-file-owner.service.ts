@@ -7,9 +7,10 @@ import {
   AuditFileOwnerError,
   type AuditFileExportInput,
   type AuditSessionFileExportInput,
+  type AuditHarFileExportInput,
 } from './audit-file-owner.schema';
 
-type BodySource = Pick<typeof trafficAuditService, 'bodyContent' | 'sessionContent'>;
+type BodySource = Pick<typeof trafficAuditService, 'bodyContent' | 'sessionContent' | 'harContent'>;
 
 /** File contents stay with the selected owner, including exports above the RPC response cap. */
 export function createAuditFileOwner(source: BodySource = trafficAuditService) {
@@ -28,6 +29,9 @@ export function createAuditFileOwner(source: BodySource = trafficAuditService) {
     },
     exportSession(input: AuditSessionFileExportInput) {
       return exportStream(input.filePath, () => source.sessionContent(input.sessionId));
+    },
+    exportHar(input: AuditHarFileExportInput) {
+      return exportStream(input.filePath, () => source.harContent(input.requestId));
     },
   };
   function exportStream(filePath: string, content: () => AsyncGenerator<string>) {
@@ -86,5 +90,5 @@ export function createAuditFileOwner(source: BodySource = trafficAuditService) {
 export const auditFileOwner = createAuditFileOwner();
 export type AuditFileOperations = Pick<
   ReturnType<typeof createAuditFileOwner>,
-  'exportBody' | 'exportSession'
+  'exportBody' | 'exportSession' | 'exportHar'
 >;

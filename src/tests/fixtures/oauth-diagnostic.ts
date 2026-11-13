@@ -14,6 +14,7 @@ export function loginDiagnostic(
     'login-timeout': 'timed-out',
     'duplicate-account': 'duplicate-account',
     'browser-open-failed': 'unknown',
+    'invalid-manual-input': 'malformed-response',
     'proxy-configuration-invalid': 'proxy-configuration-invalid',
     'login-failed': 'unknown',
   };
@@ -32,6 +33,7 @@ export function loginDiagnostic(
         'login-active',
         'login-cancelled',
         'duplicate-account',
+        'invalid-manual-input',
       ].includes(code)
         ? 'expected-outcome'
         : 'disabled',

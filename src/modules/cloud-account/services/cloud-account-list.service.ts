@@ -1,7 +1,11 @@
 import { getCurrentAccountInfo } from '@/modules/account/public';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import { CloudAccountSettingsStore } from '@/modules/cloud-account/persistence/cloud-account-settings-store';
-import { resolveClientAccountStorage } from '@/modules/antigravity-runtime';
+import {
+  CredentialStoreReadError,
+  readAgyAccountToken,
+  resolveClientAccountStorage,
+} from '@/modules/antigravity-runtime';
 import { backfillMissingOAuthClientKeyForLegacyAccounts } from '@/modules/cloud-account/services/cloud-account-oauth-settings.service';
 import {
   projectCloudAccountView,
@@ -22,12 +26,33 @@ export interface CloudAccountListDependencies {
     target: ListTarget,
   ): Pick<ReturnType<typeof getCurrentAccountInfo>, 'isAuthenticated' | 'email'>;
   usesCredentialStore(target: ListTarget): boolean | Promise<boolean>;
+  readAgyAccountToken: typeof readAgyAccountToken;
   getActiveAccountId(target: ActiveTarget): string;
   warn(message: string, error: unknown): void;
 }
 
 function normalizeAccountEmail(email: string | undefined): string {
   return (email ?? '').trim().toLowerCase();
+}
+
+async function resolveActiveAgyAccountId(
+  accounts: CloudAccount[],
+  deps: CloudAccountListDependencies,
+): Promise<string> {
+  const token = await deps.readAgyAccountToken().catch((error: unknown) => {
+    deps.warn(
+      'Failed to read the agy session file during listing',
+      error instanceof CredentialStoreReadError ? error.code : 'unavailable',
+    );
+    return null;
+  });
+  if (!token) {
+    return deps.getActiveAccountId('agy');
+  }
+  const matches = accounts.filter(
+    (account) => account.provider === 'google' && account.token.refresh_token === token.refreshToken,
+  );
+  return matches.length === 1 ? matches[0].id : '';
 }
 
 /** One list pipeline preserves target-state parity in embedded and standalone runtimes. */
@@ -69,7 +94,7 @@ export function createCloudAccountListService(deps: CloudAccountListDependencies
       }
       const activeIdeAccountId =
         ideUsesCredentialStore || !ideEmail ? deps.getActiveAccountId('ide') : '';
-      const activeAgyAccountId = deps.getActiveAccountId('agy');
+      const activeAgyAccountId = await resolveActiveAgyAccountId(accounts, deps);
 
       return accounts.map((account) => {
         const accountEmail = normalizeAccountEmail(account.email);
@@ -102,6 +127,7 @@ export const cloudAccountListService = createCloudAccountListService({
   getCurrentAccountInfo: (target) => getCurrentAccountInfo(target),
   usesCredentialStore: async (target) =>
     (await resolveClientAccountStorage(target)) === 'credential-store',
+  readAgyAccountToken: () => readAgyAccountToken(),
   getActiveAccountId: (target) => CloudAccountSettingsStore.getActiveAccountIdForTarget(target),
   warn: (message, error) => logger.warn(message, error),
 });

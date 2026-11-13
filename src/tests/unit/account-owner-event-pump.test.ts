@@ -19,7 +19,7 @@ vi.mock('electron', () => ({
     }
   },
 }));
-vi.mock('@/modules/app-shell/ipc/tray/handler', () => ({ updateTrayMenu: effects.tray }));
+vi.mock('@/modules/app-shell/ipc/tray/handler', () => ({ refreshTrayAccount: effects.tray }));
 const view: CloudAccountView = {
   id: 'account-1',
   provider: 'google',
@@ -44,7 +44,7 @@ const batch: AccountOwnerEventBatch = {
     },
     {
       sequence: 3,
-      event: { kind: 'account-switched', accountId: view.id, target: 'agy', reason: 'auto' },
+      event: { kind: 'account-switched', accountId: view.id, target: 'classic', reason: 'auto' },
     },
   ],
 };
@@ -62,12 +62,23 @@ afterEach(async () => {
 });
 
 describe('desktop owner event pump', () => {
-  it('uses current active state for the tray when a historical switch hint arrives', () => {
-    const active = { ...view, id: 'account-2', email: 'active@example.com', is_active: true };
-    presentAccountOwnerEvent(batch.events[2].event, [view, active]);
-    expect(effects.tray).toHaveBeenCalledExactlyOnceWith(active);
-    expect(effects.notifications[0].body).toContain(view.email);
+  it('reconciles Classic switch hints even after the switched account was removed', () => {
+    presentAccountOwnerEvent(batch.events[2].event, []);
+    expect(effects.tray).toHaveBeenCalledExactlyOnceWith();
+    expect(effects.show).not.toHaveBeenCalled();
   });
+
+  it.each(['ide', 'agy'] as const)(
+    'keeps the %s switch notification outside Classic tray state',
+    (target) => {
+      presentAccountOwnerEvent(
+        { kind: 'account-switched', accountId: view.id, target, reason: 'auto' },
+        [view],
+      );
+      expect(effects.tray).not.toHaveBeenCalled();
+      expect(effects.notifications[0].body).toContain(view.email);
+    },
+  );
   it('uses strict owner views to render notifications/tray and suppresses duplicate batches', async () => {
     const readEvents = vi.fn(async () => batch);
     const listViews = vi.fn(async () => [view]);
@@ -90,7 +101,7 @@ describe('desktop owner event pump', () => {
         body: 'Switched account to owner@example.com due to quota limit. Reopen IDE and type "continue" if needed!',
       },
     ]);
-    expect(effects.tray).toHaveBeenCalledExactlyOnceWith(view);
+    expect(effects.tray).toHaveBeenCalledExactlyOnceWith();
     await pump.poll();
     expect(readEvents).toHaveBeenLastCalledWith(epoch, 3);
     expect(listViews).toHaveBeenCalledOnce();

@@ -14,6 +14,10 @@ import { toPublicORPCError } from '@/ipc/router';
 import type { TrafficAuditEvent } from '@/modules/proxy-gateway/audit/traffic-audit.types';
 import type { TrafficAuditService } from '@/modules/proxy-gateway/audit/traffic-audit.service';
 import type { UsageRangeResult } from '@/modules/proxy-gateway/audit/usage-range.schema';
+import type {
+  UsageTrendsInput,
+  UsageTrendsResult,
+} from '@/modules/proxy-gateway/audit/usage-trends.schema';
 import { mockCoreGatewayLifecycle } from '../support/core-gateway-lifecycle';
 
 const id = randomUUID();
@@ -120,6 +124,45 @@ async function remote() {
 }
 
 describe('selected audit owner', () => {
+  it('returns the requested activity window through embedded and standalone owners', async () => {
+    const input: UsageTrendsInput = {
+      window: '1h',
+      modelView: 'actual',
+      accountId: 'account-one',
+      model: 'gemini',
+      includeActivity: true,
+    };
+    const metrics = {
+      requests: 0,
+      attempts: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      incompleteRequests: 0,
+    };
+    const result: UsageTrendsResult = {
+      window: '1h',
+      modelView: 'actual',
+      from: 0,
+      to: 3600000,
+      bucketMs: 60000,
+      coverage: 'retained-local-records',
+      totals: metrics,
+      buckets: [],
+      models: [],
+      modelsTruncated: false,
+      activity: Array.from({ length: 30 }, (_, index) => ({
+        date: `1970-01-${String(index + 1).padStart(2, '0')}`,
+        requests: index === 0 ? 1 : 0,
+      })),
+    };
+    source.usageTrends.mockResolvedValue(result);
+    expect(await owner.usageTrends(input)).toEqual(result);
+    await remote();
+    expect(await getAuditAdapter().usageTrends(input)).toEqual(result);
+    expect(source.usageTrends.mock.calls).toEqual([[input], [input]]);
+  });
+
   it('carries the entire saved-session filter through embedded and standalone owners', async () => {
     const input = {
       limit: 50,

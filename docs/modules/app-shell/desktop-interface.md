@@ -3,6 +3,34 @@
 This reference describes the shared desktop presentation, accounts, Traffic Monitor, Model Playground,
 proxy configuration and settings.
 
+## System tray
+
+The tray shows the Classic client's current account from the selected desktop or standalone
+owner. **Refresh Current Quota** updates that account. **Switch to Next Account** uses the
+existing account order and switches Classic. Refreshing a different account in Manager leaves the
+tray on the Classic account.
+
+The tray shows observed percentages for Gemini Pro, Gemini Flash, Gemini Image and Claude. When
+multiple models contribute to a row, it shows the lowest reported percentage. A reported zero
+stays at 0%. An unavailable row is omitted, with an unknown status if none is available. A
+provider-blocked account shows its blocked status instead.
+
+**Show Main Window** restores a minimized window or shows a hidden one. If a login launch
+requests a hidden start and the native tray fails to initialize, Manager shows the main window
+so it remains reachable.
+
+## Language and interface zoom
+
+Use **Settings → General** to choose the desktop language or interface zoom. The desktop saves
+both preferences before applying them. A failed save leaves the last saved value active and offers
+a retry for the failed selection. The window and tray use the saved language after restart.
+
+The zoom choices are 75%, 90%, 100%, 110%, 125%, and 150%. Use the **View** menu, or press
+Ctrl or Command with `+`, `-`, or `0` to zoom in, zoom out, or restore 100% in the focused window.
+The shortcuts leave text fields and editors to handle their own keys. Existing profiles start at
+100%, and the selected zoom is restored on restart. [Downgrade instructions](../../upgrade-guides/next/desktop-interface-zoom.md)
+cover earlier desktop releases.
+
 ## Visual system
 
 `src/styles/global.css` owns semantic light and dark colors, system font fallbacks and reduced-motion

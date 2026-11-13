@@ -19,7 +19,7 @@ import { isEmpty, isNumber } from 'lodash-es';
 import { Observable } from 'rxjs';
 
 import { ProxyGuard } from '../../guards/proxy.guard';
-import { getConfiguredModelMapping } from '@/modules/config/model-aliases';
+import { getPublishedModelMapping } from '@/modules/config/model-aliases';
 import { FilesService } from '@/modules/proxy-gateway/server/modules/files/files.service';
 import {
   expandFileReferences,
@@ -32,7 +32,10 @@ import { InvalidCountTokensRequestError } from './gemini-count-tokens';
 import { GeminiRequest, GeminiResponse } from '../../common/interfaces/request-interfaces';
 import { getServerConfig } from '../../../../../server/server-config';
 import { getAllDynamicModels } from '../../../antigravity/ModelMapping';
-import { getContextWindow, getMaxOutputTokens } from '../../../antigravity/ModelSpecs';
+import {
+  resolveModelDiscoveryMetadata,
+  tryResolveModelDiscoveryMetadata,
+} from '../../shared/services/model-discovery-metadata';
 import { AccountLeaseService } from '../account-lease/account-lease.service';
 import { resolveUpstreamErrorHttpStatus } from '../../common/upstream-error-http-status';
 import { publicProxyErrorMessage } from '../../common/public-error-message';
@@ -54,6 +57,9 @@ type GeminiModelMetadata = {
   description: string;
   inputTokenLimit: number;
   outputTokenLimit: number;
+  supports_images?: boolean;
+  supports_thinking?: boolean;
+  capability_source?: 'provider-catalog';
   supportedGenerationMethods: string[];
   temperature: number;
   topK: number;
@@ -321,26 +327,44 @@ export class GeminiController {
     const collectedModelIds = onlyRawQuotaModels
       ? this.accountLeaseService?.getAllRawQuotaModels()
       : this.accountLeaseService?.getAllCollectedModels();
+    const physicalIds = new Set(collectedModelIds);
     const dynamicModelIds = getAllDynamicModels(
-      getConfiguredModelMapping(config),
-      collectedModelIds,
+      getPublishedModelMapping(config),
+      physicalIds,
       onlyRawQuotaModels,
     );
 
-    const mapping = getConfiguredModelMapping(config);
-    return dynamicModelIds.map((id) =>
-      this.toGeminiModelMetadata(`models/${id}`, mapping[id] ?? id),
-    );
+    return dynamicModelIds.flatMap((id) => {
+      const metadata = tryResolveModelDiscoveryMetadata(
+        id,
+        this.accountLeaseService,
+        config,
+        physicalIds.has(id),
+      );
+      return metadata ? [this.toGeminiModelMetadata(`models/${id}`, metadata)] : [];
+    });
   }
 
-  private toGeminiModelMetadata(modelName: string, limitModel: string): GeminiModelMetadata {
+  private toGeminiModelMetadata(
+    modelName: string,
+    limits: ReturnType<typeof resolveModelDiscoveryMetadata>,
+  ): GeminiModelMetadata {
     const displayName = modelName.replace(/^models\//, '');
     return {
       name: modelName,
       displayName,
       description: '',
-      inputTokenLimit: getContextWindow(limitModel),
-      outputTokenLimit: getMaxOutputTokens(limitModel),
+      inputTokenLimit: limits.context,
+      outputTokenLimit: limits.output,
+      ...(limits.capabilities.supports_images !== undefined
+        ? { supports_images: limits.capabilities.supports_images }
+        : {}),
+      ...(limits.capabilities.supports_thinking !== undefined
+        ? { supports_thinking: limits.capabilities.supports_thinking }
+        : {}),
+      ...(Object.keys(limits.capabilities).length
+        ? { capability_source: 'provider-catalog' as const }
+        : {}),
       supportedGenerationMethods: ['generateContent', 'countTokens'],
       temperature: 1,
       topK: 64,

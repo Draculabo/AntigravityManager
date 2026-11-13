@@ -27,11 +27,12 @@ import {
 import { AnthropicService } from './anthropic.service';
 import { setProxyResponseTimingHeaders } from '../../common/proxy-response-timing';
 import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
-import { getConfiguredModelMapping } from '@/modules/config/model-aliases';
+import { getPublishedModelMapping } from '@/modules/config/model-aliases';
 import { GenerationDeadlineScope } from '../../common/generation-deadline';
 import { awaitRequestOperation } from '../../common/request-cancellation';
 import { getServerConfig } from '@/server/server-config';
 import { getAllDynamicModels } from '@/modules/proxy-gateway/antigravity/ModelMapping';
+import { tryResolveModelDiscoveryMetadata } from '../../shared/services/model-discovery-metadata';
 import {
   CoworkCompactionControl,
   isCoworkLocalAcknowledgement,
@@ -113,10 +114,19 @@ export class AnthropicController extends BaseProxyController {
     const dynamicModelIds = onlyRawQuotaModels
       ? this.accountLeaseService?.getAllRawQuotaModels()
       : this.accountLeaseService?.getAllCollectedModels();
+    const physicalIds = new Set(dynamicModelIds);
     return getAllDynamicModels(
-      getConfiguredModelMapping(config),
-      dynamicModelIds,
+      getPublishedModelMapping(config),
+      physicalIds,
       onlyRawQuotaModels,
+    ).filter(
+      (id) =>
+        tryResolveModelDiscoveryMetadata(
+          id,
+          this.accountLeaseService,
+          config,
+          physicalIds.has(id),
+        ) !== undefined,
     );
   }
 
@@ -149,14 +159,21 @@ export class AnthropicController extends BaseProxyController {
         deadline.signal,
       );
 
-      if (isCoworkLocalAcknowledgement(result)) {
-        res.header('X-AGM-Response-Source', 'local_compaction_acknowledgement');
-      }
-
+      const acknowledgementSource = isCoworkLocalAcknowledgement(result)
+        ? 'local_compaction_acknowledgement'
+        : undefined;
       if (body.stream && this.isObservableLike(result)) {
-        this.writeSseResponse(res, deadline.retainObservable(result), true);
+        const stream = deadline.retainObservable(result);
+        if (acknowledgementSource) {
+          // The SSE writer hijacks Fastify and writes the raw response headers.
+          res.raw.setHeader('X-AGM-Response-Source', acknowledgementSource);
+        }
+        this.writeSseResponse(res, stream, true);
         return;
       } else {
+        if (acknowledgementSource) {
+          res.header('X-AGM-Response-Source', acknowledgementSource);
+        }
         setProxyResponseTimingHeaders(res, req);
         res.status(HttpStatus.OK).send(result);
       }

@@ -191,6 +191,7 @@ describe('Responses continuation across a restart', () => {
     expect(before.handleChatCompletions.mock.calls[0]?.[3]).toEqual({
       identity: writer.get(previousResponseId)?.identity,
       mediaAdmitted: true,
+      mediaWindowProtectLatestUserTurn: true,
       requestSessionId: previousResponseId,
       responseId: previousResponseId,
       routingSessionId: previousResponseId,
@@ -214,6 +215,7 @@ describe('Responses continuation across a restart', () => {
     expect(after.handleChatCompletions.mock.calls[0]?.[3]).toEqual({
       identity: writer.get(previousResponseId)?.identity,
       mediaAdmitted: true,
+      mediaWindowProtectLatestUserTurn: true,
       requestSessionId: previousResponseId,
       responseId: childResponseId,
       routingSessionId: previousResponseId,
@@ -233,6 +235,7 @@ describe('Responses continuation across a restart', () => {
     expect(root.handleChatCompletions.mock.calls[0]?.[3]).toEqual({
       identity: writer.get(rootResponseId)?.identity,
       mediaAdmitted: true,
+      mediaWindowProtectLatestUserTurn: true,
       requestSessionId: rootResponseId,
       responseId: rootResponseId,
       routingSessionId: 'client-routing',

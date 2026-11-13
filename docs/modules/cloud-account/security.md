@@ -60,6 +60,19 @@ key material. Moving the file does not restore provider access or prove that its
 
 ## OAuth enrollment and client selection
 
+The manual fallback accepts a raw authorization code, a once-encoded raw code, a callback URL or
+a query fragment. Transport validates a bounded string; the selected session owner parses its
+meaning. Raw codes retain literal `+`. Callback/query data requires one code or denial result
+and one state matching the current pending session. Duplicate fields, malformed encoding,
+missing/mismatched state and invalid code input are rejected before single-use admission, so a
+user can correct the input and try again. A matching denial follows the existing
+`authorization-denied` terminal path without enrollment.
+
+The pasted URL supplies code/state data only. It cannot replace the session's captured OAuth
+client or exact token-exchange redirect. The automatic listener and accepted manual completion
+still share one admission, cleanup and final-outcome owner. Desktop and standalone Core upgrade
+together for this input contract; see the [same-release guide](../../upgrade-guides/next/desktop-core-project-id.md).
+
 Google login in both the standalone core and Electron main uses a loopback-only callback listener
 owned by the account runtime. Each
 session has a random single-use OAuth state, a bounded lifetime and an exact redirect URI shared
@@ -74,14 +87,12 @@ The printed URL must be opened in a browser on the same machine because its redi
 
 The desktop opens its authorization URL in the system browser after validating its trusted Google
 origin. Its renderer RPC returns only a strict cloud-account view or a stable, value-free failure
-category. The manual fallback accepts a user-pasted authorization code through a strict, bounded
-renderer request only while a login is pending. The selected owner exchanges it with the session's
-exact client and redirect URI; the code is neither persisted nor logged, and no code appears in a
-response or presentation event. Callback and manual completion consume the same session at most
-once. Authorization URLs, session IDs, CSRF state, automatically received callback codes and tokens never cross the
-preload/renderer boundary. In remote adapter mode, the private management endpoint starts and
+category. The manual fallback passes bounded text to the selected owner while login is pending.
+The manual submission route bypasses payload capture, and its responses omit pasted data.
+Authorization URLs, session IDs, CSRF state and callback codes generated or received by the
+owner stay on the owner side of the preload boundary. In remote adapter mode, the private management endpoint starts and
 polls the core-owned session; its optional bounded OAuth client key is captured in the same start
-request. Its manual completion endpoint accepts only a bounded code for a live session. Electron persists the selected preference through core RPC, then passes the explicit key
+request. Its manual completion endpoint accepts bounded input for a live session. Electron persists the selected preference through core RPC, then passes the explicit key
 to session start so another preference change cannot alter the exchange client. A desktop failure
 or quit cancels only its pending core session; cancellation never interrupts an enrollment already
 admitted by the core. The former fixed-port callback listener and renderer code-delivery channel

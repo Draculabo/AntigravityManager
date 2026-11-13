@@ -311,35 +311,26 @@ describe('AccountLeaseSelectionPolicy', () => {
     expect(getRemainingWaitSeconds).toHaveBeenCalledWith('acc-2', 'gemini-3.1-flash-image');
   });
 
-  it('favors higher target-model quota without excluding unknown or empty quota accounts', async () => {
-    const policy = new AccountLeaseSelectionPolicy();
-    const request = createRequest({
-      model: 'gemini-3-pro',
-      getModelQuota: (_accountId, token) => (token.email.startsWith('one') ? 90 : 0),
-    });
+  it.each([
+    { quotaAware: true, expected: ['acc-1', 'acc-1', 'acc-1', 'acc-2', 'acc-1'] },
+    { quotaAware: false, expected: ['acc-1', 'acc-2', 'acc-1', 'acc-2', 'acc-1'] },
+  ])(
+    'rotates accounts with known positive or unknown quota and skips depleted accounts (weighted=$quotaAware)',
+    async ({ quotaAware, expected }) => {
+      const policy = new AccountLeaseSelectionPolicy();
+      const quotaByAccount = new Map([
+        ['acc-0', 0],
+        ['acc-1', 90],
+      ]);
+      const request = createRequest({
+        model: 'gemini-3-pro',
+        getModelQuota: (accountId) => quotaByAccount.get(accountId),
+        config: createConfig({ quotaAwareSchedulingEnabled: quotaAware }),
+      });
+      request.allTokens.push(['acc-0', { email: 'depleted@example.com' }]);
 
-    const selections = await Promise.all(
-      Array.from({ length: 4 }, () => policy.selectCandidate(request)),
-    );
-    expect(selections.map((entry) => entry?.[0])).toEqual(['acc-1', 'acc-1', 'acc-1', 'acc-2']);
-
-    policy.resetSelectionState();
-    const unknownQuota = await policy.selectCandidate({
-      ...request,
-      getModelQuota: () => undefined,
-    });
-    expect(unknownQuota?.[0]).toBe('acc-1');
-  });
-
-  it('falls back to ordinary rotation when quota-aware scheduling is disabled', async () => {
-    const policy = new AccountLeaseSelectionPolicy();
-    const request = createRequest({
-      model: 'gemini-3-pro',
-      getModelQuota: (_accountId, token) => (token.email.startsWith('one') ? 90 : 0),
-      config: createConfig({ quotaAwareSchedulingEnabled: false }),
-    });
-    const first = await policy.selectCandidate(request);
-    const second = await policy.selectCandidate(request);
-    expect([first?.[0], second?.[0]]).toEqual(['acc-1', 'acc-2']);
-  });
+      const selections = await Promise.all(expected.map(() => policy.selectCandidate(request)));
+      expect(selections.map((entry) => entry?.[0])).toEqual(expected);
+    },
+  );
 });

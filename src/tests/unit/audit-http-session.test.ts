@@ -16,8 +16,11 @@ import {
   getProxyResponseTimingContext,
   type TrafficAuditRequestContext,
 } from '@/modules/proxy-gateway/audit/traffic-audit-context';
-import { resolveLineageAccountAffinity } from '@/modules/proxy-gateway/server/common/signature-session-scope';
-import { resolveOpenAISessionScope } from '@/modules/proxy-gateway/server/common/signature-session-scope';
+import {
+  resolveLineageAccountAffinity,
+  resolveOpenAISessionScope,
+  resolveResponsesSessionScope,
+} from '@/modules/proxy-gateway/server/common/signature-session-scope';
 import { thoughtCaptureLeases } from '@/modules/proxy-gateway/thought-store/thought-capture-leases';
 import { createThoughtSessionKey } from '@/modules/proxy-gateway/audit/traffic-audit-http-metadata';
 let app: FastifyInstance;
@@ -64,6 +67,42 @@ it('uses the canonical D03 hint and credential scope, never the response header'
     }),
   ).not.toBe(first);
 });
+it('keeps the full child identity in HTTP audit and signature recovery', async () => {
+  const authorization = 'Bearer synthetic-tenant';
+  const request = {
+    model: 'fixture',
+    messages: [{ role: 'user' as const, content: 'Shared task' }],
+  };
+  const ids = ['batch:step:1', 'batch:step:2'];
+  const headers = ids.map((id) => ({ authorization, 'x-session-id': id }));
+  const [first, second] = headers.map((header) => resolveOpenAISessionScope(request, header));
+
+  expect(first.affinityKey).toBe(second.affinityKey);
+  expect(first.storeKey).not.toBe(second.storeKey);
+  expect(first.cacheKey).not.toBe(second.cacheKey);
+  expect(first.auditKey).not.toBe(second.auditKey);
+  expect(await key(headers[0])).toBe(first.auditKey);
+  expect(await key(headers[1])).toBe(second.auditKey);
+
+  const controls = [
+    { authorization, 'x-session-id': 'batch:step:one' },
+    { authorization, 'x-session-id': 'other:step:1' },
+    { authorization, 'x-client-session-id': ids[0] },
+    { authorization: 'Bearer another-tenant', 'x-session-id': ids[0] },
+    { 'x-session-id': ids[0] },
+  ];
+  for (const header of controls) {
+    expect(resolveOpenAISessionScope(request, header).affinityKey).not.toBe(first.affinityKey);
+  }
+
+  const restored = resolveResponsesSessionScope(request, ids[0], { authorization }, undefined, {
+    origin: 'client',
+    initialTaskFingerprint: 'original-task',
+  });
+  expect(restored.affinityKey).toBe(first.auditKey);
+  expect(restored.hint.source).toBe('restored-lineage');
+});
+
 it('keeps distinct Unicode client IDs separate rather than sanitizing them into one session', async () => {
   const first = await key({ authorization: 'Bearer synthetic-key' }, { session_id: '会话甲' });
   const second = await key({ authorization: 'Bearer synthetic-key' }, { session_id: '会话乙' });

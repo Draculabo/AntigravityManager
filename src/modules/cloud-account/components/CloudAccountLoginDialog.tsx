@@ -20,9 +20,13 @@ function loginFailureDescription(error: unknown, t: TFunction): string {
     diagnostic &&
     (diagnostic.accountCommit === 'confirmed' ||
       diagnostic.accountCommit === 'uncertain' ||
-      !['duplicate-account', 'authorization-denied', 'login-active', 'login-cancelled'].includes(
-        loginCode,
-      ))
+      ![
+        'duplicate-account',
+        'authorization-denied',
+        'login-active',
+        'login-cancelled',
+        'invalid-manual-input',
+      ].includes(loginCode))
   ) {
     return getLocalizedErrorMessage(error, t);
   }

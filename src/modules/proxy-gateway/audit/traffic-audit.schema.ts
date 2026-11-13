@@ -65,6 +65,7 @@ export const upstreamAttempts = sqliteTable(
     attemptIndex: integer('attempt_index').notNull(),
     timestamp: integer('timestamp').notNull(),
     completedAt: integer('completed_at'),
+    timingJson: text('timing_json'),
     operation: text('operation').notNull(),
     endpoint: text('endpoint').notNull(),
     accountId: text('account_id'),

@@ -8,6 +8,7 @@ import path from 'node:path';
 import { build, loadConfigFromFile } from 'vite';
 import { c as archiveTar, x as extractTar } from 'tar';
 import { pipeline } from 'node:stream/promises';
+import { seedNativeBootstrapDiagnostic } from './seed-native-bootstrap-diagnostic.mjs';
 
 const project = process.cwd();
 assert(
@@ -130,6 +131,7 @@ try {
     [path.join(root, 'cli', 'main.cjs'), manifest.cliSha256],
     [path.join(root, 'core', 'traffic-audit.worker.js'), manifest.auditWorkerSha256],
     [path.join(root, 'core', 'thought-store.worker.js'), manifest.thoughtWorkerSha256],
+    [path.join(root, 'core', 'error-window.worker.js'), manifest.errorWindowWorkerSha256],
   ]) {
     await verifyFile(file, expected);
   }
@@ -151,6 +153,7 @@ try {
   console.log('Installed SQLite WAL/reopen and real OS credential CRUD/restart passed.');
 
   const core = path.join(root, 'core');
+  await seedNativeBootstrapDiagnostic(home, path.join(core, 'error-window.worker.js'));
   const loaded = await loadConfigFromFile(
     { command: 'build', mode: 'production' },
     path.join(project, 'vite.core.config.mts'),

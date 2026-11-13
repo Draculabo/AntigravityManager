@@ -155,9 +155,7 @@ describe('ModelRoutingService', () => {
     );
     const sameTarget = new ModelRoutingService();
 
-    expect(sameTarget.resolveModelRoute('CASE-MODEL').resolvedModel).toBe(
-      'gemini-3.1-pro-high',
-    );
+    expect(sameTarget.resolveModelRoute('CASE-MODEL').resolvedModel).toBe('gemini-3.1-pro-high');
 
     setServerConfig(
       createProxyConfig({
@@ -263,6 +261,70 @@ describe('ModelRoutingService', () => {
     });
     expect(policy.createModelSpecificHeaders('gemini-3-flash')).toEqual({});
     expect(policy.createModelSpecificHeaders(undefined)).toEqual({});
+  });
+
+  it('keeps exact configured replacements ahead of retirement but protects retirement from wildcards', () => {
+    updateDynamicForwardingRules('d08-retired', 'gemini-3.1-pro-high');
+    const policy = new ModelRoutingService();
+    setServerConfig(
+      createProxyConfig({
+        model_aliases: [
+          { alias: 'd08-retired', target: 'gemini-3.1-pro-low', enabled: true },
+          { alias: 'd08-*', target: 'gemini-3-flash', enabled: true },
+        ],
+      }),
+    );
+    expect(policy.resolveModelRoute('d08-retired')).toEqual({
+      requestedModel: 'd08-retired',
+      normalizedModel: 'd08-retired',
+      resolvedModel: 'gemini-3.1-pro-low',
+      source: 'configured',
+      match: 'exact',
+      matchedRule: { alias: 'd08-retired', target: 'gemini-3.1-pro-low' },
+    });
+    setServerConfig(
+      createProxyConfig({
+        model_aliases: [{ alias: 'd08-*', target: 'gemini-3-flash', enabled: true }],
+      }),
+    );
+    expect(policy.resolveModelRoute('d08-retired')).toEqual({
+      requestedModel: 'd08-retired',
+      normalizedModel: 'd08-retired',
+      resolvedModel: 'gemini-3.1-pro-high',
+      source: 'dynamic-legacy',
+      match: 'dynamic-forwarding',
+    });
+  });
+
+  it('routes known Claude context suffixes without advertising a larger context', () => {
+    setServerConfig(
+      createProxyConfig({
+        model_aliases: [{ alias: 'claude-opus-4.6', target: 'claude-sonnet-4-6', enabled: true }],
+      }),
+    );
+    const policy = new ModelRoutingService();
+    for (const suffix of ['[1m]', '[200k]', '[128k]']) {
+      expect(policy.resolveTargetModel(`claude-opus-4-6${suffix}`)).toBe('claude-sonnet-4-6');
+    }
+    expect(policy.resolveTargetModel('custom-model[1m]')).toBe('custom-model[1m]');
+    setServerConfig(
+      createProxyConfig({
+        model_aliases: [
+          { alias: 'claude-opus-4-6[1m]', target: 'gemini-3.1-pro-low', enabled: true },
+          { alias: 'claude-opus-4-6', target: 'claude-sonnet-4-6', enabled: true },
+        ],
+      }),
+    );
+    expect(policy.resolveTargetModel('claude-opus-4-6[1m]')).toBe('gemini-3.1-pro-low');
+    expect(
+      policy.createModelSpecificHeaders('claude-sonnet-4-6', [
+        'context-1m-2025-08-07,unknown-client-beta',
+        'interleaved-thinking-2025-05-14',
+      ]),
+    ).toEqual({
+      'anthropic-beta':
+        'claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14',
+    });
   });
 });
 

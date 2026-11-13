@@ -2,6 +2,25 @@
 
 This reference owns audit/Thought retention, content capabilities, coding-tool files and local media access. The [global security reference](../../security.md) owns trust and validation rules.
 
+## Query credential metadata
+
+Gemini query-key admission uses the existing proxy credential identity. Normalization happens at
+the HTTP ingress before gzip admission and audit session resolution; downstream owners do not
+reparse the URL independently. The route scope and precedence are defined in the
+[compatibility reference](compatibility.md#gemini-query-credentials).
+
+Audit URL/query metadata, historical metadata read projections, cURL/HAR export and diagnostic
+text redact query credentials, including percent-encoded parameter names. The URL/query boundary
+treats `key` as a credential without changing ordinary business payload fields with that name.
+Copying cURL with current-key inclusion remains an explicit choice; it cannot restore a captured
+historical URL key. Raw OAuth callback input also remains credential-bearing data and does not
+enter public errors or diagnostic payloads.
+
+These changes do not rewrite historical audit rows, archive files, clipboard history or existing
+backups. Previously captured originals can still contain sensitive values on disk and remain
+subject to the profile's existing access and retention policy. No database migration or durable
+format change is introduced.
+
 ## OpenCode account configuration
 
 OpenCode refresh grants remain inside the selected owner and its existing external plugin account file; this integration does not introduce a Manager-side token-refresh mechanism. Normal responses contain strict status, intentional current configuration location metadata or a bounded redacted preview. Backup contents, backup/temporary locations, OAuth grants and dedicated keys do not cross control transport. OpenCode renderer routes bypass audit middleware. Configuration, local-account and OpenCode public errors preserve only validated closed categories and fixed messages; their IPC error logs omit raw input, values, causes and stacks. External plugin formats, account selection, backup recovery and native dedicated-key storage remain unchanged.
@@ -155,9 +174,17 @@ before accumulating a complete body for clipboard copy.
 Both databases reject unknown future schema versions. Corruption does not trigger automatic
 replacement. An authenticated explicit repair first closes the worker, then preserves the main
 database and WAL/SHM sidecars under a timestamped `.corrupt-*` name before creating a fresh file.
-For this unshipped audit feature, an older audit schema is archived with its WAL/SHM sidecars and
-replaced by an empty schema v4 database. No old audit rows are migrated; the independent Thought
-Store database is untouched.
+Audit schemas 4, 5 and 6 receive an additive schema-7 migration after a verified
+pre-migration SQLite snapshot. Existing requests, attempts and bodies are retained;
+historical attempt timing is unknown. Older prototype layouts retain their separate
+archive-and-rebuild policy. The independent Thought Store is untouched. See the
+[upgrade and recovery guide](../../upgrade-guides/next/physical-attempt-usage.md).
+
+HAR uses saved sanitized capture and the selected audit file owner. It never applies
+the cURL current-credential opt-in. Private user-authored content can remain in
+sanitized bodies. Review exports before sharing. Unknown origin, method and timing,
+partial content and reconstructed SSE are explicitly identified in the
+[export reference](traffic-diagnostics.md#har-export).
 
 ## Coding tool configuration files
 

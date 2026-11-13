@@ -32,13 +32,14 @@ export function isAutoStartLaunch(argv = process.argv) {
 
 function syncWindowsOrMacAutoStart(enabled: boolean) {
   try {
+    const loginItem = { path: process.execPath, args: [AUTO_START_ARG] };
     app.setLoginItemSettings({
       openAtLogin: enabled,
       openAsHidden: enabled,
-      path: process.execPath,
-      args: enabled ? [AUTO_START_ARG] : [],
+      path: loginItem.path,
+      args: enabled ? loginItem.args : [],
     });
-    const settings = app.getLoginItemSettings();
+    const settings = app.getLoginItemSettings(process.platform === 'win32' ? loginItem : undefined);
     if (settings.openAtLogin !== enabled) {
       logger.warn(
         `AutoStart: Login item mismatch (expected ${enabled}, actual ${settings.openAtLogin})`,

@@ -58,11 +58,37 @@ function readBytes(row: SizeRow): number {
 export class ThoughtStoreReads {
   constructor(private readonly orm: ThoughtDatabase) {}
 
-  assertSelectionBudget(where: SQL | undefined, maximum: number): void {
-    const rows = this.orm.select(selection).from(thinkingRecords).where(where).limit(257).all();
-    if (rows.length > 256 || rows.reduce((total, row) => total + readBytes(row), 0) > maximum) {
+  loadCandidatesById(sessionKey: string, orderedIds: readonly number[]) {
+    if (orderedIds.length === 0) {
+      return [];
+    }
+    const where = and(
+      eq(thinkingRecords.sessionKey, sessionKey),
+      inArray(thinkingRecords.id, orderedIds),
+    );
+    const sizes = this.orm.select(selection).from(thinkingRecords).where(where).all();
+    if (sizes.reduce((total, row) => total + readBytes(row), 0) > 64 * 1024 * 1024) {
       throw new ThoughtReadBudgetError();
     }
+    const rows = new Map(this.selectRows(where).map((row) => [row.id, row]));
+    return orderedIds.flatMap((id) => {
+      const row = rows.get(id);
+      if (!row) {
+        return [];
+      }
+      const record = decodeThoughtRow(row);
+      assertThoughtReplyBudget([record]);
+      return [record];
+    });
+  }
+
+  private selectRows(where: SQL | undefined) {
+    return this.orm
+      .select()
+      .from(thinkingRecords)
+      .where(where)
+      .orderBy(asc(thinkingRecords.id))
+      .all();
   }
 
   assertMatchBudget(sessionKey: string, targetId: number | undefined, limit: number): void {
@@ -127,15 +153,9 @@ export class ThoughtStoreReads {
     const records =
       ids.length === 0
         ? []
-        : this.orm
-            .select()
-            .from(thinkingRecords)
-            .where(
-              and(eq(thinkingRecords.sessionKey, sessionKey), inArray(thinkingRecords.id, ids)),
-            )
-            .orderBy(asc(thinkingRecords.id))
-            .all()
-            .map(decodeThoughtRow);
+        : this.selectRows(
+            and(eq(thinkingRecords.sessionKey, sessionKey), inArray(thinkingRecords.id, ids)),
+          ).map(decodeThoughtRow);
     assertThoughtReplyBudget(records);
     // Reads remain available under disk pressure; generation-time access is a separate admitted write.
     return records;

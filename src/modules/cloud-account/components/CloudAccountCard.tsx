@@ -57,6 +57,7 @@ import { useState, useRef } from 'react';
 import { useAccountModelAvailability } from '../hooks/useAccountModelAvailability';
 import { ipc } from '@/ipc/manager';
 import { CloudAccountProxyDialog } from '@/modules/cloud-account/components/CloudAccountProxyDialog';
+import { CloudAccountProjectIdDialog } from '@/modules/cloud-account/components/CloudAccountProjectIdDialog';
 import { getCloudAccountBlockedStatusLabel } from '@/modules/cloud-account/utils/accountValidationStatus';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { AccountTierBadge } from '@/modules/cloud-account/components/AccountTierBadge';
@@ -1009,6 +1010,9 @@ export function CloudAccountCard({
             </TooltipProvider>
           </div>
 
+          {account.provider === 'google' && (
+            <CloudAccountProjectIdDialog accountId={account.id} email={account.email} />
+          )}
           <CloudAccountProxyDialog
             accountId={account.id}
             configured={account.proxy_configured}
@@ -1380,6 +1384,9 @@ export function CompactCloudAccountCard({
           </DropdownMenu>
         </div>
 
+        {account.provider === 'google' && (
+          <CloudAccountProjectIdDialog accountId={account.id} email={account.email} />
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="h-7 w-7 cursor-pointer rounded-full">

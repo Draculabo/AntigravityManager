@@ -447,6 +447,18 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
       !(this.recoveryJournal && isAccountOAuthRecoveryBlocked(accountId, this.recoveryJournal));
   }
 
+
+  replaceAccountToken(account: CloudAccount): void {
+    if (account.health?.oauth?.refresh_blocked) {
+      this.evictAccount(account.id);
+      return;
+    }
+    this.hydrationPolicy.invalidateProject(account.id);
+    this.quotaRecoveryPolicy.cancel(this.tokens.get(account.id));
+    this.tokenCache.replaceAccountToken(account);
+    this.restoreMemoryQuarantines();
+  }
+
   /** Permanent deletion releases owned state; OAuth quarantine intentionally preserves it. */
   forgetDeletedAccount(accountId: string): void {
     this.evictAccount(accountId);
@@ -553,7 +565,12 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
     physicalTarget = false,
   ): number {
     const accountId = this.resolveAccountId(accountIdOrEmail) ?? accountIdOrEmail;
-    return this.getAccountRouteWait(accountId, normalizeModelId(model) ?? model, effort, physicalTarget);
+    return this.getAccountRouteWait(
+      accountId,
+      normalizeModelId(model) ?? model,
+      effort,
+      physicalTarget,
+    );
   }
 
   getMinimumRateLimitWaitForPool(options?: {
@@ -569,8 +586,15 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
         (tokenData.validation_blocked_until_ms === undefined ||
           now >= tokenData.validation_blocked_until_ms),
     );
-    const waits = this.selectModelCapableAccounts(availableAccounts, model, options?.effort, options?.physicalTarget)
-      .map(([accountId]) => this.getAccountRouteWait(accountId, model, options?.effort, options?.physicalTarget))
+    const waits = this.selectModelCapableAccounts(
+      availableAccounts,
+      model,
+      options?.effort,
+      options?.physicalTarget,
+    )
+      .map(([accountId]) =>
+        this.getAccountRouteWait(accountId, model, options?.effort, options?.physicalTarget),
+      )
       .filter((waitSeconds) => waitSeconds > 0);
     return waits.length > 0 ? Math.min(...waits) : undefined;
   }
@@ -590,22 +614,30 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
         (token.validation_blocked_until_ms === undefined ||
           now >= token.validation_blocked_until_ms),
     );
-    return this.selectModelCapableAccounts(candidates, options.model, options.effort, options.physicalTarget).filter(
-      ([accountId, token]) => {
-        if (
-          excluded.has(accountId) ||
-          this.isRateLimited(accountId, options.model, options.effort, options.physicalTarget)
-        ) {
-          return false;
-        }
-        const physicalModel = options.model
-          ? this.modelPolicy.resolveDynamicModelForAccount(accountId, options.model, options.effort, options.physicalTarget)
-          : undefined;
-        const normalizedModel = normalizeModelId(physicalModel);
-        const quota = normalizedModel ? token.model_quotas?.[normalizedModel] : undefined;
-        return quota === undefined || !Number.isFinite(quota) || quota > 0;
-      },
-    ).length;
+    return this.selectModelCapableAccounts(
+      candidates,
+      options.model,
+      options.effort,
+      options.physicalTarget,
+    ).filter(([accountId, token]) => {
+      if (
+        excluded.has(accountId) ||
+        this.isRateLimited(accountId, options.model, options.effort, options.physicalTarget)
+      ) {
+        return false;
+      }
+      const physicalModel = options.model
+        ? this.modelPolicy.resolveDynamicModelForAccount(
+            accountId,
+            options.model,
+            options.effort,
+            options.physicalTarget,
+          )
+        : undefined;
+      const normalizedModel = normalizeModelId(physicalModel);
+      const quota = normalizedModel ? token.model_quotas?.[normalizedModel] : undefined;
+      return quota === undefined || !Number.isFinite(quota) || quota > 0;
+    }).length;
   }
 
   /** Observe retry candidates without hydrating accounts or releasing any shared lock. */
@@ -646,7 +678,9 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
       ) {
         return [];
       }
-      return [this.getAccountRouteWait(id, options.model, options.effort, options.physicalTarget) * 1000];
+      return [
+        this.getAccountRouteWait(id, options.model, options.effort, options.physicalTarget) * 1000,
+      ];
     });
     return waits.length === 0 ? null : Math.min(...waits);
   }
@@ -840,7 +874,12 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
           this.logger.warn(`Target account ${targetAccountId} is validation blocked`);
           return null;
         }
-        const capable = this.selectModelCapableAccounts([targetEntry], model, options?.effort, physicalTarget);
+        const capable = this.selectModelCapableAccounts(
+          [targetEntry],
+          model,
+          options?.effort,
+          physicalTarget,
+        );
         if (capable.length === 0) {
           this.logger.warn(
             `Target account ${targetAccountId} does not advertise requested model: ${model ?? 'unknown'}`,
@@ -885,17 +924,31 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
             (!model ||
               !needsQuotaWindowRefresh(
                 tokenData.quota,
-                this.modelPolicy.resolveDynamicModelForAccount(accountId, model, options?.effort, physicalTarget),
+                this.modelPolicy.resolveDynamicModelForAccount(
+                  accountId,
+                  model,
+                  options?.effort,
+                  physicalTarget,
+                ),
               )) &&
             !tokenData.oauth_health?.refresh_blocked &&
             (tokenData.validation_blocked_until_ms === undefined ||
               Date.now() >= tokenData.validation_blocked_until_ms) &&
-            this.selectModelCapableAccounts([[accountId, tokenData]], model, options?.effort, physicalTarget)
-              .length > 0,
+            this.selectModelCapableAccounts(
+              [[accountId, tokenData]],
+              model,
+              options?.effort,
+              physicalTarget,
+            ).length > 0,
           getWeeklyQuotaResetAt: (accountId, tokenData, requestedModel, observedAt) =>
             getWeeklyQuotaResetAt(
               tokenData.quota,
-              this.modelPolicy.resolveDynamicModelForAccount(accountId, requestedModel, options?.effort, physicalTarget),
+              this.modelPolicy.resolveDynamicModelForAccount(
+                accountId,
+                requestedModel,
+                options?.effort,
+                physicalTarget,
+              ),
               observedAt,
             ),
           getModelQuota: (accountId, tokenData, requestedModel) => {
@@ -915,7 +968,8 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
           accountCooldowns: this.accountCooldowns,
           rateLimitTracker: {
             isRateLimited: (accountId, requestedModel) =>
-              this.getAccountRouteWait(accountId, requestedModel, options?.effort, physicalTarget) > 0,
+              this.getAccountRouteWait(accountId, requestedModel, options?.effort, physicalTarget) >
+              0,
             getRemainingWaitSeconds: (accountId, requestedModel) =>
               this.getAccountRouteWait(accountId, requestedModel, options?.effort, physicalTarget),
           },
@@ -948,7 +1002,8 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
                       tokenData.oauth_health?.refresh_blocked ||
                       (tokenData.validation_blocked_until_ms ?? 0) > Date.now() ||
                       (this.accountCooldowns.get(accountId) ?? 0) > Date.now() ||
-                      this.getAccountRouteWait(accountId, model, options?.effort, physicalTarget) > 0
+                      this.getAccountRouteWait(accountId, model, options?.effort, physicalTarget) >
+                        0
                     ) {
                       throw new AccountLeaseStaleTokenError(accountId);
                     }
@@ -963,8 +1018,12 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
             tokenData.oauth_health?.refresh_blocked ||
             (tokenData.validation_blocked_until_ms !== undefined &&
               Date.now() < tokenData.validation_blocked_until_ms) ||
-            this.selectModelCapableAccounts([[accountId, tokenData]], model, options?.effort, physicalTarget)
-              .length === 0
+            this.selectModelCapableAccounts(
+              [[accountId, tokenData]],
+              model,
+              options?.effort,
+              physicalTarget,
+            ).length === 0
           ) {
             return null;
           }
@@ -973,7 +1032,12 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
               token,
               tokenData,
               model
-                ? this.modelPolicy.resolveDynamicModelForAccount(accountId, model, options?.effort, physicalTarget)
+                ? this.modelPolicy.resolveDynamicModelForAccount(
+                    accountId,
+                    model,
+                    options?.effort,
+                    physicalTarget,
+                  )
                 : undefined,
             );
             if (!this.isLeaseEligible(token)) {
@@ -1041,7 +1105,12 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
         continue;
       }
 
-      const availability = this.modelPolicy.getModelAvailabilityForAccount(entry[0], model, effort, physicalTarget);
+      const availability = this.modelPolicy.getModelAvailabilityForAccount(
+        entry[0],
+        model,
+        effort,
+        physicalTarget,
+      );
       if (availability === 'available') {
         compatible.push(entry);
       } else if (availability === 'unknown') {
@@ -1134,6 +1203,47 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
     return this.modelPolicy.getAllRawQuotaModels();
   }
 
+  /** Positive physical evidence only; discovery never leases, refreshes or clears locks. */
+  getAvailableAdaptiveModels(targetAccountId?: string): ReadonlySet<string> {
+    const now = Date.now();
+    const models = new Set<string>();
+    const target = targetAccountId?.trim().toLowerCase();
+    for (const [accountId, token] of this.tokens) {
+      if (
+        (target && target !== accountId.toLowerCase() && target !== token.email?.toLowerCase()) ||
+        token.proxy_enabled === false ||
+        token.oauth_health?.refresh_blocked ||
+        (token.validation_blocked_until_ms !== undefined &&
+          now < token.validation_blocked_until_ms) ||
+        (this.accountCooldowns.get(accountId) ?? 0) > now
+      ) {
+        continue;
+      }
+      for (const { modelId } of this.modelPolicy.getPositiveModelEvidenceFromToken(token)) {
+        const quota = token.model_quotas?.[modelId];
+        if (
+          this.modelPolicy.getExactModelAvailabilityForAccount(
+            accountId,
+            modelId,
+            undefined,
+            true,
+          ) !== 'available' ||
+          this.isRateLimited(accountId, modelId, undefined, true) ||
+          this.rateLimitTracker.hasActiveQuotaLock(accountId, modelId) ||
+          (quota !== undefined && Number.isFinite(quota) && quota <= 0)
+        ) {
+          continue;
+        }
+        models.add(modelId);
+      }
+    }
+    return models;
+  }
+
+  getModelDiscoveryCapabilities(model: string, physicalTarget = false) {
+    return this.modelPolicy.getModelDiscoveryCapabilities(model, physicalTarget);
+  }
+
   private getAvailableModelsFromToken(tokenData: TokenData): Set<string> {
     return this.modelPolicy.getAvailableModelsFromToken(tokenData);
   }
@@ -1148,7 +1258,12 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
     effort?: string,
     physicalTarget = false,
   ): string {
-    return this.modelPolicy.resolveDynamicModelForAccount(accountId, mappedModel, effort, physicalTarget);
+    return this.modelPolicy.resolveDynamicModelForAccount(
+      accountId,
+      mappedModel,
+      effort,
+      physicalTarget,
+    );
   }
 
   getModelOutputLimitForAccount(accountId: string, modelName: string): number | undefined {
@@ -1157,5 +1272,9 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
 
   getModelThinkingBudgetForAccount(accountId: string, modelName: string): number | undefined {
     return this.modelPolicy.getModelThinkingBudgetForAccount(accountId, modelName);
+  }
+
+  getModelThinkingTransportForAccount(accountId: string, modelName: string) {
+    return this.modelPolicy.getModelThinkingTransportForAccount(accountId, modelName);
   }
 }

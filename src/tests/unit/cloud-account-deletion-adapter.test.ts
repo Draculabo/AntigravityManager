@@ -91,6 +91,7 @@ describe('cloud account deletion adapter', () => {
       refreshProcessCache: async () => {},
       getCurrentAccountInfo: () => ({ isAuthenticated: false, email: '' }),
       usesCredentialStore: () => false,
+      readAgyAccountToken: async () => null,
       getActiveAccountId: () => '',
       warn: vi.fn(),
     });

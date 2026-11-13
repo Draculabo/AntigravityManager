@@ -5,6 +5,7 @@ export const LocalAccountDiscoverySourceIdSchema = z.enum([
   'antigravity-classic-db',
   'antigravity-ide-db',
   'legacy-agent',
+  'antigravity-agy-file',
 ]);
 
 export type LocalAccountDiscoverySourceId = z.infer<typeof LocalAccountDiscoverySourceIdSchema>;

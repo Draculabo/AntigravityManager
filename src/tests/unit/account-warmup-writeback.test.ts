@@ -34,7 +34,7 @@ function account(id = 'a'): CloudAccount {
       project_id: 'project-' + id,
     },
     quota: {
-      models: {},
+      models: { 'gemini-3-flash-agent': { percentage: 100, resetTime: '2026-09-01T00:00:00Z' } },
       quota_groups: [
         {
           display_name: 'Gemini Models',

@@ -142,6 +142,34 @@ describe('lease persistence commit guards', () => {
     expect(store.updateToken).toHaveBeenCalledTimes(2);
   });
 
+  it('keeps the manual Project ID when a gateway probe returns later', async () => {
+    const { initial, state, store, upstream } = fixture();
+    initial.token.expiry_timestamp = 4102444800;
+    initial.token.project_id = undefined;
+    state.stored = structuredClone(initial);
+    const started = Promise.withResolvers<void>();
+    const provider = Promise.withResolvers<string>();
+    vi.mocked(upstream.fetchProjectId).mockImplementationOnce(() => {
+      started.resolve();
+      return provider.promise;
+    });
+    const service = new AccountLeaseService(store, upstream);
+    drains.push(() => service.onModuleDestroy());
+    const lease = service.getNextToken();
+    try {
+      await Promise.race([started.promise, lease]);
+      const manual = { ...initial, token: { ...initial.token, project_id: 'manual-project' } };
+      state.stored = structuredClone(manual);
+      service.replaceAccountToken(manual);
+    } finally {
+      provider.resolve('stale-probe');
+    }
+    await lease;
+    expect(await service.getNextToken()).toMatchObject({ token: { project_id: 'manual-project' } });
+    expect(state.stored?.token.project_id).toBe('manual-project');
+    expect(store.updateToken).not.toHaveBeenCalled();
+  });
+
   it('rejects validation writes and leaves replacement eligibility intact when the row changes in the health queue', async () => {
     const { initial, state, store, upstream } = fixture();
     initial.token.expiry_timestamp = 4102444800;

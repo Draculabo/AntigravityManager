@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { AuditUsage } from './audit-usage';
+import { UpstreamAttemptTimingSchema, type UpstreamAttemptTiming } from './upstream-attempt-timing';
 
 import { TrafficClassSchema, type TrafficClass } from './traffic-classifier';
 
@@ -80,6 +81,7 @@ export interface StartUpstreamAttemptInput {
 }
 
 export interface CompleteUpstreamAttemptInput {
+  timing?: UpstreamAttemptTiming | null;
   usage?: AuditUsage;
   error?: unknown;
   outcome: AuditOutcome;
@@ -205,6 +207,7 @@ export const TrafficAuditRequestDetailSchema = z.object({
 });
 
 export const TrafficAuditAttemptDetailSchema = z.object({
+  timing: UpstreamAttemptTimingSchema.nullable().optional(),
   accountId: z.string().nullable(),
   accountIdHash: z.string().nullable(),
   attemptIndex: z.number().int().nonnegative(),

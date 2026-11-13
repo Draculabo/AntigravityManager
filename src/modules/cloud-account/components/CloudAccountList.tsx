@@ -38,6 +38,7 @@ import {
   CloudAccountLoadingState,
 } from '@/modules/cloud-account/components/CloudAccountListFallbacks';
 import { CloudAccountListSummary } from '@/modules/cloud-account/components/CloudAccountListSummary';
+import { CloudAccountRecommendation } from '@/modules/cloud-account/components/CloudAccountRecommendation';
 import { CloudAccountToolbar } from '@/modules/cloud-account/components/CloudAccountToolbar';
 import type { QuotaWindow } from '@/modules/cloud-account/utils/quota-groups';
 import {
@@ -68,6 +69,7 @@ function CloudAccountListContent() {
   const {
     data: accounts,
     isLoading,
+    isFetching,
     isError,
     error,
     errorUpdatedAt,
@@ -115,6 +117,7 @@ function CloudAccountListContent() {
   };
 
   const currentSort: AccountSortKey = (config?.account_sort as AccountSortKey) || 'recently-used';
+  const [recommendationTarget, setRecommendationTarget] = useState<AntigravityAppTarget>('classic');
 
   const {
     sortedAccounts,
@@ -126,7 +129,7 @@ function CloudAccountListContent() {
     visibleAccountIds,
     poolSummary,
     setPoolScope,
-  } = useCloudAccountListView(accounts, config, currentSort);
+  } = useCloudAccountListView(accounts, config, currentSort, recommendationTarget);
 
   const { refreshSelectedAccounts, deleteSelectedAccounts } = useCloudAccountBatchActions({
     visibleAccountIds,
@@ -386,6 +389,20 @@ function CloudAccountListContent() {
         onQuotaGroupVisibilityChange={setQuotaGroupVisibility}
         onToggleMinimalMode={setIsMinimalMode}
       />
+
+      {Boolean(accounts?.length) && (
+        <CloudAccountRecommendation
+          appTarget={recommendationTarget}
+          recommendation={manualRecommendation}
+          recommendedEmail={
+            sortedAccounts.find((account) => account.id === manualRecommendation?.accountId)?.email
+          }
+          isSwitching={switchMutation.isPending}
+          isRefreshingAccounts={isFetching}
+          onTargetChange={setRecommendationTarget}
+          onSwitch={handleSwitch}
+        />
+      )}
 
       <CloudAccountGrid
         accounts={sortedAccounts}

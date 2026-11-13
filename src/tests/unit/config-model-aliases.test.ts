@@ -2,9 +2,16 @@ import { describe, expect, it } from 'vitest';
 
 import {
   getConfiguredModelMapping,
+  getPublishedModelMapping,
+  isModelAliasPublished,
   migrateLegacyModelAliases,
 } from '@/modules/config/model-aliases';
-import { DEFAULT_APP_CONFIG, type ProxyConfig } from '@/modules/config/types';
+import {
+  DEFAULT_APP_CONFIG,
+  ModelAliasRouteSchema,
+  type ProxyConfig,
+} from '@/modules/config/types';
+import { ServiceConfigUpdateSchema } from '@/modules/config/service-config.schema';
 
 function proxyConfig(overrides: Partial<ProxyConfig>): ProxyConfig {
   return { ...DEFAULT_APP_CONFIG.proxy, ...overrides };
@@ -97,6 +104,36 @@ describe('migrateLegacyModelAliases', () => {
     expect(migrateLegacyModelAliases(once)).toEqual(once);
   });
 
+  it('preserves explicit publication through migration and the full legacy generation projection', () => {
+    const once = migrateLegacyModelAliases(
+      proxyConfig({
+        model_aliases: [
+          { alias: 'private-fast', target: 'gemini-3-flash', enabled: true, published: false },
+          { alias: 'adaptive', target: 'auto:claude-opus', enabled: true, published: true },
+        ],
+        custom_mapping: {
+          'private-fast': 'gemini-3-flash',
+          'legacy-exact': 'gemini-3-flash',
+          'legacy-*': 'gemini-3-flash',
+          'legacy-auto': 'auto:claude-opus',
+        },
+      }),
+    );
+    expect(migrateLegacyModelAliases(once)).toEqual(once);
+    expect(getPublishedModelMapping(once)).toEqual({
+      adaptive: 'auto:claude-opus',
+      'legacy-exact': 'gemini-3-flash',
+    });
+    expect(getConfiguredModelMapping(once)).toEqual(once.custom_mapping);
+    expect(once.custom_mapping).toEqual({
+      'private-fast': 'gemini-3-flash',
+      adaptive: 'auto:claude-opus',
+      'legacy-exact': 'gemini-3-flash',
+      'legacy-*': 'gemini-3-flash',
+      'legacy-auto': 'auto:claude-opus',
+    });
+  });
+
   it('survives legacy fields that are not objects', () => {
     const migrated = migrateLegacyModelAliases(
       proxyConfig({
@@ -106,6 +143,52 @@ describe('migrateLegacyModelAliases', () => {
     );
 
     expect(migrated.model_aliases).toEqual([]);
+  });
+});
+
+describe('alias publication', () => {
+  it.each([
+    ['exact', 'gemini-3-flash', undefined, true],
+    ['exact', 'gemini-3-flash', false, false],
+    ['fast-*', 'gemini-3-flash', true, false],
+    ['auto:claude-opus', 'gemini-3-flash', true, false],
+    ['adaptive', 'auto:claude-opus', undefined, false],
+    ['adaptive', 'auto:claude-opus', true, true],
+  ])('resolves %s -> %s publication %s to %s', (alias, target, published, expected) => {
+    expect(isModelAliasPublished({ alias, target, published })).toBe(expected);
+  });
+
+  it('does not let a derived legacy mapping re-expose hidden or disabled routes', () => {
+    const config = proxyConfig({
+      custom_mapping: { hidden: 'gemini-3-flash', disabled: 'gemini-3-flash' },
+      model_aliases: [
+        { alias: 'hidden', target: 'gemini-3-flash', enabled: true, published: false },
+        { alias: 'disabled', target: 'gemini-3-flash', enabled: false, published: true },
+      ],
+    });
+    expect(getPublishedModelMapping(config)).toEqual({});
+    expect(getConfiguredModelMapping(config).hidden).toBe('gemini-3-flash');
+  });
+
+  it('accepts both old and additive publication contracts at durable and management boundaries', () => {
+    const old = { alias: 'fast', target: 'gemini-3-flash', enabled: true };
+    expect(ModelAliasRouteSchema.parse(old)).toEqual(old);
+    for (const published of [true, false]) {
+      const route = { ...old, published };
+      expect(ModelAliasRouteSchema.parse(route)).toEqual(route);
+      expect(ServiceConfigUpdateSchema.parse({ proxy: { model_aliases: [route] } })).toEqual({
+        proxy: { model_aliases: [route] },
+      });
+    }
+    expect(ServiceConfigUpdateSchema.parse({ proxy: { model_aliases: [old] } })).toEqual({
+      proxy: { model_aliases: [old] },
+    });
+    expect(ModelAliasRouteSchema.safeParse({ ...old, published: 'false' }).success).toBe(false);
+    expect(
+      ServiceConfigUpdateSchema.safeParse({
+        proxy: { model_aliases: [{ ...old, published: 'false' }] },
+      }).success,
+    ).toBe(false);
   });
 });
 

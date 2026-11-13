@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { and, asc, eq, inArray, type SQL } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { thinkingRecords, thoughtStoreSchema } from './thought-store.schema';
 import { ThoughtStoreReads } from './thought-store-reads';
@@ -16,51 +16,49 @@ export const ThoughtCandidateInputSchema = z.object({
 });
 export type ThoughtCandidateInput = z.infer<typeof ThoughtCandidateInputSchema>;
 
+const MAX_PER_ANCHOR = 64;
+const MAX_CANDIDATES = 256;
+
 /** Complete bounded candidate sets: overflow must never look like one unique owner. */
 export function queryThoughtCandidates(
   orm: BetterSQLite3Database<typeof thoughtStoreSchema>,
   reads: ThoughtStoreReads,
   input: ThoughtCandidateInput,
 ) {
-  const ids: number[] = [];
-  for (const anchor of new Set(input.anchors)) {
-    const candidates = orm
-      .select({ id: thinkingRecords.id })
-      .from(thinkingRecords)
-      .where(
-        and(
-          eq(thinkingRecords.sessionKey, input.sessionKey),
-          eq(thinkingRecords.causalAnchor, anchor),
-        ),
-      )
-      .orderBy(asc(thinkingRecords.id))
-      .limit(65)
-      .all();
-    if (candidates.length > 64 || ids.length + candidates.length > 256) {
+  const idsByAnchor = new Map<string, number[]>(input.anchors.map((anchor) => [anchor, []]));
+  const candidates = orm
+    .select({ id: thinkingRecords.id, anchor: thinkingRecords.causalAnchor })
+    .from(thinkingRecords)
+    .where(
+      and(
+        eq(thinkingRecords.sessionKey, input.sessionKey),
+        inArray(thinkingRecords.causalAnchor, [...idsByAnchor.keys()]),
+      ),
+    )
+    .limit(MAX_CANDIDATES + 1)
+    .all();
+  if (candidates.length > MAX_CANDIDATES) {
+    throw new ThoughtReadBudgetError();
+  }
+  for (const { id, anchor } of candidates) {
+    const ids = anchor === null ? undefined : idsByAnchor.get(anchor);
+    if (!ids || ids.length >= MAX_PER_ANCHOR) {
       throw new ThoughtReadBudgetError();
     }
-    ids.push(...candidates.map((row) => row.id));
+    ids.push(id);
   }
-  if (ids.length === 0) {
-    return [];
-  }
-  const where: SQL | undefined = and(
-    eq(thinkingRecords.sessionKey, input.sessionKey),
-    inArray(thinkingRecords.id, ids),
-  );
-  reads.assertSelectionBudget(where, 64 * 1024 * 1024);
-  const records = ids.flatMap((id) => {
-    const record = reads.getRecord(input.sessionKey, id);
-    return record &&
-      record.captureState === 'complete' &&
-      Boolean(record.operationId) &&
-      Boolean(record.causalAnchor) &&
-      record.completedAt !== null &&
-      record.completedAt !== undefined &&
-      areThoughtRecordModelsCompatible(record, input)
-      ? [record]
-      : [];
-  });
+  const orderedIds = [...idsByAnchor.values()].flatMap((ids) => ids.sort((a, b) => a - b));
+  const records = reads
+    .loadCandidatesById(input.sessionKey, orderedIds)
+    .filter(
+      (record) =>
+        record.captureState === 'complete' &&
+        Boolean(record.operationId) &&
+        Boolean(record.causalAnchor) &&
+        record.completedAt !== null &&
+        record.completedAt !== undefined &&
+        areThoughtRecordModelsCompatible(record, input),
+    );
   assertThoughtReplyBudget(records);
   return records;
 }

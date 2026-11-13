@@ -135,7 +135,7 @@ jobs:
       contents: read
 
     steps:
-      - name: Checkout git repo
+      - name: Checkout build revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.resolve.outputs.source }}
@@ -244,9 +244,17 @@ jobs:
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
 
+      - name: Checkout manifest tools
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .release-tools
+          persist-credentials: false
+          sparse-checkout: scripts/release
+
       - name: Write build source manifest
         run: >
-          node scripts/release/build-source-manifest.mjs
+          node .release-tools/scripts/release/build-source-manifest.mjs
           --root .
           --directory out/make
           --output out/make/build-source-${{ matrix.platform }}-${{ matrix.arch }}.json
@@ -318,7 +326,13 @@ jobs:
         run: pnpm install --frozen-lockfile --prod=false --ignore-scripts
 
       - name: Validate build source manifests
-        run: node scripts/release/build-source-manifest.mjs --root . --validate-directory release-assets
+        env:
+          SOURCE_SHA: ${{ needs.resolve.outputs.source }}
+          PACKAGE_VERSION: ${{ needs.resolve.outputs.version }}
+        run: >
+          node scripts/release/build-source-manifest.mjs
+          --root . --validate-directory release-assets
+          --source-sha "$SOURCE_SHA" --version "$PACKAGE_VERSION"
 
       - name: Test Windows update feed generation
         run: pnpm run test:acceptance installers feed

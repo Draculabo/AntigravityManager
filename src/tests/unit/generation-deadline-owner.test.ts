@@ -3,6 +3,7 @@ import { performance } from 'node:perf_hooks';
 import { Observable } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  admitUpstreamGenerationSend,
   runGenerationWithDeadline,
   generationAttemptTimeout,
   GenerationDeadlineScope,
@@ -16,6 +17,24 @@ afterEach(() => {
 });
 
 describe('Logical generation deadline ownership', () => {
+  it('shares admitted sends with nested recovery and only limits large current bodies', async () => {
+    const threshold = 4 * 1024 * 1024;
+    await runGenerationWithDeadline(1000, undefined, async (signal) => {
+      admitUpstreamGenerationSend(signal, threshold - 1);
+      admitUpstreamGenerationSend(signal, threshold - 1);
+      await runGenerationWithDeadline(1000, signal, async (retrySignal) => {
+        admitUpstreamGenerationSend(retrySignal, threshold);
+        expect(() => admitUpstreamGenerationSend(retrySignal, threshold)).toThrow(
+          'The generation replay limit for large upstream requests was reached.',
+        );
+        expect(() => admitUpstreamGenerationSend(retrySignal, threshold - 1)).not.toThrow();
+      });
+    });
+    await runGenerationWithDeadline(1000, undefined, async (signal) => {
+      expect(() => admitUpstreamGenerationSend(signal, threshold)).not.toThrow();
+    });
+  });
+
   it('does not round the transport timeout ahead of the owning deadline', () => {
     const now = vi.spyOn(performance, 'now').mockReturnValue(1000);
     const owner = new GenerationDeadlineScope(1000);

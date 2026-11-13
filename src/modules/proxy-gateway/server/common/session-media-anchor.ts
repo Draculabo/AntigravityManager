@@ -50,7 +50,8 @@ const AUDIO_FORMAT_MIME_TYPES: Readonly<Record<string, string>> = {
   'x-aiff': 'audio/aiff',
 };
 
-const BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u;
+// Avoid repeated groups: valid multi-MiB media can exhaust the RegExp engine's stack.
+const BASE64_PATTERN = /^[A-Za-z0-9+/]*={0,2}$/u;
 const MIME_TYPE_PATTERN = /^(?:image|audio|video|application)\/[a-z0-9!#$&^_.+-]+$/u;
 
 export function hasOnlySessionFields(value: object, fields: string[]): boolean {
@@ -134,7 +135,7 @@ function inlineMediaAnchor(mime: string, data: string): SessionTaskPart | undefi
   if (mimeType.startsWith('image/')) {
     return imageAnchor(mime, data);
   }
-  if (!BASE64_PATTERN.test(data)) {
+  if (data.length % 4 !== 0 || !BASE64_PATTERN.test(data)) {
     return undefined;
   }
   return {
@@ -159,6 +160,7 @@ function parseBase64DataUrl(value: string): { mimeType: string; data: string } |
     !metadata.slice(1).some((parameter) => parameter.toLowerCase() === 'base64') ||
     !canonicalMediaType(mimeType) ||
     !data ||
+    data.length % 4 !== 0 ||
     !BASE64_PATTERN.test(data)
   ) {
     return undefined;
@@ -344,7 +346,7 @@ function openAIVideoUrlTask(value: OpenAIContentPart['video_url']): SessionTaskP
   if (value.url.startsWith('http://') || value.url.startsWith('https://')) {
     return dataUrlOrReference('video', value.url, mimeType, ['http:', 'https:']);
   }
-  if (BASE64_PATTERN.test(value.url)) {
+  if (value.url.length % 4 === 0 && BASE64_PATTERN.test(value.url)) {
     const inferred = inferredVideoMimeType(value.url);
     return inferred === 'ambiguous'
       ? undefined

@@ -4,6 +4,8 @@ export function isAuditManagementIpc(path: string): boolean {
     path === 'proc/isProcessRunning' ||
     path === 'gateway/status' ||
     path === 'gateway/modelAvailability' ||
+    // Manual authorization material must reach its session owner without audit payload capture.
+    path === 'cloud/submitAuthCode' ||
     path.startsWith('gateway/audit') ||
     path.startsWith('gateway/thought') ||
     path.startsWith('config/') ||

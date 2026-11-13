@@ -76,6 +76,8 @@ export interface ClaudeRequestMapperOptions {
   signatureTargetFamily?: string | null;
   signatureTargetFamilyModel?: string | null;
   mediaWindow?: ImageSchedulerConfig;
+  /** Responses protects the latest user request together with its following tool round. */
+  mediaWindowProtectLatestUserTurn?: true;
   purpose?: 'generation' | 'count';
 }
 
@@ -169,7 +171,10 @@ export function transformClaudeRequestIn(
     !claudeReq.thinking && shouldEnableThinkingByDefault(requestConfig.finalModel, claudeReq.model);
   let isThinkingEnabled =
     !clientDisabled &&
-    (thinkingType === 'enabled' || thinkingType === 'adaptive' || autoThinkingEnabled || clientControlled);
+    (thinkingType === 'enabled' ||
+      thinkingType === 'adaptive' ||
+      autoThinkingEnabled ||
+      clientControlled);
 
   if (isThinkingEnabled && !targetModelSupportsThinking(requestConfig.finalModel)) {
     logger.warn(
@@ -214,6 +219,9 @@ export function transformClaudeRequestIn(
   }
 
   // 2. Contents (Messages)
+  const protectedMediaContents = options.mediaWindowProtectLatestUserTurn
+    ? new Set<number>()
+    : undefined;
   const mappedContents = buildContents(
     messages,
     isThinkingEnabled,
@@ -221,12 +229,19 @@ export function transformClaudeRequestIn(
     signatureSessionKey,
     options.signatureTargetFamily,
     options.signatureTargetFamilyModel,
+    protectedMediaContents,
   );
+  if (protectedMediaContents) {
+    // Resolve protection before generation cleanup can remove empty message positions.
+    applyGeminiMediaSendWindow(mappedContents, options.mediaWindow, protectedMediaContents);
+  }
   const contents =
     options.purpose === 'count'
       ? mappedContents
       : prepareGoogleGenerationContents(mappedContents, requestConfig.finalModel);
-  applyGeminiMediaSendWindow(contents, options.mediaWindow);
+  if (!protectedMediaContents) {
+    applyGeminiMediaSendWindow(contents, options.mediaWindow);
+  }
 
   // 3. Tools
   const tools = buildTools(claudeReq.tools, hasWebSearchTool, requestConfig.finalModel, options);
@@ -743,8 +758,19 @@ function buildContents(
   signatureSessionKey?: string,
   signatureTargetFamily?: string | null,
   signatureTargetFamilyModel?: string | null,
+  protectedMediaContents?: Set<number>,
 ): GeminiContent[] {
   const contents: GeminiContent[] = [];
+  const currentUserIndex = protectedMediaContents
+    ? messages.findLastIndex(
+        (message) =>
+          message.role === 'user' &&
+          !(
+            Array.isArray(message.content) &&
+            message.content.some((block) => block.type === 'tool_result')
+          ),
+      )
+    : -1;
   const toolAssociation = new ClaudeToolResultAssociation();
   let missingSignature: { model: string; toolCallId: string } | null = null;
 
@@ -813,11 +839,11 @@ function buildContents(
         const cachedSignature = block.signature
           ? null
           : SignatureStore.getForToolCall({
-            ...signatureTarget,
-            toolCallId: block.id,
-            toolName: block.name,
-            sessionKey: signatureSessionKey,
-          });
+              ...signatureTarget,
+              toolCallId: block.id,
+              toolName: block.name,
+              sessionKey: signatureSessionKey,
+            });
         if (!block.signature) {
           recordThoughtRestoreOutcome(
             cachedSignature ? 'signatureCacheHits' : 'signatureCacheMisses',
@@ -901,6 +927,9 @@ function buildContents(
     }
     parts.push(...deferredToolResponses, ...deferredToolMedia);
     if (parts.length > 0) {
+      if (protectedMediaContents && currentUserIndex >= 0 && i >= currentUserIndex) {
+        protectedMediaContents.add(contents.length);
+      }
       contents.push({ role, parts });
     }
   }

@@ -40,7 +40,7 @@ test('account and request dialogs preserve keyboard flows in desktop windows', a
     await page.keyboard.press('Enter');
     let dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
-    const code = page.getByLabel('授权码', { exact: true });
+    const code = page.getByLabel('授权码或回调地址', { exact: true });
     await expect(code).not.toBeVisible();
     await dialog.locator('summary').focus();
     await page.keyboard.press('Enter');

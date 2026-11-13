@@ -95,10 +95,13 @@ export function omitMediaBeforeLatestUserTurn(items: unknown[]): unknown[] {
   return items.map(cloneResponsesValue);
 }
 
-/** Returns the newest user turn for current-request hard media validation. */
-export function latestUserTurnForMediaValidation(items: unknown[]): unknown[] {
+/** The latest user request and its following tool round form one protected operation. */
+export function resolveResponsesMediaTurn(items: unknown[]): {
+  items: unknown[];
+  hasUserMessage: boolean;
+} {
   const index = items.findLastIndex(isUserMessage);
-  return index < 0 ? items : [items[index]];
+  return { items: index < 0 ? items : items.slice(index), hasUserMessage: index >= 0 };
 }
 
 /** Removes raw inline media from durable Responses history while retaining a small marker. */
@@ -110,7 +113,10 @@ export function boundResponsesInputItems(items: unknown[]): unknown[] {
 }
 
 /** Validates every current inline Responses image, including images nested in tool outputs. */
-export function validateResponsesInputImageLimits(input: unknown): void {
+export function validateResponsesInputImageLimits(
+  input: unknown,
+  mode: 'aggregate' | 'per-image' = 'aggregate',
+): void {
   let imageCount = 0;
   let totalBytes = 0;
 
@@ -142,7 +148,11 @@ export function validateResponsesInputImageLimits(input: unknown): void {
       }
 
       imageCount += 1;
-      const parsed = parseInputImageDataUrl(imageUrl, imageCount, totalBytes);
+      const parsed = parseInputImageDataUrl(
+        imageUrl,
+        mode === 'per-image' ? 1 : imageCount,
+        mode === 'per-image' ? 0 : totalBytes,
+      );
       totalBytes += parsed.decodedBytes;
       return;
     }

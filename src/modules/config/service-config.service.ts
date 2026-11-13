@@ -6,6 +6,8 @@ import {
   AuditConfigConflictError,
   ServiceRuntimeSchema,
   ServiceConfigUpdateSchema,
+  GatewayThinkingBudgetPatchSchema,
+  InvalidGatewayThinkingBudgetError,
   ServiceSecretWriteSchema,
   type ServiceConfigSnapshot,
   type ServiceConfigUpdate,
@@ -280,6 +282,19 @@ export function createServiceConfigService(
         patch.proxy?.custom_mapping !== undefined ||
         patch.proxy?.anthropic_mapping !== undefined;
       return mutate((previous) => {
+        const thinkingPatch = patch.proxy?.thinking_budget;
+        if (thinkingPatch) {
+          const thinking = { ...previous.proxy.thinking_budget, ...thinkingPatch };
+          if (thinking.control_source === 'gateway') {
+            if (
+              !GatewayThinkingBudgetPatchSchema.safeParse(
+                thinkingPatch.control_source === 'gateway' ? thinking : thinkingPatch,
+              ).success
+            ) {
+              throw new InvalidGatewayThinkingBudgetError();
+            }
+          }
+        }
         if (
           (patch.proxy?.traffic_audit !== undefined || expectedAuditRevision !== undefined) &&
           expectedAuditRevision !== auditConfigRevision(previous.proxy.traffic_audit)

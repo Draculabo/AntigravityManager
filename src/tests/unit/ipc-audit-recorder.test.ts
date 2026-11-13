@@ -28,6 +28,33 @@ function gate() {
 }
 
 describe('IPC audit recording and drain', () => {
+  it.each([false, true])(
+    'never captures manual OAuth input while preserving handler failure=%s',
+    async (fails) => {
+      const { source, recorder } = fixture();
+      const input = { code: '4/private-manual-code' };
+      const output = { output: { accepted: true } };
+      const failure = new Error('safe manual input rejection');
+      const next = vi.fn(() => {
+        if (fails) {
+          throw failure;
+        }
+        return output;
+      });
+      const operation = recorder.run(['cloud', 'submitAuthCode'], input, next);
+      if (fails) {
+        await expect(operation).rejects.toBe(failure);
+      } else {
+        await expect(operation).resolves.toBe(output);
+      }
+      expect(next).toHaveBeenCalledOnce();
+      expect(source.startParent).not.toHaveBeenCalled();
+      expect(JSON.stringify(source.completeParent.mock.calls)).not.toContain(input.code);
+      recorder.closeAdmission();
+      await recorder.drain();
+    },
+  );
+
   it('accepts the synchronous result allowed by the oRPC middleware contract', async () => {
     const { source, recorder } = fixture();
     const result = { output: 'pong' };

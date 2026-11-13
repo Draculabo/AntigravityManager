@@ -12,6 +12,7 @@ import { DEFAULT_APP_CONFIG } from '../types';
 import { getAgentDir } from '@/shared/platform/paths';
 import { writeFileAtomic } from '@/shared/persistence/atomic-json-file';
 import { logger } from '@/shared/logging/logger';
+import { DEFAULT_DESKTOP_ZOOM, normalizeDesktopLanguage, type DesktopZoom } from '@/modules/app-shell/desktop-appearance';
 
 const StoredPreferencesSchema = z.strictObject({
   version: z.literal(1),
@@ -59,7 +60,10 @@ export function createDesktopPreferencesStore(filePath: () => string, legacyPath
   }
   async function save(preferences: DesktopPreferences): Promise<DesktopPreferences> {
     const accepted = DesktopPreferencesSchema.parse(preferences);
-    const content = JSON.stringify({ version: 1, preferences: accepted }, null, 2);
+    const { zoom_percent, ...previousFormat } = accepted;
+    // Keep the default profile readable by releases that reject unknown preference fields.
+    const stored = zoom_percent === DEFAULT_DESKTOP_ZOOM ? previousFormat : accepted;
+    const content = JSON.stringify({ version: 1, preferences: stored }, null, 2);
     if (Buffer.byteLength(content) > 128 * 1024) {
       throw new Error('Desktop preferences are too large.');
     }
@@ -115,5 +119,9 @@ export const desktopPreferencesStore = {
   },
 };
 export function getDesktopPreferencesLanguage(fallback: string): string {
-  return current?.language ?? fallback;
+  return normalizeDesktopLanguage(current?.language ?? fallback);
+}
+
+export function getDesktopPreferencesZoom(): DesktopZoom {
+  return current?.zoom_percent ?? DEFAULT_DESKTOP_ZOOM;
 }

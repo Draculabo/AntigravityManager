@@ -190,6 +190,10 @@ async function addAttempt(audit, parentId, id, attemptIndex, accountId, model, s
   await audit.command('insertAttempt', {
     accountId,
     accountIdHash: null,
+    accountGenerationHash: null,
+    accountSubjectHash: null,
+    accountGrantHash: null,
+    usageScope: null,
     attemptIndex,
     endpoint: 'https://example.test/generate',
     id,
@@ -200,6 +204,10 @@ async function addAttempt(audit, parentId, id, attemptIndex, accountId, model, s
     timestamp: Date.now(),
   });
   await audit.command('completeAttempt', {
+    inputTokens: null,
+    outputTokens: null,
+    cachedTokens: null,
+    reasoningTokens: null,
     completedAt: Date.now(),
     durationMs: 5,
     error: null,

@@ -14,6 +14,7 @@ import {
 } from './proxy-real-path.harness';
 
 type Protocol = 'chat' | 'responses' | 'messages' | 'gemini';
+const anthropicPing = 'event: ping\ndata: {"type":"ping"}\n\n';
 
 function frame(finish = false): string {
   return `data: ${JSON.stringify({
@@ -121,13 +122,13 @@ afterEach(() => {
 describe('protocol heartbeats during downstream backpressure', () => {
   describe.each(['close', 'EOF'] as const)('upstream %s while paused', (ending) => {
     it.each([
-      ['chat', '"type":"upstream_stream_error"'],
-      ['responses', 'event: response.failed'],
-      ['messages', 'event: error'],
-      ['gemini', '"status":"UPSTREAM_STREAM_ERROR"'],
+      ['chat', 'data: [DONE]', '"finish_reason":"length"'],
+      ['responses', 'event: response.failed', '"status":"failed"'],
+      ['messages', 'event: message_stop', '"stop_reason":"max_tokens"'],
+      ['gemini', '"finishReason":"MAX_TOKENS"', '"gatewayInterrupted"'],
     ] as const)(
-      'fails %s once without recording successful completion',
-      async (protocol, errorFrame) => {
+      'terminates %s once without recording successful completion',
+      async (protocol, terminalFrame, interruption) => {
         vi.useFakeTimers();
         const response = await createBackpressuredResponse(protocol);
         try {
@@ -140,10 +141,15 @@ describe('protocol heartbeats during downstream backpressure', () => {
           expect(response.raw.end).not.toHaveBeenCalled();
           await response.drain();
           const output = response.chunks.join('');
-          expect(output.split(errorFrame)).toHaveLength(2);
-          expect(output).not.toContain('data: [DONE]');
+          expect(output.split(terminalFrame)).toHaveLength(2);
+          expect(output).toContain(interruption);
+          if (protocol === 'responses' && ending === 'close') {
+            // The socket closes while Responses is paused on its opening event.
+            expect(output).not.toContain('event: response.output_text.delta');
+          } else {
+            expect(output).toContain('controlled progress');
+          }
           expect(output).not.toContain('event: response.completed');
-          expect(output).not.toContain('event: message_stop');
           expect(output).not.toContain('"finishReason":"STOP"');
           expect(response.raw.end).toHaveBeenCalledOnce();
           expect(response.lease.markModelSuccess).not.toHaveBeenCalled();
@@ -260,7 +266,7 @@ describe('protocol heartbeats during downstream backpressure', () => {
     },
   );
 
-  it('preserves the fifth Anthropic idle-interval failure while heartbeats are paused', async () => {
+  it('terminates partial Anthropic output at the fifth idle interval while heartbeats are paused', async () => {
     vi.useFakeTimers();
     const { source, lease, upstream, stream } = await createProtocolStream('messages');
     const chunks: string[] = [];
@@ -276,9 +282,11 @@ describe('protocol heartbeats during downstream backpressure', () => {
       expect(chunks).toEqual(progress);
       expect(complete).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(1);
-      expect(chunks.filter((chunk) => chunk === ': ping\n\n')).toEqual([]);
-      expect(chunks.filter((chunk) => chunk.includes('event: error'))).toHaveLength(1);
-      expect(chunks.at(-1)).toContain('Upstream response stream timed out.');
+      expect(chunks.filter((chunk) => chunk === anthropicPing)).toEqual([]);
+      expect(chunks.join('')).toContain('controlled progress');
+      expect(chunks.join('')).toContain('"stop_reason":"max_tokens"');
+      expect(chunks.filter((chunk) => chunk.includes('event: message_stop'))).toHaveLength(1);
+      expect(chunks.at(-1)).toContain('event: message_stop');
       expect(complete).toHaveBeenCalledOnce();
       expect(source.destroyed).toBe(true);
       expect(lease.markModelSuccess).not.toHaveBeenCalled();
@@ -301,6 +309,7 @@ describe('protocol heartbeats during downstream backpressure', () => {
     async (protocol, interval) => {
       vi.useFakeTimers();
       const response = await createBackpressuredResponse(protocol);
+      const ping = protocol === 'messages' ? anthropicPing : ': ping\n\n';
       try {
         const retained = getSseOutputRetainedBytes();
         const resumes = response.resume.mock.calls.length;
@@ -309,9 +318,9 @@ describe('protocol heartbeats during downstream backpressure', () => {
         expect(response.resume).toHaveBeenCalledTimes(resumes);
         expect(getSseOutputRetainedBytes()).toBe(retained);
         await response.drain();
-        expect(response.chunks.filter((chunk) => chunk === ': ping\n\n')).toEqual([]);
+        expect(response.chunks.filter((chunk) => chunk === ping)).toEqual([]);
         await vi.advanceTimersByTimeAsync(interval);
-        expect(response.chunks.filter((chunk) => chunk === ': ping\n\n')).toEqual([': ping\n\n']);
+        expect(response.chunks.filter((chunk) => chunk === ping)).toEqual([ping]);
         expect(response.upstream.streamGenerateInternal).toHaveBeenCalledOnce();
         expect(response.lease.markModelSuccess).not.toHaveBeenCalled();
       } finally {

@@ -66,10 +66,12 @@ describe('upstream proxy configuration invariant', () => {
     expect(await service.writeSecret({ name: 'upstream-proxy', value })).toEqual({
       state: 'applied',
       snapshot: projectServiceConfig(expected),
+      issues: [],
+      restartFields: [],
     });
     expect(load()).toEqual(expected);
     expect(save).toHaveBeenCalledExactlyOnceWith(expected);
-    expect(apply).toHaveBeenCalledExactlyOnceWith(expected.proxy);
+    expect(apply).toHaveBeenCalledExactlyOnceWith(expected.proxy, expected);
   });
 
   it.each(['http://localhost:7890', 'https://user:pass@localhost:7890', 'http://[::1]:7890'])(
@@ -83,6 +85,8 @@ describe('upstream proxy configuration invariant', () => {
       expect(await service.update({ proxy: { upstream_proxy: { enabled: true } } })).toEqual({
         state: 'applied',
         snapshot: projectServiceConfig(expected),
+        issues: [],
+        restartFields: [],
       });
       expect(load()).toEqual(expected);
     },
@@ -97,7 +101,12 @@ describe('upstream proxy configuration invariant', () => {
     expect(await Promise.allSettled([clear, enable])).toEqual([
       {
         status: 'fulfilled',
-        value: { state: 'applied', snapshot: projectServiceConfig(expected) },
+        value: {
+          state: 'applied',
+          snapshot: projectServiceConfig(expected),
+          issues: [],
+          restartFields: [],
+        },
       },
       { status: 'rejected', reason: new UpstreamProxyConfigurationError() },
     ]);

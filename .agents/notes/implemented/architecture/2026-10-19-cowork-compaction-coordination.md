@@ -9,7 +9,25 @@ Keep ordinary conversation history intact. Cowork compaction is an opt-in coordi
 
 ## Decision
 
-D13 adds the bounded coordination state machine, configuration defaults, fixed-overhead threshold calculation and settings UI. It deliberately does not emit control responses or summarize history in the gateway; those integrations remain with the protocol owners in a later slice.
+D13 adds the bounded coordination state machine, configuration defaults, fixed-overhead
+threshold calculation and settings UI. The Messages route owns the local control response.
+The client initiates the provider summary and adopts the resulting history.
+
+A recognized summary instruction in a system text block can join an active operation only
+after the same trusted session and exact original history prefix have matched. The first five
+messages can carry the adopted summary. The provider fingerprint remains required. The
+manual `/compact.` alias follows the existing manual admission rules. JSON and SSE
+acknowledgements identify their local response source and have zero provider usage.
+
+Native compaction can summarize only an older prefix and keep recent messages.
+To associate that request, the gateway requires an active trusted manual or automatic operation,
+the observed summary-block structure, and an exact prefix proof apart from cache
+annotations and the delimiter next to the appended instruction. It stores bounded
+message fingerprints rather than conversation text. Adoption requires both the actual
+provider summary and the retained suffix proof. The native command retry can receive
+a local acknowledgement while an ordinary follow-up continues to the provider.
+Automatic operations retain the same bounded prefix fingerprints and resume the pending
+generation after adoption. Their continuation protection uses the existing expiry policy.
 
 ## Alternatives considered
 
@@ -43,3 +61,14 @@ The 2026-11-05 continuation follow-up uses deterministic clocks for 299/300-seco
 activation, 29/30-second renewal, capacity reservation, tenant/generation/adopted-root
 isolation, scoped deletion and late summary refusal. It does not establish real provider
 summary success, client adoption or a protocol request-path integration.
+
+The 2026-11-10 HTTP integration checks use the production Messages controller,
+generation client, and a synthetic loopback upstream. They cover local trigger,
+system-block summary association, provider summary completion, exact adoption at
+message four or five, JSON/SSE zero-usage acknowledgement, wrong summaries,
+session/history isolation, provider failure cleanup, and expired protection.
+Installed curl exercises the same sequence and observes the response source
+header on both wire formats. A native Cowork capture established the partial-summary
+request shape, the provider summary, and the retained message suffix. The captured
+sequence verifies the matching functions locally. The new HTTP regression verifies the
+gateway acknowledgement with a loopback provider. A live rerun with the fix remains pending.

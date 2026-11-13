@@ -5,6 +5,10 @@ It covers diagnostic persistence, not compression of the model request or signed
 
 ## Usage and measured stages
 
+Structured per-attempt stages and the selected-owner HAR export are documented in
+[traffic diagnostics](traffic-diagnostics.md). They retain unmeasured phases as
+unknown and keep capture representations distinct from raw wire data.
+
 Audit counters retain gateway response totals, cached-input detail and reasoning
 detail separately. Cache and reasoning counts are not added again to input/output.
 The existing Claude-shaped mapper uses its normalized total for `input_tokens`;
@@ -62,8 +66,8 @@ capture, dropped writes and other provider channels prevent a complete billing c
 
 The trusted account owner resolves identity before and after a read. Missing or
 changed identity fails through the existing audit error surface. Application and
-standalone core require owner compatibility 9. The schema-4-or-5-to-6 migration retains
-existing audit rows and bodies; backup, failure and downgrade instructions are in
+standalone core require matching owner versions. The current audit migration retains
+existing audit rows and bodies. Backup, failure and downgrade instructions are in
 the [upgrade guide](../../upgrade-guides/next/physical-attempt-usage.md).
 
 ## Minute usage trends

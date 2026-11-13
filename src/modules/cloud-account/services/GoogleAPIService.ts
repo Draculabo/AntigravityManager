@@ -345,6 +345,7 @@ export interface ModelQuotaInfo {
   supports_images?: boolean;
   supports_thinking?: boolean;
   thinking_budget?: number;
+  thinking_level?: 'low' | 'medium' | 'high';
   recommended?: boolean;
   max_tokens?: number;
   max_output_tokens?: number;
@@ -408,6 +409,29 @@ const LoadProjectResponseSchema = z.object({
     .transform((value) => value ?? undefined),
 });
 
+const ProviderThinkingLevelSchema = z
+  .union([z.string(), z.number().int()])
+  .nullish()
+  .transform((value, context): ModelQuotaInfo['thinking_level'] => {
+    if (value === null || value === undefined) {
+      return undefined;
+    }
+    switch (String(value).trim().toLowerCase()) {
+      case '1':
+      case 'low':
+        return 'low';
+      case '2':
+      case 'medium':
+        return 'medium';
+      case '3':
+      case 'high':
+        return 'high';
+      default:
+        context.addIssue({ code: 'custom', message: 'Unsupported provider thinking level' });
+        return z.NEVER;
+    }
+  });
+
 const ModelInfoRawSchema = z.object({
   quotaInfo: z
     .object({
@@ -419,6 +443,7 @@ const ModelInfoRawSchema = z.object({
   supportsImages: z.boolean().optional(),
   supportsThinking: z.boolean().optional(),
   thinkingBudget: z.number().optional(),
+  thinkingLevel: ProviderThinkingLevelSchema,
   recommended: z.boolean().optional(),
   maxTokens: z.number().optional(),
   maxOutputTokens: z.number().optional(),
@@ -537,6 +562,7 @@ function toModelQuotaInfo(modelName: string, info: ModelInfoRaw): ModelQuotaInfo
     supports_images: info.supportsImages,
     supports_thinking: info.supportsThinking,
     thinking_budget: info.thinkingBudget,
+    thinking_level: info.thinkingLevel,
     recommended: info.recommended,
     max_tokens: info.maxTokens,
     max_output_tokens: info.maxOutputTokens,

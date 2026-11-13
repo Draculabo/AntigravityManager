@@ -56,11 +56,19 @@ afterEach(async () => {
 
 const request = {
   model: 'gemini-3-flash' as const,
+  availableModels: ['gemini-3-flash-agent'],
   accessToken: 'synthetic-warmup-token',
   projectId: 'synthetic-project',
 };
 
 describe('weekly warmup actual HTTP transport', () => {
+  it('rejects missing advertised candidates before making any network request', async () => {
+    await expect(
+      new ProxyGatewayWeeklyWarmupExecutor().warmup({ ...request, availableModels: [] }),
+    ).rejects.toThrow('no advertised model');
+    expect(packets).toEqual([]);
+  });
+
   it('sends the complete Flash request through the streaming internal endpoint', async () => {
     await new ProxyGatewayWeeklyWarmupExecutor().warmup(request);
     expect(packets).toEqual([
@@ -69,7 +77,7 @@ describe('weekly warmup actual HTTP transport', () => {
         authorization: 'Bearer synthetic-warmup-token',
         body: {
           requestId: expect.stringMatching(/^agent\/\d+\/[a-f0-9]{8}$/),
-          model: 'gemini-3-flash',
+          model: 'gemini-3-flash-agent',
           project: 'synthetic-project',
           userAgent: 'antigravity',
           request: {

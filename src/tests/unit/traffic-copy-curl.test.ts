@@ -73,6 +73,19 @@ describe('audit cURL clipboard boundary', () => {
     expect(mocks.clipboardWrite).not.toHaveBeenCalled();
   });
 
+  it.each([false, true])(
+    'never copies historical URL query credentials when current-key opt-in is %s',
+    async (includeCredentials) => {
+      const detail = await mocks.detail();
+      detail.request.url = '/v1beta/models?key=historical-secret&k%65y=duplicate-secret&alt=sse';
+      mocks.detail.mockResolvedValue(detail);
+      const command = await buildAuditCurl({ id: 'parent-1', includeCredentials });
+      expect(command).not.toMatch(/historical-secret|duplicate-secret/);
+      expect(command).toContain('alt=sse');
+      expect(command.includes('current-test-key')).toBe(includeCredentials);
+    },
+  );
+
   it('rejects stored headers that are not a JSON object before copying', async () => {
     mocks.detail.mockResolvedValue({
       recordKind: 'request',

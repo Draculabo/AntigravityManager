@@ -21,10 +21,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function resolveImageUrl(value: Record<string, unknown>): string | null {
-  if (value.type === 'input_image' && typeof value.image_url === 'string') {
-    return value.image_url;
-  }
-  if (value.type !== 'image_url') {
+  if (value.type !== 'image_url' && value.type !== 'input_image') {
     return null;
   }
   if (typeof value.image_url === 'string') {
@@ -55,10 +52,34 @@ function decodedBytes(url: string): number | null {
 }
 
 function itemIdentity(item: unknown): string | null {
-  if (!isRecord(item) || typeof item.id !== 'string' || item.id.length === 0) {
+  if (!isRecord(item)) {
     return null;
   }
-  return item.id;
+  const id =
+    item.type === 'function_call_output' || item.type === 'custom_tool_call_output'
+      ? (item.call_id ?? item.id)
+      : item.id;
+  return typeof id === 'string' && id.length > 0 ? id : null;
+}
+
+function matchesCurrentItem(item: unknown, current: unknown): boolean {
+  if (
+    item === current ||
+    (itemIdentity(current) !== null && itemIdentity(item) === itemIdentity(current)) ||
+    isEqual(item, current)
+  ) {
+    return true;
+  }
+  // Association admission has already assigned a missing call ID. Ignore only
+  // that generated field when matching the original, otherwise exact result.
+  return (
+    isRecord(item) &&
+    isRecord(current) &&
+    (current.type === 'function_call_output' || current.type === 'custom_tool_call_output') &&
+    current.call_id === undefined &&
+    current.id === undefined &&
+    isEqual({ ...item, call_id: undefined }, { ...current, call_id: undefined })
+  );
 }
 
 function clone(value: unknown): unknown {
@@ -154,21 +175,22 @@ export function applyResponsesImageSendWindow(
     return output;
   }
 
-  const currentIdentities = new Set(
-    currentItems.map(itemIdentity).filter((id): id is string => id !== null),
-  );
+  // Match occurrences from the end. Identical repeated screenshots are distinct
+  // turns, so equality with one current item cannot protect every historical copy.
+  const protectedIndexes = new Set<number>();
+  let before = items.length;
+  for (const current of currentItems.toReversed()) {
+    const index = items.findLastIndex(
+      (item, index) => index < before && matchesCurrentItem(item, current),
+    );
+    if (index >= 0) {
+      protectedIndexes.add(index);
+      before = index;
+    }
+  }
   const candidates: ImageCandidate[] = [];
   output.forEach((item, index) => {
-    const protectedItem =
-      currentItems.some(
-        (currentItem) =>
-          currentItem === items[index] ||
-          isEqual(currentItem, items[index]) ||
-          (itemIdentity(items[index]) !== null &&
-            itemIdentity(currentItem) === itemIdentity(items[index])),
-      ) ||
-      (itemIdentity(items[index]) !== null && currentIdentities.has(itemIdentity(items[index])!));
-    collectCandidates(item, [index], protectedItem, candidates);
+    collectCandidates(item, [index], protectedIndexes.has(index), candidates);
   });
 
   const plan = planMediaSendWindow(

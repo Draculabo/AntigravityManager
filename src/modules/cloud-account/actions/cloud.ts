@@ -3,6 +3,11 @@ import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarge
 import type { DeviceProfile } from '@/modules/identity-profile/types';
 import { isValidProxyUrl } from '@/shared/utils/url';
 import type { WeeklyWarmupConfig } from '@/modules/cloud-account/services/weekly-warmup-contract';
+import type {
+  FetchAccountProjectIdInput,
+  GetAccountProjectIdInput,
+  SetAccountProjectIdInput,
+} from '../services/cloud-account-project-id.schema';
 
 export function listCloudAccounts() {
   return ipc.client.cloud.listCloudAccounts();
@@ -10,6 +15,18 @@ export function listCloudAccounts() {
 
 export function deleteCloudAccount(input: { accountId: string }) {
   return ipc.client.cloud.deleteCloudAccount(input);
+}
+
+export function getAccountProjectId(input: GetAccountProjectIdInput) {
+  return ipc.client.cloud.getAccountProjectId(input);
+}
+
+export function setAccountProjectId(input: SetAccountProjectIdInput) {
+  return ipc.client.cloud.setAccountProjectId(input);
+}
+
+export function fetchAccountProjectId(input: FetchAccountProjectIdInput) {
+  return ipc.client.cloud.fetchAccountProjectId(input);
 }
 
 export function openAccountValidationLink(input: { accountId: string }) {

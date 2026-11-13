@@ -11,6 +11,7 @@ import {
 } from './traffic-audit.schema';
 import type { TrafficAuditWorkerCommand } from './traffic-audit.worker-protocol';
 import { auditCaptureOutcome } from './traffic-audit-recovery';
+import { decodeUpstreamAttemptTiming } from './upstream-attempt-timing';
 
 type TrafficAuditDatabase = BetterSQLite3Database<typeof trafficAuditSchema>;
 
@@ -345,7 +346,8 @@ export class TrafficAuditQueries {
       .map(normalizeBodyDescriptor);
     return {
       attempts: attempts.map((attempt) => ({
-        ...omit(attempt, 'accountSubjectHash', 'accountGrantHash'),
+        ...omit(attempt, 'accountSubjectHash', 'accountGrantHash', 'timingJson'),
+        timing: decodeUpstreamAttemptTiming(attempt.timingJson),
         outcome: auditCaptureOutcome(attempt.outcome, attempt.completedAt),
       })),
       bodies,

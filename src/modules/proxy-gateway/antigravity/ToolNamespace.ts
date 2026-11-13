@@ -5,6 +5,12 @@ export interface SplitToolNamespace {
   namespace?: string;
 }
 
+export function getOpenAIToolName(tool: OpenAITool): string | undefined {
+  const name =
+    (tool.type === 'custom' ? tool.custom?.name : undefined) ?? tool.function?.name ?? tool.name;
+  return typeof name === 'string' ? name : undefined;
+}
+
 export function qualifyNamespaceToolName(namespaceName: string, childName: string): string {
   const namespace = namespaceName.trim();
   const child = childName.trim();
@@ -28,12 +34,7 @@ export function flattenOpenAITools(tools: OpenAITool[] | undefined): OpenAITool[
 
     const namespace = typeof tool.name === 'string' ? tool.name : '';
     for (const child of flattenOpenAITools(tool.tools) ?? []) {
-      const childName =
-        typeof child.name === 'string'
-          ? child.name
-          : typeof child.function?.name === 'string'
-            ? child.function.name
-            : '';
+      const childName = getOpenAIToolName(child);
       if (!childName) {
         flattened.push(child);
         continue;
@@ -43,6 +44,7 @@ export function flattenOpenAITools(tools: OpenAITool[] | undefined): OpenAITool[
       flattened.push({
         ...child,
         ...(typeof child.name === 'string' ? { name: qualifiedName } : {}),
+        ...(child.custom ? { custom: { ...child.custom, name: qualifiedName } } : {}),
         ...(child.function
           ? {
               function: {
@@ -68,7 +70,7 @@ export function splitNamespaceToolName(
       continue;
     }
     for (const child of flattenOpenAITools(tool.tools) ?? []) {
-      const childName = child.name ?? child.function?.name;
+      const childName = getOpenAIToolName(child);
       if (childName && qualifyNamespaceToolName(tool.name, childName) === name) {
         return { name: childName, namespace: tool.name };
       }

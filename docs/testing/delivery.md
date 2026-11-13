@@ -72,6 +72,9 @@ an isolated directory, removes one owned worker, verifies exact Windows Installe
 the native and real-window checks against the installed resources. It uninstalls only verified test
 product identities, checks their registration is gone, and restores previous application shortcuts
 and login settings. The existing Squirrel installation registration must remain unchanged.
+Installer operations and the nested desktop check have a 15-minute deadline. On a timeout,
+inspect the retained MSI logs and wait for any Windows Installer service transaction to finish
+before starting another install or uninstall.
 
 For a cross-version fixture, `pnpm run make:msi-upgrade-fixture <packaged-app> <new-out-subdirectory>`
 uses the configured WiX maker with the previous patch version. Supply that MSI as the second argument

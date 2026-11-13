@@ -135,7 +135,10 @@ export class GeminiService extends BaseProxyService {
 
     const admittedRequest = admitGeminiInlineMedia(resolved.request);
     const normalizedModel = this.normalizeGeminiModel(model);
-    const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(normalizedModel);
+    const routeResolution = this.resolveRequestModelRoute(
+      normalizedModel,
+      admittedRequest.generationConfig?.thinkingConfig?.thinkingLevel,
+    );
     const explicitPhysicalTarget =
       routeResolution.source === 'configured' || routeResolution.source === 'dynamic-legacy';
     const appliedVariantRequest = applyGeminiModelVariant(
@@ -172,6 +175,7 @@ export class GeminiService extends BaseProxyService {
     signal?: AbortSignal,
     imageRetryPenaltyMode: ImageRetryPenaltyMode = 'gemini',
     requestContext?: SignatureScopeContext,
+    observeResponse?: (response: GeminiResponse | undefined) => void,
   ): Promise<GeminiResponse> {
     return runGenerationWithDeadline(
       (getServerConfig()?.request_timeout ?? 300) * 1000,
@@ -184,6 +188,7 @@ export class GeminiService extends BaseProxyService {
           boundedSignal,
           imageRetryPenaltyMode,
           requestContext,
+          observeResponse,
         ),
     );
   }
@@ -195,6 +200,7 @@ export class GeminiService extends BaseProxyService {
     signal: AbortSignal,
     imageRetryPenaltyMode: ImageRetryPenaltyMode,
     requestContext?: SignatureScopeContext,
+    observeResponse?: (response: GeminiResponse | undefined) => void,
   ): Promise<GeminiResponse> {
     throwIfRequestAborted(signal);
     const globalSystemPrompt = resolveGlobalSystemPrompt(getServerConfig()?.global_system_prompt);
@@ -213,7 +219,10 @@ export class GeminiService extends BaseProxyService {
         : undefined;
     request = this.parseToolConfig(request);
     const normalizedModel = this.normalizeGeminiModel(model);
-    const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(normalizedModel);
+    const routeResolution = this.resolveRequestModelRoute(
+      normalizedModel,
+      request.generationConfig?.thinkingConfig?.thinkingLevel,
+    );
     const explicitPhysicalTarget =
       routeResolution.source === 'configured' || routeResolution.source === 'dynamic-legacy';
     const variantRequest = applyGeminiModelVariant(
@@ -245,7 +254,7 @@ export class GeminiService extends BaseProxyService {
         ? variantRequest
         : { ...variantRequest, request: { ...variantRequest.request, contents } };
     const isImageRequest = requestType === 'image_gen' || isGeminiImageModel(targetModel);
-    const extraHeaders = this.createModelSpecificHeaders(normalizedModel);
+    const extraHeaders = this.createModelSpecificHeaders(targetModel);
     this.logger.log(
       `Gemini generate request received: model=${normalizedModel}, mappedModel=${targetModel}, routeSource=${routeResolution.source}`,
     );
@@ -333,6 +342,7 @@ export class GeminiService extends BaseProxyService {
             signal,
             overloadThinkingRecovery,
           ),
+          observeResponse,
         );
 
         this.commitUpstreamSession(token, signal);
@@ -383,6 +393,7 @@ export class GeminiService extends BaseProxyService {
                 signal,
                 overloadThinkingRecovery,
               ),
+              observeResponse,
             );
             this.commitUpstreamSession(token, signal);
             this.markUpstreamSuccessForResponse(token, accountTargetModel, response);
@@ -492,7 +503,10 @@ export class GeminiService extends BaseProxyService {
         : undefined;
     request = this.parseToolConfig(request);
     const normalizedModel = this.normalizeGeminiModel(model);
-    const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(normalizedModel);
+    const routeResolution = this.resolveRequestModelRoute(
+      normalizedModel,
+      request.generationConfig?.thinkingConfig?.thinkingLevel,
+    );
     const explicitPhysicalTarget =
       routeResolution.source === 'configured' || routeResolution.source === 'dynamic-legacy';
     const variantRequest = applyGeminiModelVariant(
@@ -524,7 +538,7 @@ export class GeminiService extends BaseProxyService {
         ? variantRequest
         : { ...variantRequest, request: { ...variantRequest.request, contents } };
     const isImageRequest = isGeminiImageModel(targetModel);
-    const extraHeaders = this.createModelSpecificHeaders(normalizedModel);
+    const extraHeaders = this.createModelSpecificHeaders(targetModel);
     this.logger.log(
       `Gemini stream request received: model=${normalizedModel}, mappedModel=${targetModel}, routeSource=${routeResolution.source}`,
     );
@@ -942,7 +956,7 @@ export class GeminiService extends BaseProxyService {
           if (tail !== null) {
             const inspection = inspectData(tail);
             if (inspection.error) {
-              fail(inspection.error);
+              fail(inspection.error, inspection.cause);
               return;
             }
             if (inspection.valid) {

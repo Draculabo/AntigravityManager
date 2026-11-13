@@ -158,46 +158,23 @@ describe('Proxy Parity Fixtures', () => {
     expect(actual.choices[0].message.tool_calls[0].function.name).toBe('shell');
   });
 
-  it('normalizes declared custom apply_patch arguments to repaired freeform input', () => {
+  it('passes declared custom tool input through the Chat response unchanged', () => {
     const service = new TestableProxyService();
-    const patch = [
-      '*** Begin Patch',
-      '--- a/src/example.ts',
-      '+++ b/src/example.ts',
-      '@@ -1 +1 @@',
-      '-const value = 1;',
-      '+const value = 2;',
-      '*** End Patch',
-    ].join('\n');
-    const repairedPatch = [
-      '*** Begin Patch',
-      '*** Update File: src/example.ts',
-      '@@',
-      '-const value = 1;',
-      '+const value = 2;',
-      '*** End Patch',
-    ].join('\n');
-
+    const patch = '--- a/example.ts\r\n+++ b/example.ts\r\n@@ -1 +1 @@\r\n-x\r\n+y\r\n';
     const actual = service.toOpenAI(
       {
         content: [
-          {
-            type: 'tool_use',
-            id: 'call_patch',
-            name: 'apply_patch',
-            input: { command: ['apply_patch', patch] },
-          },
+          { type: 'tool_use', id: 'call_patch', name: 'apply_patch', input: { input: patch } },
         ],
         stop_reason: 'tool_use',
         usage: { input_tokens: 1, output_tokens: 1 },
       },
       'gpt-5-codex',
-      [{ type: 'custom', name: 'apply_patch' }],
+      [{ type: 'custom', custom: { name: 'apply_patch' } }],
     );
-
-    expect(actual.choices[0].message.tool_calls[0].function.arguments).toBe(
-      JSON.stringify({ input: repairedPatch }),
-    );
+    expect(actual.choices[0].message.tool_calls).toEqual([
+      { id: 'call_patch', type: 'custom', custom: { name: 'apply_patch', input: patch } },
+    ]);
   });
 
   it('maps upstream stream fixture into expected OpenAI SSE semantics', async () => {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { openAIMediaTask } from '@/modules/proxy-gateway/server/common/session-media-anchor';
 import {
   resolveAnthropicSessionScope,
   resolveGeminiSessionScope,
@@ -49,6 +50,14 @@ function protocolScopes(
 }
 
 describe('cross-protocol media session anchors', () => {
+  it.each(['A', 'AAA', 'AA=A', '====', 'A===', 'AAAA\n'])(
+    'does not assign an inline image identity to malformed Base64 %j',
+    (data) => {
+      expect(
+        openAIMediaTask([{ type: 'image_url', image_url: `data:image/png;base64,${data}` }]),
+      ).toBeUndefined();
+    },
+  );
   it('unifies equivalent inline audio across Chat, Messages and Gemini', () => {
     const scopes = protocolScopes(
       { type: 'input_audio', input_audio: { data: audio, format: 'x-wav' } },

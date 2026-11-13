@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ManagementServer } from '@/core/management/server';
 import type { CoreStatus } from '@/core/core-service';
 import { ManagementClient } from '@/core/management/client';
-import { getProfileFingerprint } from '@/core/management/handshake';
+import { CORE_OWNER_COMPATIBILITY, getProfileFingerprint } from '@/core/management/handshake';
 
 const servers: ManagementServer[] = [];
 const directories: string[] = [];
@@ -70,7 +70,7 @@ describe('core management IPC', () => {
     const handshake = await new ManagementClient(socketPath).handshake();
     expect(handshake).toEqual({
       version: 1,
-      compatibility: 7,
+      compatibility: CORE_OWNER_COMPATIBILITY,
       kind: 'core',
       pid: 123,
       epoch: expect.any(String),

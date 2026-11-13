@@ -124,6 +124,10 @@ test('active parents, attempts and writing bodies survive until their completion
     await audit.command('insertAttempt', {
       accountId: null,
       accountIdHash: null,
+      accountGenerationHash: null,
+      accountSubjectHash: null,
+      accountGrantHash: null,
+      usageScope: null,
       attemptIndex: 1,
       endpoint: 'https://example.test',
       id: 'active-attempt',
@@ -153,6 +157,10 @@ test('active parents, attempts and writing bodies survive until their completion
     );
     await complete(audit, 'parent');
     await audit.command('completeAttempt', {
+      inputTokens: null,
+      outputTokens: null,
+      cachedTokens: null,
+      reasoningTokens: null,
       id: 'active-attempt',
       completedAt: Date.now(),
       durationMs: 1,
@@ -428,7 +436,7 @@ test('row pressure recounts concurrent user deletions between batches', async ()
   }
 });
 
-test('schema-v4 reopen keeps bodies and duplicate SSE completion remains terminal', async () => {
+test('reopening the current schema keeps bodies and duplicate SSE completion remains terminal', async () => {
   let audit = openAudit('window-reopen');
   try {
     await audit.command('insertParent', parent('sse', 'model', 1));
@@ -465,7 +473,7 @@ test('schema-v4 reopen keeps bodies and duplicate SSE completion remains termina
     assert.deepEqual(await audit.command('bodyPage', query), before);
     const db = new Database(audit.databasePath, { readonly: true });
     try {
-      assert.equal(db.pragma('user_version', { simple: true }), 4);
+      assert.equal(db.pragma('user_version', { simple: true }), 7);
       assert.deepEqual(db.pragma('foreign_key_check'), []);
     } finally {
       db.close();

@@ -160,9 +160,9 @@ test('profiles account and traffic update isolation in Electron with React Compi
         await checkbox.click();
       });
       await page.getByRole('button', { name: 'Add Account', exact: true }).click();
-      await page.locator('summary').filter({ hasText: 'Enter a code manually' }).click();
+      await page.locator('summary').filter({ hasText: 'Paste a code or callback address' }).click();
       scenarios.loginInput = await scenario(page, async () => {
-        const input = page.getByLabel('Authorization Code', { exact: true });
+        const input = page.getByLabel('Authorization code or callback address', { exact: true });
         await input.fill('synthetic-code');
         await input.fill('synthetic-code-2');
         await input.fill('synthetic-code-3');

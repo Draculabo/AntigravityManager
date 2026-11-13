@@ -22,6 +22,12 @@ and retains its existing event condition, release approval environment and updat
 Both verification and publication use the same asset validator; validation precedes draft
 release creation. The existing feed tool continues to own feed parsing and installer hashes.
 
+Pin all three jobs to the triggering commit. A read-only verification checks that the six
+manifests agree with that checkout and its package version. Publication additionally resolves the
+exact repository tag and checks its name and commit before draft creation or asset upload. This
+preserves the approved source if `main` advances while the build or approval is in progress.
+Draft creation requires the tag to exist. Untagged revisions can still be verified in a dry run.
+
 ## Alternatives considered
 
 - Forcing old Actions onto Node 24 leaves unsupported runtime declarations in the workflows.
@@ -29,6 +35,8 @@ release creation. The existing feed tool continues to own feed parsing and insta
 - Building with dry-run enabled without a verification job does not exercise artifact downloads.
 - Allowing dry runs into the publish job risks executing release writes and requires unnecessary
   release permissions or approval for artifact-only validation.
+- Checking only that the six manifests agree would admit a coherent batch for a different
+  commit, including one that declares the same package version.
 - Pinning every PR runner expands the change into the CI platform registry without improving
   reproducibility of release artifacts beyond the dedicated release jobs.
 

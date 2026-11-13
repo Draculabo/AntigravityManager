@@ -117,6 +117,29 @@ Then apply its overlay in a NixOS module with `inputs` available:
 
 For Home Manager, use `home.packages` and configure the overlay and unfree policy on its owning nixpkgs instance. The flake pins a release and may lag behind the latest assets. See [Nix integration](docs/development.md#nix-integration) for details and development-shell configuration.
 
+### Use the installed CLI
+
+Desktop packages include the standalone CLI and its Node.js runtime. Start with `--help` to list the available commands.
+
+On Windows, open PowerShell in the folder containing `antigravity-manager.exe`:
+
+```powershell
+& .\resources\standalone\node\node.exe .\resources\standalone\cli\main.cjs --help
+```
+
+On macOS, use the app bundle in `/Applications`:
+
+```bash
+cd '/Applications/Antigravity Manager.app/Contents/Resources/standalone'
+./node/node ./cli/main.cjs --help
+```
+
+On Linux, open a terminal in the folder containing the packaged desktop executable. For an AppImage, use its mounted or extracted contents.
+
+```bash
+./resources/standalone/node/node ./resources/standalone/cli/main.cjs --help
+```
+
 ---
 
 ## First use

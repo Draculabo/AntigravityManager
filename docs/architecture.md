@@ -20,7 +20,7 @@ and do not supply credentials, provider bodies or arbitrary metadata to reportin
 
 The desktop public envelope preserves validated `loginCode`/`switchCode` and the safe diagnostic.
 Standalone management and RPC carry the coordinator's identity; consumers reject mismatched
-identities. Management response version is `2` and owner compatibility is `10`; the handshake envelope
+identities. Management response version is `2` and owner compatibility is `15`; the handshake envelope
 format and diagnostic schema remain `1`. Compatibility `6` includes the required
 independent Thought Store disk setting and coordinated management contracts.
 An incompatible owner fails startup verification before
@@ -29,7 +29,31 @@ account mutations, with no local owner fallback.
 Owner compatibility `10` retains audit archive-usage status and the derived
 `capture_interrupted` read outcome. Audit Worker initialization carries the owning
 process start boundary so replacing a Worker does not terminate current captures.
-The v6 audit schema preserves existing rows and stored outcome vocabulary through an additive migration.
+The v7 audit schema preserves existing rows and stored outcome vocabulary through an additive migration.
+
+Owner compatibility `11` adds selected-owner HAR file export. Versioned per-attempt
+timing is persisted independently of captured response headers. Existing schema-6
+attempts migrate with unknown timing; the desktop and Core upgrade together. See
+[traffic diagnostics](modules/proxy-gateway/traffic-diagnostics.md).
+
+Owner compatibility `12` adds selected-owner reads, edits and provider discovery
+for a Google account's Project ID. The selected process owns credential use and
+stale-write protection. The desktop and standalone Core upgrade together. See the
+[upgrade guide](upgrade-guides/next/desktop-core-project-id.md).
+
+Owner compatibility `13` adds the Antigravity CLI sign-in file to the local account import source
+enum. The selected owner reads and validates the file. Only the import preview and source status
+cross the transport. See [local Antigravity CLI sign-in](modules/cloud-account/overview.md#local-antigravity-cli-sign-in).
+
+Owner compatibility `14` adds optional model-alias publication to the shared service snapshot.
+Generation and discovery use separate projections of the same configuration. The selected Core
+owns pool-aware target selection; the renderer edits rules through the existing configuration
+transport. Upgrade desktop and standalone Core together using the [same-release guide](upgrade-guides/next/desktop-core-project-id.md).
+
+Owner compatibility `15` admits bounded manual OAuth input through the existing code field.
+The selected session owner parses callback data and checks its state before single-use admission;
+the renderer does not resolve the input or choose a new redirect. See
+[OAuth enrollment](modules/cloud-account/security.md#oauth-enrollment-and-client-selection).
 
 Owner compatibility `10` includes the process-owned local error window, its resolved
 deployment budget and typed metadata/content operations. App/core use separate

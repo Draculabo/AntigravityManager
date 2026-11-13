@@ -8,6 +8,8 @@ import {
   selectWeeklyQuotaItems,
 } from '@/modules/cloud-account/utils/quota-groups';
 import { getQuotaModelFamilyId } from '@/modules/cloud-account/utils/quota-model-families';
+import { modelQuotaWindows } from '../utils/quota-windows';
+import { normalizeQuotaModelId } from '../utils/quota-group-model-membership';
 import { logger } from '@/shared/logging/logger';
 import { GoogleAPIService } from './GoogleAPIService';
 import { CloudAccountRepo } from '../persistence/cloudHandler';
@@ -45,6 +47,7 @@ export interface WeeklyWarmupCandidate {
   group: WeeklyWarmupGroup;
   historyKey: string;
   model: WeeklyWarmupRequest['model'];
+  availableModels: readonly string[];
   resetTimestamp: number;
 }
 
@@ -127,6 +130,30 @@ export function selectWeeklyWarmupCandidates(
         return [];
       }
 
+      const quotaGroup = warmableGroups?.find(
+        (entry) =>
+          entry.display_name.replace(/\s+models?$/i, '').trim() === item.groupName &&
+          entry.buckets.some((bucket) => bucket.bucket_id === item.bucket.bucket_id),
+      );
+      const availableModels = [
+        ...new Set(Object.keys(account.quota?.models ?? {}).map(normalizeQuotaModelId)),
+      ]
+        .filter(
+          (model) =>
+            getQuotaModelFamilyId(model) === getQuotaModelFamilyId(REPRESENTATIVE_MODELS[group]) &&
+            modelQuotaWindows(
+              { models: account.quota?.models ?? {}, quota_groups: quotaGroup ? [quotaGroup] : [] },
+              model,
+            ).some((bucket) => bucket.bucket_id === item.bucket.bucket_id),
+        )
+        .sort();
+      if (availableModels.length === 0) {
+        logger.info(
+          `Weekly warmup skipped: account=${account.id} bucket=${item.bucket.bucket_id} has no advertised model in the selected quota family`,
+        );
+        return [];
+      }
+
       const historyKey = createHistoryKey(account.id, item.bucket.bucket_id, resetTimestamp);
       if (history.entries[historyKey] !== undefined || seen.has(historyKey)) {
         return [];
@@ -140,6 +167,7 @@ export function selectWeeklyWarmupCandidates(
           group,
           historyKey,
           model: REPRESENTATIVE_MODELS[group],
+          availableModels,
           resetTimestamp,
         },
       ];
@@ -280,6 +308,7 @@ export class WeeklyWarmupService {
         await executor.warmup({
           accessToken: candidate.account.token.access_token,
           model: candidate.model,
+          availableModels: candidate.availableModels,
           projectId: candidate.account.token.project_id,
           upstreamProxyUrl: candidate.account.proxy_url,
           signal,

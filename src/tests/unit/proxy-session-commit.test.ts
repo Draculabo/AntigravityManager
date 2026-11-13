@@ -91,6 +91,34 @@ afterEach(async () => {
 });
 
 describe('session commit at production protocol success boundaries', () => {
+  it('shares account affinity across authenticated sibling steps and fails over if that account is unavailable', async () => {
+    const lease = await fixture();
+    const upstream = createUpstream({ generate: geminiTextResponse('step completed') });
+    const gateway = createGateway(upstream, lease);
+    const send = (sessionId: string) =>
+      gateway.openAIService.handleChatCompletions(
+        { model: 'gemini-3-flash', messages: [{ role: 'user', content: 'controlled step' }] },
+        'chat-completions',
+        undefined,
+        undefined,
+        undefined,
+        { headers: { authorization: 'Bearer synthetic-key', 'x-session-id': sessionId } },
+      );
+
+    await send('batch-a:step:1');
+    await send('batch-a:step:2');
+    await send('batch-b:step:1');
+    lease.markAsForbidden('commit-a');
+    await send('batch-a:step:3');
+
+    expect(upstream.calls.map(({ accessToken }) => accessToken)).toEqual([
+      'access-commit-a',
+      'access-commit-a',
+      'access-commit-b',
+      'access-commit-b',
+    ]);
+  });
+
   it.each(['gemini'] as const)(
     'commits token-count affinity only after a valid count: %s',
     async (_surface) => {

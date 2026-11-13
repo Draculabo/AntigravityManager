@@ -31,6 +31,28 @@ require the complete registered profile, including automatic-budget sentinels. E
 provider retirement forwarding keeps its explicit replacement semantics. Count and generation
 consume the same resolved target and admitted thinking level.
 
+Explicit configured replacements precede runtime retirement forwarding, with
+retirement still ahead of wildcard rules. This partially replaces the prior R2
+ordering recorded in the original D08 plan. Discovery uses the same route policy
+and publishes provider capabilities only when eligible account evidence agrees.
+Pro High's current and legacy IDs are equivalent only through their complete
+registered operating profile.
+
+Alias publication is independent of generation. The optional `published` field preserves old
+exact-alias defaults; wildcard and strategy identifiers never become selectable directory IDs.
+Automatic targets default hidden and require an explicit rule. A public automatic alias can
+disappear while the eligible pool is empty. Independently advertised physical IDs survive a
+hidden-alias collision, retaining physical metadata if an automatic target cannot resolve.
+
+Automatic selection uses the existing lease owner's read-only eligibility evidence, not the
+directory or a refresh. It freezes a physical target once per generation/count request so retries
+cannot silently change model families or tiers. Opus strategies stay within Opus. Flash defaults
+to Low while preserving explicit requested tiers and registered recipes. No-evidence fixed
+fallbacks and implicit replacement of existing mappings were rejected because they obscure
+entitlement and override user intent. Owner compatibility `14` prevents a mixed desktop/Core
+pair from dropping the new management field. See the
+[same-release upgrade guide](../../../../docs/upgrade-guides/next/desktop-core-project-id.md).
+
 ## Alternatives considered
 
 A process-wide rejection flag and catalog-as-entitlement shortcut were rejected:
@@ -61,3 +83,17 @@ stage report is D08 routing and availability implementation (local artifact `D08
 Live-provider and packaged-client checks remain deferred until the full D01–D29
 stage is complete.
 The 2026-11-07 provenance and tier-binding changes were independently source-reviewed. That review fixed legacy public recipe fallthrough on physical targets and a Gemini count effort mismatch. Earlier passing evidence above predates this snapshot. Tests, test edits, type checks, lint, builds, formatting, check scripts and live operations are explicitly deferred by the user. See the current source implementation report (local artifact `D08-explicit-tier-binding-implementation.md` in the 2026-10-11 review collection).
+
+The user subsequently requested tests and approved the 2026-11-10 D08 grouped
+implementation. The earlier test deferral describes that historical stage.
+Current checks cover route precedence, account-specific High IDs, directory
+agreement, supported Claude suffixes and headers, plus preserved image options
+through physical model binding. See the current task record (local artifact `scope-decisions.md` in the 2026-11-07 review collection).
+
+D22 checks cover publication migration, saved Core RPC readback, shared list/detail/probe
+visibility, empty-pool failure, account-local eligibility, physical-target freezing on retry and
+model-specific headers through all three generation protocols. An isolated Windows Electron
+renderer verifies the actual mapping controls with injected IPC; provider responses remain
+substituted in the protocol suite. OAuth regression uses a real loopback listener and an
+injected enrollment failure. See the D22 evidence record (local artifact `d22-implementation.md` in the 2026-11-07 review collection).
+Credential-backed provider and Google login acceptance remain unverified.

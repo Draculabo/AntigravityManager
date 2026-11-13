@@ -8,13 +8,17 @@ import {
   ContextCompactionCoordinator,
   resolveCompactionPolicy,
   resolveManualCompactionCommand,
+  type CompactionHistoryProof,
   type CompactionOperation,
 } from './context-compaction';
 import { CoworkCompactionControl } from './cowork-compaction-control';
 import {
-  observeCoworkSummary,
-  summaryTextFingerprint,
-} from './cowork-summary-observer';
+  hasCoworkCommandAfterReminders,
+  matchCoworkPrefixSummary,
+  matchesCoworkRetainedHistory,
+  trackCoworkHistory,
+} from './cowork-partial-history';
+import { observeCoworkSummary, summaryTextFingerprint } from './cowork-summary-observer';
 import type {
   AnthropicChatRequest,
   AnthropicChatResponse,
@@ -44,24 +48,44 @@ function messageText(message: AnthropicMessage | undefined): string | null {
     .join('\n');
 }
 
+function hasNativeSummaryPrompt(text: string | null): boolean {
+  return /^(?:Summarize this coding conversation|summarize the conversation so far|write a concise summary|You are tasked with summarizing conversations)(?:\b|[.!:])/u.test(
+    text?.trimStart() ?? '',
+  );
+}
+
 function isNativeSummary(request: AnthropicChatRequest, context: SignatureScopeContext): boolean {
   const helper = context.headers['x-stainless-helper'];
   if (typeof helper === 'string' && helper.toLowerCase().includes('compaction')) {
     return true;
   }
-  const text = messageText(request.messages.at(-1))?.trimStart() ?? '';
-  return /^(?:Summarize this coding conversation|summarize the conversation so far|write a concise summary|You are tasked with summarizing conversations)(?:\b|[.!:])/u.test(
-    text,
-  );
+  return hasNativeSummaryPrompt(messageText(request.messages.at(-1)));
 }
 
-function hasAdoptedSummary(request: AnthropicChatRequest, operation: CompactionOperation): boolean {
+function hasSystemSummaryPrompt(system: AnthropicChatRequest['system']): boolean {
+  return typeof system === 'string'
+    ? hasNativeSummaryPrompt(system)
+    : (system?.some((block) => block.type === 'text' && hasNativeSummaryPrompt(block.text)) ??
+        false);
+}
+
+function hasAdoptedSummary(history: AnthropicMessage[], operation: CompactionOperation): boolean {
   if (!operation.providerSummaryFingerprint || !operation.providerSummaryCharacters) {
     return false;
   }
-  for (const message of request.messages.slice(0, 3)) {
-    const text = messageText(message)?.trim() ?? '';
+  for (const [index, message] of history.slice(0, 5).entries()) {
+    // Cowork prepends complete reminder blocks before its continuation envelope.
+    const text =
+      messageText(message)
+        ?.replace(/^(?:\s*<system-reminder>[\s\S]*?<\/system-reminder>)+\s*/u, '')
+        .trim() ?? '';
     if (!text.startsWith('This session is being continued from a previous conversation')) {
+      continue;
+    }
+    if (
+      operation.retainedHistory &&
+      !matchesCoworkRetainedHistory(history, index + 1, operation.retainedHistory)
+    ) {
       continue;
     }
     const tagged = /<summary>([\s\S]*?)<\/summary>/u.exec(text)?.[1]?.trim();
@@ -127,6 +151,7 @@ export function clearCoworkCompactionState(): void {
 
 export class CoworkCompactionRequest {
   private summaryOperationId: string | undefined;
+  private retainedHistory: CompactionHistoryProof | undefined;
   private admitted = false;
   private readonly manual: boolean;
   private readonly summary: boolean;
@@ -145,9 +170,11 @@ export class CoworkCompactionRequest {
     private readonly signal?: AbortSignal,
   ) {
     this.summary = isNativeSummary(request, context);
+    const last = request.messages.at(-1);
     this.manual =
       !this.summary &&
-      resolveManualCompactionCommand(messageText(request.messages.at(-1)) ?? '') !== null;
+      (resolveManualCompactionCommand(messageText(last) ?? '') !== null ||
+        hasCoworkCommandAfterReminders(last));
     this.history = this.manual ? request.messages.slice(0, -1) : request.messages;
     this.fingerprint = hashSessionAnchor(this.history);
   }
@@ -157,28 +184,35 @@ export class CoworkCompactionRequest {
       return;
     }
     this.admitted = true;
-    if (this.manual && !this.settings.manual_enabled) {
-      return;
-    }
     const operation = coordinator.getOperation(this.tenantId, this.clientSessionId);
-    if (this.summary) {
-      if (
-        operation?.status === 'active' &&
+    if (operation?.status === 'active') {
+      const fullHistorySummary =
+        (this.summary || hasSystemSummaryPrompt(this.request.system)) &&
         operation.inputHistoryMessages !== undefined &&
         hashSessionAnchor(this.request.messages.slice(0, operation.inputHistoryMessages)) ===
-          operation.inputFingerprint
-      ) {
+          operation.inputFingerprint;
+      const retainedHistory = fullHistorySummary
+        ? undefined
+        : matchCoworkPrefixSummary(this.request.messages, operation.inputHistory);
+      if (fullHistorySummary || retainedHistory) {
         this.summaryOperationId = coordinator.markSummaryInFlight(operation.id)?.id;
         if (this.summaryOperationId) {
+          this.retainedHistory = retainedHistory;
           this.signal?.addEventListener('abort', this.onAbort, { once: true });
           if (this.signal?.aborted) {
             this.fail();
           }
         }
+        return;
       }
+    }
+    if (this.summary) {
       return;
     }
-    if (operation?.status === 'summary-succeeded' && hasAdoptedSummary(this.request, operation)) {
+    if (this.manual && !this.settings.manual_enabled) {
+      return;
+    }
+    if (operation?.status === 'summary-succeeded' && hasAdoptedSummary(this.history, operation)) {
       const confirmation = coordinator.complete({
         operationId: operation.id,
         newHistoryFingerprint: this.fingerprint,
@@ -186,7 +220,7 @@ export class CoworkCompactionRequest {
         newHistoryMessages: this.history.length,
       });
       if (confirmation) {
-        if (operation.mode === 'manual') {
+        if (operation.mode === 'manual' && (!operation.retainedHistory || this.manual)) {
           throw new CoworkCompactionControl({
             kind: 'acknowledgement',
             operationId: operation.id,
@@ -215,9 +249,10 @@ export class CoworkCompactionRequest {
     if (this.manual && estimate.estimatedInputTokens <= policy.targetTokens) {
       throw new CoworkCompactionControl({
         kind: 'acknowledgement',
-        message: estimate.unestimatedMediaParts > 0
-          ? 'Context size cannot be estimated reliably because this request contains uncounted media. No compaction was performed.'
-          : 'Conversation is already at minimal context. No compaction was performed.',
+        message:
+          estimate.unestimatedMediaParts > 0
+            ? 'Context size cannot be estimated reliably because this request contains uncounted media. No compaction was performed.'
+            : 'Conversation is already at minimal context. No compaction was performed.',
       });
     }
     if (
@@ -238,6 +273,7 @@ export class CoworkCompactionRequest {
       targetTokens: policy.targetTokens,
       inputFingerprint: this.fingerprint,
       inputHistoryMessages: this.history.length,
+      inputHistory: trackCoworkHistory(this.history),
     });
     if (acquired.kind !== 'rejected') {
       this.trigger(acquired.operation);
@@ -259,6 +295,7 @@ export class CoworkCompactionRequest {
           operationId,
           summaryFingerprint: proof.fingerprint,
           summaryCharacters: proof.characters,
+          retainedHistory: this.retainedHistory,
         });
       },
       () => {

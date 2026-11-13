@@ -1,116 +1,100 @@
-import { app, Tray, Menu, nativeImage, BrowserWindow } from 'electron';
+import { app, Tray, Menu, nativeImage, type BrowserWindow } from 'electron';
 import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
-import { logger } from '@/shared/logging/logger';
-import { getTrayTexts, type TrayTexts } from './i18n';
 import { getCloudAccountAdapter } from '@/modules/cloud-account/ipc/cloud-account-adapter';
+import { logger } from '@/shared/logging/logger';
+import { restoreExistingWindow } from '../../utils/windowActivation';
+import { getTrayTexts } from './i18n';
 import { configureTrayIcon, resolveTrayIconPath } from './icon';
+import { getTrayQuotaText } from './quota';
 
 type TrayAccount = Pick<CloudAccountView, 'email' | 'quota'>;
 let tray: Tray | null = null;
 let globalMainWindow: BrowserWindow | null = null;
 let lastAccount: TrayAccount | null = null;
-let lastLanguage: string = 'en';
+let lastLanguage = 'en';
 let onQuitRequested: (() => void | Promise<void>) | null = null;
+let accountReadVersion = 0;
 
 export function isTrayReady(): boolean {
   return tray !== null;
-}
-
-function getQuotaText(account: TrayAccount | null, texts: TrayTexts): string[] {
-  if (!account) return [`${texts.quota}: --`];
-  if (!account.quota || !account.quota.models) return [`${texts.quota}: ${texts.unknown_quota}`];
-
-  const lines: string[] = [];
-  const models = account.quota.models;
-
-  let gHigh = 0;
-  let gImage = 0;
-  let claude = 0;
-
-  for (const [key, val] of Object.entries(models)) {
-    const k = key.toLowerCase();
-    if (k.includes('high')) gHigh = val.percentage;
-    else if (k.includes('image')) gImage = val.percentage;
-    else if (k.includes('claude')) claude = val.percentage;
-  }
-
-  lines.push(`Gemini High: ${gHigh}%`);
-  lines.push(`Gemini Image: ${gImage}%`);
-  lines.push(`Claude 4.5: ${claude}%`);
-
-  return lines;
 }
 
 export function setTrayMainWindow(mainWindow: BrowserWindow | null): void {
   globalMainWindow = mainWindow;
 }
 
-export function initTray(mainWindow: BrowserWindow, quitHandler?: () => void | Promise<void>): boolean {
+export function initTray(
+  mainWindow: BrowserWindow,
+  quitHandler?: () => void | Promise<void>,
+): boolean {
+  destroyTray();
   globalMainWindow = mainWindow;
   onQuitRequested = quitHandler ?? null;
 
-  // PATCH 3: Destroy existing tray before creating new one (prevents zombie tray icons)
-  if (tray) {
-    try {
-      tray.destroy();
-    } catch (e) {
-      logger.error('Failed to destroy existing tray', e);
+  try {
+    const iconPath = resolveTrayIconPath({
+      inDevelopment: process.env.NODE_ENV === 'development',
+      platform: process.platform,
+      cwd: process.cwd(),
+      resourcesPath: process.resourcesPath,
+    });
+    const icon = nativeImage.createFromPath(iconPath);
+    if (icon.isEmpty()) {
+      throw new Error(`Tray icon not found or invalid at path: ${iconPath}`);
     }
-    tray = null;
-    logger.info('Destroyed existing tray before creating new one');
-  }
 
-  const inDevelopment = process.env.NODE_ENV === 'development';
-  // In production, extraResource copies 'src/assets' folder to 'resources/assets'.
-  const iconPath = resolveTrayIconPath({
-    inDevelopment,
-    platform: process.platform,
-    cwd: process.cwd(),
-    resourcesPath: process.resourcesPath,
-  });
-
-  logger.info(
-    `Tray icon path: ${iconPath}, inDevelopment: ${inDevelopment}, resourcesPath: ${process.resourcesPath}`,
-  );
-
-  const icon = nativeImage.createFromPath(iconPath);
-
-  // Verify icon is valid before creating tray
-  if (icon.isEmpty()) {
-    logger.error(`Tray icon not found or invalid at path: ${iconPath}`);
+    configureTrayIcon(icon, process.platform);
+    tray = new Tray(icon);
+    tray.setToolTip('Antigravity Manager');
+    tray.on('double-click', () => {
+      const window = globalMainWindow;
+      if (!window || window.isDestroyed()) {
+        return;
+      }
+      if (window.isVisible() && !window.isMinimized()) {
+        window.hide();
+      } else {
+        restoreExistingWindow(window);
+      }
+    });
+    renderTrayMenu(tray, null);
+  } catch (error) {
+    logger.error('Failed to initialize tray', error);
+    destroyTray();
     return false;
   }
 
-  configureTrayIcon(icon, process.platform);
-  tray = new Tray(icon);
-  tray.setToolTip('Antigravity Manager');
-
-  tray.on('double-click', () => {
-    if (globalMainWindow) {
-      if (globalMainWindow.isVisible()) {
-        globalMainWindow.hide();
-      } else {
-        globalMainWindow.show();
-        globalMainWindow.focus();
-      }
-    }
-  });
-
-  updateTrayMenu(null);
+  void refreshTrayAccount();
   return true;
 }
 
-export function updateTrayMenu(account: TrayAccount | null, language?: string) {
-  lastAccount = account;
-  if (language) {
-    lastLanguage = language;
+/** Reconcile a presentation hint against the selected owner's current Classic snapshot. */
+export async function refreshTrayAccount(): Promise<void> {
+  const currentTray = tray;
+  if (!currentTray) {
+    return;
   }
+  const adapter = getCloudAccountAdapter();
+  const version = ++accountReadVersion;
+  try {
+    const accounts = await adapter.listViews();
+    if (
+      tray !== currentTray ||
+      version !== accountReadVersion ||
+      adapter !== getCloudAccountAdapter()
+    ) {
+      return;
+    }
+    const account = accounts.find((item) => item.is_active_classic) ?? null;
+    renderTrayMenu(currentTray, account);
+    lastAccount = account;
+  } catch (error) {
+    logger.warn('Failed to refresh current Classic account in tray', error);
+  }
+}
 
-  if (!tray || !globalMainWindow) return;
-
+function renderTrayMenu(currentTray: Tray, account: TrayAccount | null): void {
   const texts = getTrayTexts(lastLanguage);
-  const quotaLines = getQuotaText(account, texts);
-
   const template: Electron.MenuItemConstructorOptions[] = [
     {
       label: account
@@ -118,33 +102,36 @@ export function updateTrayMenu(account: TrayAccount | null, language?: string) {
         : `${texts.current}: ${texts.no_account}`,
       enabled: false,
     },
-    ...quotaLines.map((line) => ({ label: line, enabled: false })),
+    ...getTrayQuotaText(account, texts).map((label) => ({ label, enabled: false })),
     { type: 'separator' },
     {
       label: texts.switch_next,
       click: async () => {
         try {
-          const accounts = await getCloudAccountAdapter().listViews();
-          if (accounts.length === 0) return;
-
-          const current = accounts.find((a) => a.is_active);
-          let nextIndex = 0;
-          if (current) {
-            const idx = accounts.findIndex((a) => a.id === current.id);
-            nextIndex = (idx + 1) % accounts.length;
+          const adapter = getCloudAccountAdapter();
+          const accounts = await adapter.listViews();
+          if (
+            tray !== currentTray ||
+            adapter !== getCloudAccountAdapter() ||
+            accounts.length === 0
+          ) {
+            return;
           }
-          const next = accounts[nextIndex];
 
-          await getCloudAccountAdapter().switchAccount(next.id);
-          logger.info(`Tray: Switched to account ${next.email}`);
-
-          updateTrayMenu(next, lastLanguage);
-
-          if (globalMainWindow) {
-            globalMainWindow.webContents.send('tray://account-switched', next.id);
+          const currentIndex = accounts.findIndex((item) => item.is_active_classic);
+          const next = accounts[(currentIndex + 1) % accounts.length];
+          await adapter.switchAccount(next.id, 'classic');
+          if (tray !== currentTray || adapter !== getCloudAccountAdapter()) {
+            return;
           }
-        } catch (e) {
-          logger.error('Tray: Switch account failed', e);
+
+          const window = globalMainWindow;
+          if (window && !window.isDestroyed()) {
+            window.webContents.send('tray://account-switched', next.id);
+          }
+          await refreshTrayAccount();
+        } catch (error) {
+          logger.error('Tray: Switch account failed', error);
         }
       },
     },
@@ -152,20 +139,23 @@ export function updateTrayMenu(account: TrayAccount | null, language?: string) {
       label: texts.refresh_current,
       click: async () => {
         try {
-          const accounts = await getCloudAccountAdapter().listViews();
-          const current = accounts.find((a) => a.is_active);
-          if (!current) return;
-
-          logger.info(`Tray: Refreshing quota for ${current.email}`);
-
-          const updated = await getCloudAccountAdapter().refreshQuota(current.id);
-          updateTrayMenu(updated, lastLanguage);
-
-          if (globalMainWindow) {
-            globalMainWindow.webContents.send('tray://refresh-current');
+          const adapter = getCloudAccountAdapter();
+          const accounts = await adapter.listViews();
+          const current = accounts.find((item) => item.is_active_classic);
+          if (tray !== currentTray || adapter !== getCloudAccountAdapter() || !current) {
+            return;
           }
-        } catch (e) {
-          logger.error('Tray: Refresh quota failed', e);
+
+          await adapter.refreshQuota(current.id);
+          if (tray !== currentTray || adapter !== getCloudAccountAdapter()) {
+            return;
+          }
+          const window = globalMainWindow;
+          if (window && !window.isDestroyed()) {
+            window.webContents.send('tray://refresh-current');
+          }
+        } catch (error) {
+          logger.error('Tray: Refresh quota failed', error);
         }
       },
     },
@@ -173,8 +163,9 @@ export function updateTrayMenu(account: TrayAccount | null, language?: string) {
     {
       label: texts.show_window,
       click: () => {
-        globalMainWindow?.show();
-        globalMainWindow?.focus();
+        if (globalMainWindow) {
+          restoreExistingWindow(globalMainWindow);
+        }
       },
     },
     { type: 'separator' },
@@ -182,7 +173,7 @@ export function updateTrayMenu(account: TrayAccount | null, language?: string) {
       label: texts.quit,
       click: () => {
         if (onQuitRequested) {
-          onQuitRequested();
+          void onQuitRequested();
           return;
         }
         app.quit();
@@ -190,23 +181,30 @@ export function updateTrayMenu(account: TrayAccount | null, language?: string) {
     },
   ];
 
-  const menu = Menu.buildFromTemplate(template);
-  tray.setContextMenu(menu);
+  currentTray.setContextMenu(Menu.buildFromTemplate(template));
 }
 
-export function setTrayLanguage(lang: string) {
-  updateTrayMenu(lastAccount, lang);
-}
-
-export function destroyTray() {
+export function setTrayLanguage(lang: string): void {
+  lastLanguage = lang;
   if (tray) {
     try {
-      tray.destroy();
-    } catch (e) {
-      logger.error('Failed to destroy tray', e);
+      renderTrayMenu(tray, lastAccount);
+    } catch (error) {
+      logger.warn('Failed to update tray language', error);
     }
-    tray = null;
-    onQuitRequested = null;
-    logger.info('Tray destroyed');
+  }
+}
+
+export function destroyTray(): void {
+  const currentTray = tray;
+  tray = null;
+  lastAccount = null;
+  onQuitRequested = null;
+  if (currentTray) {
+    try {
+      currentTray.destroy();
+    } catch (error) {
+      logger.error('Failed to destroy tray', error);
+    }
   }
 }

@@ -12,6 +12,12 @@ Move warmup execution and quota persistence into a feature-owned runner that acc
 
 The runner tracks active work. Monitor stop cancels future work and invalidates in-flight quota fetch results before persistence. The underlying warmup service also checks cancellation after project lookup and executor completion, before saving tokens or history. Tray exit and normal Electron quit now use one idempotent cleanup sequence: cancel, drain, stop OAuth and gateway, then allow normal `app.quit()` to finish. Normal quit preserves the updater's quit event. The existing bounded desktop shutdown timeout remains the final process-exit limit.
 
+Warmup admission carries the selected account's advertised model IDs for the
+intended quota group into the gateway executor. The executor uses the generation
+router and registered binding rules. Missing model evidence skips the candidate.
+This prevents a successful quota-summary read from being treated as permission
+to send a guessed physical model.
+
 ## Alternatives considered
 
 - Importing `CloudMonitorService` in Node-facing paths would pull in Electron notifications and desktop switching.

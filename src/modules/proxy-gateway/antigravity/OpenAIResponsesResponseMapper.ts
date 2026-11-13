@@ -2,8 +2,6 @@ import type {
   OpenAIChatResponse,
   OpenAIToolCall,
 } from '../server/common/interfaces/request-interfaces';
-import { optimizeApplyPatch, validateApplyPatchV4A } from './ApplyPatchPreflight';
-import { extractCustomToolInput, isCustomToolCall } from './CustomToolCall';
 import {
   isMalformedFunctionCallFinishReason,
   MALFORMED_FUNCTION_CALL_RECOVERY_TEXT,
@@ -11,77 +9,27 @@ import {
 import { toOpenAIResponsesUsage } from './OpenAIUsageMapper';
 import { toIncompleteReason, type ResponsesOutputStatus } from './openai-responses-incomplete';
 
-type ResponsesToolOutput =
-  | {
-      diagnostic: string;
-    }
-  | {
-      item: Record<string, unknown>;
-    };
-
-function toResponsesToolOutputItem(toolCall: OpenAIToolCall): ResponsesToolOutput {
-  const functionCall = toolCall.function ?? {
-    name: 'apply_patch',
-    arguments: JSON.stringify(toolCall.operation ?? {}),
+function toResponsesToolOutputItem(toolCall: OpenAIToolCall): Record<string, unknown> | undefined {
+  const common = {
+    call_id: toolCall.call_id ?? toolCall.id,
+    id: toolCall.id,
+    ...(toolCall.namespace ? { namespace: toolCall.namespace } : {}),
+    status: 'completed',
   };
-  const callId = toolCall.call_id ?? toolCall.id;
-  const namespaceFields = toolCall.namespace ? { namespace: toolCall.namespace } : {};
-  const argumentsString = functionCall.arguments;
-  if (toolCall.custom_input !== undefined || isCustomToolCall(functionCall.name)) {
-    const rawInput =
-      toolCall.custom_input ??
-      extractCustomToolInput(functionCall.name, parseToolArguments(argumentsString));
-    const input = isCustomToolCall(functionCall.name)
-      ? optimizeApplyPatch(rawInput).input
-      : rawInput;
-    if (isCustomToolCall(functionCall.name)) {
-      const validationError = validateApplyPatchV4A(input);
-      if (validationError) {
-        return {
-          diagnostic: `[apply_patch rejected: invalid V4A syntax at line ${validationError.line}: ${validationError.message}]`,
-        };
-      }
-    }
-
+  if (toolCall.type === 'custom' && toolCall.custom) {
+    return { ...common, ...toolCall.custom, type: 'custom_tool_call' };
+  }
+  if (toolCall.function) {
+    return { ...common, ...toolCall.function, type: 'function_call' };
+  }
+  if (toolCall.type === 'apply_patch_call' && toolCall.operation) {
     return {
-      item: {
-        call_id: callId,
-        id: toolCall.id,
-        input,
-        name: functionCall.name,
-        ...namespaceFields,
-        status: 'completed',
-        type: 'custom_tool_call',
-      },
+      ...common,
+      name: 'apply_patch',
+      arguments: JSON.stringify(toolCall.operation),
+      type: 'function_call',
     };
   }
-
-  return {
-    item: {
-      arguments: argumentsString,
-      call_id: callId,
-      id: toolCall.id,
-      name: functionCall.name,
-      ...namespaceFields,
-      status: 'completed',
-      type: 'function_call',
-    },
-  };
-}
-
-function parseToolArguments(argumentsString: string): Record<string, unknown> {
-  try {
-    const parsed: unknown = JSON.parse(argumentsString);
-    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
-  } catch {
-    // Raw apply_patch input is handled by extractCustomToolInput's string fallback.
-  }
-
-  return {
-    input: argumentsString,
-  };
 }
 
 function unwrapStructuredJson(text: string): string {
@@ -165,18 +113,9 @@ export function toOpenAIResponsesResponse(
   }
 
   for (const toolCall of choice?.message.tool_calls ?? []) {
-    const mapped = toResponsesToolOutputItem(toolCall);
-    if ('diagnostic' in mapped) {
-      output.push({
-        content: [{ annotations: [], text: mapped.diagnostic, type: 'output_text' }],
-        id: `msg_${toolCall.id}`,
-        phase: 'commentary',
-        role: 'assistant',
-        status,
-        type: 'message',
-      });
-    } else {
-      output.push(mapped.item);
+    const item = toResponsesToolOutputItem(toolCall);
+    if (item) {
+      output.push(item);
     }
   }
 

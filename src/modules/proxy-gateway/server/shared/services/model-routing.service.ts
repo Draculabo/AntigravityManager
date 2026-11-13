@@ -9,6 +9,9 @@ import {
 } from '../../../antigravity/ModelMapping';
 import { getConfiguredModelMapping } from '@/modules/config/model-aliases';
 import { ModelRouteMissJournalService } from './model-route-miss-journal.service';
+import { normalizeClaudeContextModel } from '../../../antigravity/claude-context-model';
+import { getContextWindow } from '../../../antigravity/ModelSpecs';
+import { resolveAdaptiveModel, type AdaptiveRoutingContext } from './adaptive-model-routing';
 
 /**
  * How a route was decided.
@@ -48,10 +51,12 @@ export interface ModelRouteResolution {
   match: ModelRouteMatch;
   /** The user-configured rule responsible for a configured match. */
   matchedRule?: ModelRouteRule;
+  /** The configured policy; resolvedModel is its request-frozen physical selection. */
+  adaptiveTarget?: string;
 }
 
 function normalizeModelId(model: string): string {
-  return model.trim().replace(/^models\//i, '');
+  return normalizeClaudeContextModel(model.trim().replace(/^models\//i, ''));
 }
 
 function normalizeClaudeModelId(model: string): string {
@@ -81,9 +86,25 @@ export class ModelRoutingService {
    * the route-miss journal, so callers that only need the target id (or need to re-derive it
    * downstream, as `countTokensWithLease` does) can call this freely.
    */
-  resolveModelRoute(model: string): ModelRouteResolution {
+  resolveModelRoute(
+    model: string,
+    config = getServerConfig(),
+    adaptive?: AdaptiveRoutingContext,
+  ): ModelRouteResolution {
+    const route = this.resolveStaticModelRoute(model, config);
+    if (route.source === 'configured' && route.resolvedModel.startsWith('auto:')) {
+      return {
+        ...route,
+        adaptiveTarget: route.resolvedModel,
+        resolvedModel: resolveAdaptiveModel(route.resolvedModel, route.normalizedModel, adaptive),
+      };
+    }
+    return route;
+  }
+
+  private resolveStaticModelRoute(model: string, config = getServerConfig()): ModelRouteResolution {
+    const originalModel = model.trim().replace(/^models\//i, '');
     const normalizedModel = normalizeModelId(model);
-    const config = getServerConfig();
     const configuredMapping = getConfiguredModelMapping(config);
 
     const customExactMapping: Array<{ alias: string; target: string }> = [];
@@ -115,18 +136,9 @@ export class ModelRoutingService {
       customExactMapping.push({ alias: key, target });
     }
 
-    const dynamicForwarded = getDynamicForwardingTarget(normalizedModel);
-    if (dynamicForwarded) {
-      return {
-        requestedModel: model,
-        normalizedModel,
-        resolvedModel: normalizeGeminiModelAlias(dynamicForwarded),
-        source: 'dynamic-legacy',
-        match: 'dynamic-forwarding',
-      };
-    }
-
-    const exact = customExactMapping.find((entry) => entry.alias.trim() === normalizedModel.trim());
+    const exact =
+      customExactMapping.find((entry) => entry.alias.trim() === originalModel) ??
+      customExactMapping.find((entry) => entry.alias.trim() === normalizedModel);
     if (exact) {
       return {
         requestedModel: model,
@@ -171,6 +183,17 @@ export class ModelRoutingService {
         source: 'configured',
         match: 'claude-normalized-exact',
         matchedRule: claudeNormalized,
+      };
+    }
+
+    const dynamicForwarded = getDynamicForwardingTarget(normalizedModel);
+    if (dynamicForwarded) {
+      return {
+        requestedModel: model,
+        normalizedModel,
+        resolvedModel: normalizeGeminiModelAlias(dynamicForwarded),
+        source: 'dynamic-legacy',
+        match: 'dynamic-forwarding',
       };
     }
 
@@ -262,8 +285,11 @@ export class ModelRoutingService {
    * model again downstream (as `countTokensWithLease` does) should read {@link resolveTargetModel}
    * instead, so a request the journal already counted is never counted twice.
    */
-  resolveModelRouteForRequest(model: string): ModelRouteResolution {
-    const resolution = this.resolveModelRoute(model);
+  resolveModelRouteForRequest(
+    model: string,
+    adaptive?: AdaptiveRoutingContext,
+  ): ModelRouteResolution {
+    const resolution = this.resolveModelRoute(model, getServerConfig(), adaptive);
     if (resolution.source === 'miss') {
       this.missJournal?.record(resolution.requestedModel);
     }
@@ -274,15 +300,30 @@ export class ModelRoutingService {
     return this.resolveModelRoute(model).resolvedModel;
   }
 
-  createModelSpecificHeaders(model: string | undefined): Record<string, string> {
+  createModelSpecificHeaders(
+    model: string | undefined,
+    clientBeta?: string | string[],
+  ): Record<string, string> {
     if (!model) {
       return {};
     }
 
-    if (model.toLowerCase().includes('claude')) {
+    if (normalizeClaudeContextModel(model).toLowerCase().startsWith('claude-')) {
+      const required = [
+        'claude-code-20250219',
+        'interleaved-thinking-2025-05-14',
+        'fine-grained-tool-streaming-2025-05-14',
+      ];
+      const allowed = new Set(required);
+      if (getContextWindow(normalizeClaudeContextModel(model)) >= 1_000_000) {
+        allowed.add('context-1m-2025-08-07');
+      }
+      const requested = (Array.isArray(clientBeta) ? clientBeta : [clientBeta ?? ''])
+        .flatMap((value) => value.split(','))
+        .map((value) => value.trim())
+        .filter((value) => allowed.has(value));
       return {
-        'anthropic-beta':
-          'claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14',
+        'anthropic-beta': [...new Set([...required, ...requested])].join(','),
       };
     }
 

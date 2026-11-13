@@ -10,6 +10,9 @@ import fr from './fr';
 import ptBr from './pt-BR';
 import ja from './ja';
 
+import { DESKTOP_LANGUAGES } from '@/modules/app-shell/desktop-appearance';
+import { LOCAL_STORAGE_KEYS } from '@/shared/constants';
+
 i18n
   .use(LanguageDetector)
   .use(initReactI18next)
@@ -17,10 +20,10 @@ i18n
     fallbackLng: 'en',
     detection: {
       order: ['localStorage', 'navigator'],
-      caches: ['localStorage'],
-      lookupLocalStorage: 'lang',
+      caches: [],
+      lookupLocalStorage: LOCAL_STORAGE_KEYS.LANGUAGE,
     },
-    supportedLngs: ['en', 'zh-CN', 'ru', 'vi', 'tr', 'fr', 'pt-BR', 'ja'],
+    supportedLngs: [...DESKTOP_LANGUAGES],
     load: 'currentOnly', // Only load the exact language code, not variants
     resources: {
       en: {

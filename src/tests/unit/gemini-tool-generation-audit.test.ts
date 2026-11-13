@@ -69,9 +69,18 @@ describe('upstream malformed tool generation audit', () => {
     expect(audit.completeAttempt).toHaveBeenCalledExactlyOnceWith(null, {
       error: diagnostic,
       outcome: 'completed',
+      partial: false,
       responseBody: payload,
       responseHeaders: {},
       status: 200,
+      timing: {
+        version: 1,
+        uploadFinishedMs: null,
+        responseHeadersMs: null,
+        firstByteMs: null,
+        firstUsableOutputMs: null,
+      },
+      usage: undefined,
     });
   });
 
@@ -103,6 +112,14 @@ describe('upstream malformed tool generation audit', () => {
       responsePayloadHandled: true,
       responseHeaders: {},
       status: 200,
+      timing: {
+        version: 1,
+        uploadFinishedMs: null,
+        responseHeadersMs: null,
+        firstByteMs: expect.any(Number),
+        firstUsableOutputMs: expect.any(Number),
+      },
+      usage: undefined,
     });
     const captured = audit.write.mock.calls.map((call) => call[0]).join('');
     expect(captured).toContain('MALFORMED_FUNCTION_CALL');

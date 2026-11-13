@@ -5,7 +5,10 @@ import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 const effects = vi.hoisted(() => ({
   setEnabled: vi.fn<(enabled: boolean) => Promise<void>>(),
   local: vi.fn(),
+  trayLanguage: vi.fn(),
+  beforeSave: vi.fn(),
 }));
+vi.mock('@/modules/app-shell/ipc/tray/handler', () => ({ setTrayLanguage: effects.trayLanguage }));
 vi.mock('@/shared/observability/errorReporting', () => ({
   setErrorReportingEnabled: effects.local,
 }));
@@ -20,7 +23,8 @@ vi.mock('@/modules/config/ipc/desktop-preferences', async () => {
   return {
     desktopPreferencesStore: {
       load: async () => current,
-      save: async (update: { error_reporting_enabled?: boolean }) => {
+      save: async (update: { error_reporting_enabled?: boolean; language?: string }) => {
+        effects.beforeSave();
         current = { ...current, ...update };
         return current;
       },
@@ -62,5 +66,16 @@ describe('desktop error reporting preference propagation', () => {
     expect((await enabled).error_reporting_enabled).toBe(true);
     expect(effects.setEnabled.mock.calls).toEqual([[false], [true]]);
     expect(effects.local.mock.calls).toEqual([[false], [true]]);
+  });
+
+  it('updates the tray only after the language preference is saved', async () => {
+    const { saveDesktopPreferences } = await import('@/modules/config/ipc/handlers');
+    effects.beforeSave.mockImplementationOnce(() => {
+      throw new Error('Disk write failed');
+    });
+    await expect(saveDesktopPreferences({ language: 'fr' })).rejects.toThrow('Disk write failed');
+    expect(effects.trayLanguage).not.toHaveBeenCalled();
+    await saveDesktopPreferences({ language: 'fr' });
+    expect(effects.trayLanguage).toHaveBeenCalledExactlyOnceWith('fr');
   });
 });

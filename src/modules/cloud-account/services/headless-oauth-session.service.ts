@@ -10,6 +10,7 @@ import { UPSTREAM_PROXY_CONFIGURATION_MESSAGE } from '@/modules/config/upstream-
 import { GoogleLoginOperation } from './google-login-operation';
 import { DesktopOAuthLoginError } from './desktop-oauth-login.error';
 import type { DesktopOAuthLoginErrorCode } from './desktop-oauth-login.schema';
+import { InvalidManualOAuthInputError, parseManualOAuthInput } from './manual-oauth-input';
 import type { GoogleLoginDiagnostic } from './operation-diagnostic.schema';
 import { classifyOperationCause } from './operation-cause';
 
@@ -158,7 +159,7 @@ export class HeadlessOAuthSessionService {
       : (this.completed.get(sessionId) ?? null);
   }
 
-  completeCode(sessionId: string, code: string): boolean {
+  completeCode(sessionId: string, input: string): boolean {
     const session = this.session;
     if (
       this.stopping ||
@@ -169,9 +170,23 @@ export class HeadlessOAuthSessionService {
     ) {
       return false;
     }
+    const parsed = parseManualOAuthInput(input);
+    if (parsed.kind !== 'code' && parsed.state !== session.state) {
+      throw new InvalidManualOAuthInputError();
+    }
     session.consumed = true;
     this.clearTimer(session);
-    session.enrollment = session.operation.context.run(() => this.complete(session, code));
+    if (parsed.kind === 'denied') {
+      this.fail(
+        session,
+        'authorization-denied',
+        'Google authorization was denied',
+        undefined,
+        'authorization-denied',
+      );
+      return true;
+    }
+    session.enrollment = session.operation.context.run(() => this.complete(session, parsed.code));
     return true;
   }
 

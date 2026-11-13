@@ -2,6 +2,7 @@ import { getTrafficAuditRequestContext } from '../../audit/traffic-audit-context
 
 export type PromptTransformationKind =
   | 'billing-metadata-removed'
+  | 'client-security-policy-removed'
   | 'identity-normalized'
   | 'initial-system-promoted'
   | 'late-system-reminder'

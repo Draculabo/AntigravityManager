@@ -1,4 +1,5 @@
 import { isNumber } from 'lodash-es';
+import type { ModelThinkingTransport } from '../../../common/model-thinking-transport';
 import { getPublicModelIdForDisplayName } from '../../../../antigravity/ModelMapping';
 import {
   type AccountLeaseTokenData,
@@ -16,6 +17,18 @@ export interface AccountModelEvidence {
   source: AccountModelEvidenceSource;
   displayName?: string;
   details?: ProviderModelDetails;
+}
+
+/** Only facts that agree across accounts eligible for a public route are published. */
+export interface ModelDiscoveryCapabilities {
+  supports_images?: boolean;
+  supports_thinking?: boolean;
+  max_output_tokens?: number;
+}
+
+export function consistentCapability<T>(values: readonly (T | undefined)[]): T | undefined {
+  const first = values[0];
+  return first !== undefined && values.every((value) => value === first) ? first : undefined;
 }
 
 /** Reads advertised model metadata; request failure state remains with the lease policy. */
@@ -153,5 +166,16 @@ export class AccountModelCatalog {
       }
     }
     return undefined;
+  }
+
+  getModelThinkingTransportForAccount(
+    accountId: string,
+    modelName: string,
+  ): ModelThinkingTransport | undefined {
+    const token = this.options.getTokenCache().get(accountId);
+    const model = normalizeModelId(modelName);
+    return token && model
+      ? this.getProviderModelDetails(token, model)?.thinkingTransport
+      : undefined;
   }
 }

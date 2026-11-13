@@ -125,16 +125,21 @@ describe('remote desktop OAuth login', () => {
     await vi.waitFor(() => expect(openExternal).toHaveBeenCalledOnce());
     const redirect = new URL(openExternal.mock.calls[0][0]).searchParams.get('redirect_uri');
     await expect(login.submitCode('')).rejects.toMatchObject({
-      loginCode: 'login-failed',
+      loginCode: 'invalid-manual-input',
       diagnostic: {
-        stage: 'management-transport',
-        reason: 'management-failed',
-        accountCommit: 'uncertain',
+        stage: 'authorization',
+        reason: 'malformed-response',
+        accountCommit: 'not-attempted',
         reporting: { state: 'not-reported', reason: 'expected-outcome' },
       },
     });
     expect(enroll).not.toHaveBeenCalled();
-    await login.submitCode('4/manual-code');
+    const state = new URL(openExternal.mock.calls[0][0]).searchParams.get('state');
+    await expect(login.submitCode('?code=4/private&state=wrong')).rejects.toMatchObject({
+      loginCode: 'invalid-manual-input',
+    });
+    expect(enroll).not.toHaveBeenCalled();
+    await login.submitCode(`${redirect}?code=4%2Fmanual-code&state=${state}`);
     expect(await pending).toEqual(view);
     expect(enroll).toHaveBeenCalledExactlyOnceWith('4/manual-code', {
       oauthClientKey: 'client-a',

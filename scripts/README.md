@@ -131,13 +131,18 @@ pnpm run test:acceptance agents report /path/to/report.json
 ```
 
 `scripts/release/build-source-manifest.mjs` is used by the publish workflow to record the exact
-source SHA, package version, platform, architecture and checksums for each matrix build. It also
-validates a downloaded release-assets directory before any remote upload. The command is
-read-only except for the requested manifest output:
+source SHA, package version, platform, architecture and checksums for each matrix build. Build,
+verification and publication use the workflow's triggering commit. Directory validation checks
+one manifest per build target and matches their source and version to the checkout:
 
 ```powershell
 node scripts/release/build-source-manifest.mjs --root . --validate-directory release-assets
 ```
+
+Before creating a draft or uploading assets, the publish job fetches the selected tag from the
+repository and also passes `--release-tag <tag>`. The tag must already exist and match both the
+package version and the checked-out commit. For manual publication, run the workflow from the
+tagged revision. A dry run can validate a revision before its tag exists.
 
 The minimal Core/CLI container consumes the matching prepared Linux runtime and
 keeps its profile in `/var/lib/antigravity-manager`. It does not package

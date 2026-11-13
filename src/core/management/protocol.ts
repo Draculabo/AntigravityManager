@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { OAuthClientKeySchema } from '@/modules/cloud-account/services/oauth-client-preference.schema';
-import { DesktopOAuthCodeSchema } from '@/modules/cloud-account/services/desktop-oauth-login.schema';
+import { DesktopOAuthManualInputSchema } from '@/modules/cloud-account/services/desktop-oauth-login.schema';
 import { DesktopOAuthLoginErrorCodeSchema } from '@/modules/cloud-account/services/desktop-oauth-login.schema';
 import { GoogleLoginDiagnosticSchema } from '@/modules/cloud-account/diagnostics';
 
@@ -32,7 +32,7 @@ export const OAuthStartRequestSchema = z.strictObject({
 });
 
 export const OAuthCompleteRequestSchema = z.strictObject({
-  code: DesktopOAuthCodeSchema,
+  code: DesktopOAuthManualInputSchema,
 });
 
 export const OAuthCompleteResponseSchema = z.strictObject({

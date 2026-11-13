@@ -11,6 +11,7 @@ describe('ProxyGatewayWeeklyWarmupExecutor', () => {
     await executor.warmup({
       accessToken: 'secret-access-token',
       model: 'claude-sonnet-4-6',
+      availableModels: ['claude-sonnet-4-6-thinking'],
       projectId: ' project-id ',
       upstreamProxyUrl: 'http://127.0.0.1:7890',
     });

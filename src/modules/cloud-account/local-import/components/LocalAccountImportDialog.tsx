@@ -30,6 +30,7 @@ const SOURCE_I18N_KEYS = {
   'antigravity-keyring': 'cloud.localImport.sources.antigravity-keyring',
   'antigravity-classic-db': 'cloud.localImport.sources.antigravity-classic-db',
   'antigravity-ide-db': 'cloud.localImport.sources.antigravity-ide-db',
+  'antigravity-agy-file': 'cloud.localImport.sources.antigravity-agy-file',
   'legacy-agent': 'cloud.localImport.sources.legacy-agent',
 } as const;
 

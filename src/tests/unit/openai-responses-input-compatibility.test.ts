@@ -305,7 +305,7 @@ describe('Responses input compatibility', () => {
     expect(request.messages.at(-1)?.content).toBe('[{"value":41}]');
   });
 
-  it('compacts repeated apply_patch failures without dropping tool media', () => {
+  it('keeps all seven apply_patch failures with their media and call IDs', () => {
     const input: unknown[] = [{ role: 'user', content: 'Apply the patch.' }];
     for (let index = 1; index <= 7; index += 1) {
       input.push(
@@ -329,12 +329,18 @@ describe('Responses input compatibility', () => {
       );
     }
 
-    expect(buildResponsesChatRequest({ input }).messages.at(-1)?.content).toEqual([
-      {
-        type: 'text',
-        text: '[Additional apply_patch failure omitted to avoid a retry loop. Produce a fresh V4A patch from current file contents instead of repeating previous failed patches.]',
-      },
-      { type: 'image_url', image_url: { url: 'data:image/png;base64,AQ==' } },
-    ]);
+    expect(
+      buildResponsesChatRequest({ input }).messages.filter((message) => message.role === 'tool'),
+    ).toEqual(
+      Array.from({ length: 7 }, (_, index) => ({
+        role: 'tool',
+        name: 'apply_patch',
+        tool_call_id: `call_patch_${index + 1}`,
+        content: [
+          { type: 'text', text: `apply_patch verification failed\nDistinct failure ${index + 1}` },
+          { type: 'image_url', image_url: { url: 'data:image/png;base64,AQ==' } },
+        ],
+      })),
+    );
   });
 });

@@ -171,8 +171,12 @@ describe('ClaudeRequestMapper web-search model compatibility', () => {
     expect(
       JSON.parse(ordinaryFunction.choices[0].message.tool_calls?.[0].function?.arguments ?? '{}'),
     ).toEqual({ command });
-    expect(
-      JSON.parse(customTool.choices[0].message.tool_calls?.[0].function?.arguments ?? '{}'),
-    ).toEqual({ input: 'patch text' });
+    expect(customTool.choices[0].message.tool_calls).toEqual([
+      {
+        id: 'call_apply_patch',
+        type: 'custom',
+        custom: { name: 'apply_patch', input: 'patch text' },
+      },
+    ]);
   });
 });

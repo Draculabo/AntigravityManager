@@ -79,6 +79,8 @@ import {
 } from '@/modules/cloud-account/services/cloud-account-view';
 import { cloudAccountListService } from '@/modules/cloud-account/services/cloud-account-list.service';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
+import { cloudAccountProjectId } from '@/modules/cloud-account/services/cloud-account-project-id.service';
+import { createCloudAccountProjectIdProcedures } from '@/modules/cloud-account/ipc/cloud-account-project-id-router';
 import {
   CloudAccountMutationResultSchema,
   CloudAccountIdSchema,
@@ -324,6 +326,11 @@ export function createCoreRpcOperations(
       CloudAccountRepo.setAccountProxy(accountId, proxyUrl);
       return { success: true };
     },
+    accountProjectId: {
+      getAccountProjectId: cloudAccountProjectId.getAccountProjectId,
+      setAccountProjectId: (input) => runAccountMutation(() => cloudAccountProjectId.setAccountProjectId(input)),
+      fetchAccountProjectId: (input) => runAccountMutation(() => cloudAccountProjectId.fetchAccountProjectId(input)),
+    },
     accountSetRouting: async (accountId, proxyPriority, proxyEnabled) => {
       CloudAccountRepo.setAccountRouting(accountId, proxyPriority, proxyEnabled);
       return { success: true };
@@ -355,6 +362,7 @@ export function createCoreRpcOperations(
 
 export function createCoreRpcRouter(operations: CoreRpcOperations) {
   return os.router({
+    ...createCloudAccountProjectIdProcedures(() => operations.accountProjectId),
     gatewayManualStart: os.input(z.strictObject({ port: z.number().int().min(1024).max(65535) }))
       .output(GatewayManualStartResultSchema).handler(({ input }) => operations.gatewayManualStart(input.port)),
     gatewayManualStop: os.output(GatewayManualStopResultSchema).handler(() => operations.gatewayManualStop()),

@@ -176,7 +176,9 @@ export function createSyntheticResponsesStream(
       }
 
       for (const toolCall of choice?.message?.tool_calls ?? []) {
+        const custom = toolCall.type === 'custom' ? toolCall.custom : undefined;
         const functionName =
+          custom?.name ??
           toolCall.function?.name ??
           (toolCall.operation || toolCall.type === 'apply_patch_call' ? 'apply_patch' : null);
         if (!functionName) {
@@ -185,7 +187,7 @@ export function createSyntheticResponsesStream(
         for (const event of mapper.processPart({
           functionCall: {
             args:
-              toolCall.operation ??
+              (custom ? { input: custom.input } : toolCall.operation) ??
               parseOpenAIFunctionArguments(toolCall.function?.arguments ?? '{}'),
             id: toolCall.call_id || toolCall.id,
             name: qualifyNamespaceToolName(toolCall.namespace ?? '', functionName),

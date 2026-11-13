@@ -12,11 +12,9 @@ import { recordPromptTransformation } from '../../../common/prompt-transformatio
 import { isEmpty, isNil, isPlainObject, isString } from 'lodash-es';
 import { v4 as uuidv4 } from 'uuid';
 import {
-  extractCustomToolInput,
-  isCustomToolCall,
-  toCustomToolArguments,
+  isDeclaredOpenAICustomTool,
+  readCustomToolInput,
 } from '@/modules/proxy-gateway/antigravity/CustomToolCall';
-import { optimizeApplyPatch } from '@/modules/proxy-gateway/antigravity/ApplyPatchPreflight';
 import { mapGeminiFinishReasonToOpenAI } from '@/modules/proxy-gateway/antigravity/GeminiFinishReason';
 import { normalizeObjectJsonSchema } from '@/modules/proxy-gateway/antigravity/JsonSchemaUtils';
 import { isGoogleSearchToolType } from '@/modules/proxy-gateway/antigravity/ToolChoiceCompat';
@@ -25,6 +23,7 @@ import { toOpenAIUsage } from '@/modules/proxy-gateway/antigravity/OpenAIUsageMa
 import { InvalidToolResultAssociationError } from '@/modules/proxy-gateway/antigravity/ClaudeToolResultAssociation';
 import {
   flattenOpenAITools,
+  getOpenAIToolName,
   splitNamespaceToolName,
 } from '@/modules/proxy-gateway/antigravity/ToolNamespace';
 import { hashSessionAnchor } from '@/modules/proxy-gateway/server/common/session-anchor-hash';
@@ -47,27 +46,25 @@ export interface OpenAIConversionOptions {
 }
 
 export class InvalidOpenAIToolArgumentsError extends BadRequestException {
-  constructor(reason: 'invalid-json' | 'non-object') {
+  constructor(reason: 'invalid-json' | 'non-object' | 'invalid-custom-input') {
     super(`Invalid function tool arguments: ${reason}`);
     this.name = 'InvalidOpenAIToolArgumentsError';
   }
 }
 
-export function isDeclaredOpenAICustomTool(
-  functionName: string,
-  clientTools: OpenAIChatRequest['tools'],
-): boolean {
-  return (
-    isCustomToolCall(functionName) &&
-    (flattenOpenAITools(clientTools) ?? []).some(
-      (tool) => tool.type === 'custom' && (tool.name ?? tool.function?.name) === functionName,
-    )
-  );
-}
-
 function resolveOpenAIChatToolIdentity(
   toolCall: OpenAIToolCall,
-): { name: string; arguments: unknown } | null {
+): { name: string; arguments: Record<string, unknown> } | null {
+  if (toolCall.type === 'custom') {
+    if (
+      !isString(toolCall.custom?.name) ||
+      !toolCall.custom.name ||
+      !isString(toolCall.custom.input)
+    ) {
+      throw new InvalidOpenAIToolArgumentsError('invalid-custom-input');
+    }
+    return { name: toolCall.custom.name, arguments: { input: toolCall.custom.input } };
+  }
   const name =
     toolCall.function?.name ??
     (toolCall.operation || toolCall.type === 'apply_patch_call' ? 'apply_patch' : null);
@@ -80,7 +77,7 @@ function resolveOpenAIChatToolIdentity(
     arguments:
       toolCall.custom_input === undefined
         ? (toolCall.operation ?? parseOpenAIFunctionArguments(toolCall.function?.arguments ?? '{}'))
-        : toCustomToolArguments(name, toolCall.custom_input),
+        : { input: toolCall.custom_input },
   };
 }
 
@@ -285,21 +282,15 @@ export function convertOpenAIToClaude(
 
     if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
       for (const toolCall of msg.tool_calls) {
-        const functionName =
-          toolCall.function?.name ??
-          (toolCall.operation || toolCall.type === 'apply_patch_call' ? 'apply_patch' : null);
-        if (!functionName) {
+        const tool = resolveOpenAIChatToolIdentity(toolCall);
+        if (!tool) {
           continue;
         }
         contentBlocks.push({
           type: 'tool_use',
           id: toolCall.call_id || toolCall.id,
-          name: functionName,
-          input:
-            toolCall.custom_input === undefined
-              ? (toolCall.operation ??
-                parseOpenAIFunctionArguments(toolCall.function?.arguments ?? '{}'))
-              : toCustomToolArguments(functionName, toolCall.custom_input),
+          name: tool.name,
+          input: tool.arguments,
         });
       }
     }
@@ -328,7 +319,8 @@ export function convertOpenAIToClaude(
         ? {
             type: request.thinking?.type ?? 'enabled',
             budget_tokens: request.thinking?.budget_tokens ?? request.reasoning?.max_tokens,
-            effort: request.reasoning_effort ?? request.reasoning?.effort ?? request.thinking?.effort,
+            effort:
+              request.reasoning_effort ?? request.reasoning?.effort ?? request.thinking?.effort,
           }
         : request.thinking
           ? {
@@ -539,11 +531,7 @@ export function extractOpenAIToolNames(tools: OpenAIChatRequest['tools']): Reado
   const names = new Set<string>();
 
   for (const tool of flattenOpenAITools(tools) ?? []) {
-    const name = isString(tool.function?.name)
-      ? tool.function.name
-      : isString(tool.name)
-        ? tool.name
-        : undefined;
+    const name = getOpenAIToolName(tool);
     if (name) {
       names.add(name);
     }
@@ -568,11 +556,7 @@ export function convertOpenAIToolsToAnthropicTools(
     }
 
     const toolType = isString(tool.type) ? tool.type.toLowerCase() : '';
-    const functionName = isString(tool.function?.name)
-      ? tool.function.name
-      : isString(tool.name)
-        ? tool.name
-        : '';
+    const functionName = getOpenAIToolName(tool);
     const isSearchTool = isGoogleSearchToolType(toolType);
 
     if (isSearchTool) {
@@ -591,27 +575,29 @@ export function convertOpenAIToolsToAnthropicTools(
       continue;
     }
 
-    const parameters = isDeclaredOpenAICustomTool(functionName, [tool])
-      ? {
-          type: 'object',
-          properties: {
-            input: {
-              type: 'string',
-              description:
-                'The exact freeform V4A patch text to pass to Codex apply_patch. It must start with *** Begin Patch and end with *** End Patch. Do not wrap it in a shell command or command array.',
+    const parameters =
+      toolType === 'custom'
+        ? {
+            type: 'object',
+            properties: {
+              input: {
+                type: 'string',
+                description: 'Pass the exact freeform text in this field.',
+              },
             },
-          },
-          required: ['input'],
-        }
-      : tool.function?.parameters !== undefined
-        ? tool.function.parameters
-        : tool.parameters;
+            required: ['input'],
+          }
+        : tool.function?.parameters !== undefined
+          ? tool.function.parameters
+          : tool.parameters;
     const inputSchema = normalizeObjectJsonSchema(parameters, batch, 'tool', result.length);
 
     result.push({
       name: functionName,
       description:
-        tool.function?.description ?? (isString(tool.description) ? tool.description : undefined),
+        tool.custom?.description ??
+        tool.function?.description ??
+        (isString(tool.description) ? tool.description : undefined),
       input_schema: inputSchema,
     });
   }
@@ -697,24 +683,24 @@ export function convertClaudeToOpenAIResponse(
         { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
       > => block?.type === 'tool_use',
     )
-    .map((block, index: number) => {
+    .map((block, index: number): OpenAIToolCall => {
       const splitName = splitNamespaceToolName(block.name || 'unknown_tool', clientTools);
       const functionName = splitName.name;
-      const argumentsInput = isDeclaredOpenAICustomTool(block.name, clientTools)
-        ? toCustomToolArguments(
-            functionName,
-            optimizeApplyPatch(extractCustomToolInput(functionName, block.input)).input,
-          )
-        : block.input;
-      return {
+      const identity = {
         id: block.id || `tool-call-${index}`,
-        type: 'function' as const,
-        function: {
-          name: functionName,
-          arguments: normalizeToolCallArguments(argumentsInput),
-        },
         namespace: splitName.namespace,
       };
+      return isDeclaredOpenAICustomTool(block.name, clientTools)
+        ? {
+            ...identity,
+            type: 'custom',
+            custom: { name: functionName, input: readCustomToolInput(block.input) },
+          }
+        : {
+            ...identity,
+            type: 'function',
+            function: { name: functionName, arguments: normalizeToolCallArguments(block.input) },
+          };
     });
 
   return {

@@ -16,6 +16,7 @@ import type { listCloudAccountSummaries } from '@/modules/cloud-account/services
 import type { CloudAccountViewSchema } from '@/modules/cloud-account/services/cloud-account-view';
 import type { cloudAccountListService } from '@/modules/cloud-account/services/cloud-account-list.service';
 import type { CloudAccountMutationResultSchema } from '@/modules/cloud-account/services/cloud-account-mutation.schema';
+import type { CloudAccountProjectIdOperations } from '@/modules/cloud-account/services/cloud-account-project-id.schema';
 import type { CloudAccountSecurityStatus } from '@/modules/cloud-account/services/cloud-account-security-status.schema';
 import type { AccountValidationUrlResultSchema } from '@/modules/cloud-account/services/account-validation-link.schema';
 import type { CloudAccountSwitchResultSchema } from '@/modules/cloud-account/services/cloud-account-switch.schema';
@@ -138,6 +139,7 @@ export interface CoreRpcOperations {
     accountId: string,
     proxyUrl: string | null,
   ): Promise<z.infer<typeof CloudAccountMutationResultSchema>>;
+  accountProjectId: CloudAccountProjectIdOperations;
   accountSetRouting?(
     accountId: string,
     proxyPriority: number,

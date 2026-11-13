@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { isString } from 'lodash-es';
 import { auditJsonObject } from './audit-json-object';
+import { redactQueryCredentials } from '@/shared/observability/redact-query-credentials';
 
 export const MAX_AUDIT_BODY_BYTES = 100 * 1024 * 1024;
 export const MAX_AUDIT_STREAM_BYTES = MAX_AUDIT_BODY_BYTES;
@@ -54,12 +55,41 @@ export function sanitizeAuditUrl(rawUrl: string): string {
 
   const params = new URLSearchParams(query);
   for (const key of [...params.keys()]) {
-    if (isSensitiveAuditKey(key)) {
+    if (key.trim().toLowerCase() === 'key' || isSensitiveAuditKey(key)) {
       params.set(key, REDACTED);
     }
   }
   const rendered = params.toString();
   return rendered ? `${path}?${rendered}` : path;
+}
+
+/** Query credentials have a protocol meaning that an ordinary JSON field named `key` does not. */
+export function serializeAuditQuery(
+  query: Record<string, unknown> | string | null | undefined,
+): string | null {
+  if (query === undefined || query === null) {
+    return null;
+  }
+  if (typeof query === 'string') {
+    if (query.trimStart().startsWith('{')) {
+      try {
+        const record = auditJsonObject(JSON.parse(query));
+        if (record) {
+          return serializeAuditQuery(record);
+        }
+      } catch {
+        // A stored raw query is not necessarily JSON; its query string still needs redaction.
+      }
+    }
+    return sanitizeAuditUrl(`/?${query}`).slice(2);
+  }
+  const safeQuery = Object.fromEntries(
+    Object.entries(query).map(([name, value]) => [
+      name,
+      name.trim().toLowerCase() === 'key' ? REDACTED : value,
+    ]),
+  );
+  return snapshotAuditPayload(safeQuery, 1024 * 1024).text;
 }
 
 export function snapshotAuditPayload(
@@ -305,12 +335,10 @@ function resolveMimeType(record: Record<string, unknown>): string | undefined {
 }
 
 export function redactUrlCredentials(value: string): string {
-  return value
-    .replace(/\b((?:https?|socks5?):\/\/)[^/\s@]+@/giu, '$1[REDACTED]@')
-    .replace(
-      /([?&](?:access_token|refresh_token|id_token|api_key|key|client_secret)=)[^&#\s]*/giu,
-      '$1[REDACTED]',
-    );
+  return redactQueryCredentials(value).replace(
+    /\b((?:https?|socks5?):\/\/)[^/\s@]+@/giu,
+    '$1[REDACTED]@',
+  );
 }
 
 function sha256Hex(value: string): string {

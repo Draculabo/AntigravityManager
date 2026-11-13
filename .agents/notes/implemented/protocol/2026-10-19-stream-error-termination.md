@@ -51,6 +51,12 @@ valid data, fields and comments. Otherwise a fragmented error can expose raw
 message/details before the final fragment identifies it as an error. Invalid JSON
 fails at that gate rather than being forwarded as opaque text.
 
+The Gemini EOF-tail parser carries the same typed error into the public error
+projection as the ordinary event path. The Anthropic first-event wrapper uses
+that protocol's shared public message sanitizer even on its post-admission
+exception path. Anthropic idle heartbeats use the Messages `ping` event and
+remain excluded from the readiness gate and business-progress timers.
+
 Responses distinguishes normal upstream EOF from premature close while mapped
 frames are suspended by backpressure. Normal close after EOF does not overwrite
 queued successful finalization. The queued EOF validator still rejects missing

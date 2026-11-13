@@ -320,20 +320,20 @@ export function resolveModelRoute(
   openaiMapping: Record<string, string>,
   anthropicMapping: Record<string, string>,
 ): string {
-  const dynamicForwarded = getDynamicForwardingTarget(originalModel);
-  if (dynamicForwarded) {
-    logger.info(
-      `[Router] Dynamic deprecated-model forwarding: ${originalModel} -> ${dynamicForwarded}`,
-    );
-    return dynamicForwarded;
-  }
-
   // 1. Check custom exact mapping (Highest priority)
   if (customMapping[originalModel]) {
     logger.info(
       `[Router] Using custom exact mapping: ${originalModel} -> ${customMapping[originalModel]}`,
     );
     return customMapping[originalModel];
+  }
+
+  const dynamicForwarded = getDynamicForwardingTarget(originalModel);
+  if (dynamicForwarded) {
+    logger.info(
+      `[Router] Dynamic deprecated-model forwarding: ${originalModel} -> ${dynamicForwarded}`,
+    );
+    return dynamicForwarded;
   }
 
   const lowerModel = originalModel.toLowerCase();

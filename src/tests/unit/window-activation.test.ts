@@ -3,6 +3,7 @@ import path from 'path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   restoreExistingWindow,
+  restoreHiddenStartupWindow,
   type ActivatableWindow,
 } from '@/modules/app-shell/utils/windowActivation';
 
@@ -95,6 +96,28 @@ describe('restoreExistingWindow utility', () => {
     expect(window.restore).not.toHaveBeenCalled();
     expect(window.show).not.toHaveBeenCalled();
     expect(window.focus).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('hidden startup with a native tray', () => {
+  it.each([
+    { trayReady: false, visible: false, destroyed: false, shouldShow: true },
+    { trayReady: true, visible: false, destroyed: false, shouldShow: false },
+    { trayReady: false, visible: true, destroyed: false, shouldShow: false },
+    { trayReady: false, visible: false, destroyed: true, shouldShow: false },
+  ])('restores only a hidden window when the tray is unavailable ($shouldShow)', (scenario) => {
+    const window = {
+      isDestroyed: () => scenario.destroyed,
+      isVisible: () => scenario.visible,
+      isMinimized: () => false,
+      restore: vi.fn(),
+      show: vi.fn(),
+      focus: vi.fn(),
+    };
+    restoreHiddenStartupWindow(window, scenario.trayReady);
+    expect(window.show).toHaveBeenCalledTimes(Number(scenario.shouldShow));
+    expect(window.focus).toHaveBeenCalledTimes(Number(scenario.shouldShow));
+    expect(window.restore).not.toHaveBeenCalled();
   });
 });
 

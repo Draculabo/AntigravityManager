@@ -134,6 +134,24 @@ If a run fails, retain its report and the generated workspace until the client, 
 failure classes are diagnosed. Record any external quota or account limitation separately from a
 gateway or client defect. Do not substitute a one-message smoke request for this task acceptance.
 
+## Diagnose a stalled or interrupted Claude Code stream
+
+1. Record the Claude Code and Manager versions, model, run mode and request ID. In Traffic Monitor,
+   open the matching Messages request and select its upstream attempt. If there is no matching
+   request, check the client launch and proxy configuration first.
+2. Compare response headers, first response byte and first valid output for that attempt. Headers
+   or bytes alone can precede model output. For a request deadline, use the gateway's recorded
+   phase to distinguish waiting for output, thinking only and output already started. See
+   [attempt stages](../traffic-diagnostics.md#attempt-stages) and
+   [deadline diagnostics](../compatibility.md#account-scheduling-and-stream-completion).
+3. If text appeared before the failure, compare the attempt outcome with the response end. Manager
+   can emit `max_tokens` and `message_stop` to deliver partial text after a transport interruption.
+   Confirm the attempt outcome before treating the end marker as proof of a complete answer. If
+   there are retries, compare the attempt sequence with the client events to locate where each
+   retry started. See [partial-output interruption](../stream-tool-compatibility.md#partial-output-interruption).
+4. Share the request ID, attempt timings and outcomes, event types and stop reason. Keep request
+   and response text, tool arguments and credentials out of shared evidence.
+
 ## Recheck saved audit and desktop evidence
 
 The runner selects `trafficClass=model` before paging the audit window. It requires complete

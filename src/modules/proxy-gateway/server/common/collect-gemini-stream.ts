@@ -17,6 +17,13 @@ interface CollectionHooks {
   isPart: (value: unknown) => value is GeminiPart;
 }
 
+export class GeminiStreamCompletionError extends Error {
+  constructor(message: 'Empty response stream' | 'Gemini stream ended without a finish reason') {
+    super(message);
+    this.name = 'GeminiStreamCompletionError';
+  }
+}
+
 /** Owns collection listeners and transient decoding state until unary completion or failure. */
 export function collectGeminiStream(
   upstream: NodeJS.ReadableStream,
@@ -241,11 +248,11 @@ export function collectGeminiStream(
         return;
       }
       if (!receivedData) {
-        fail(new Error('Empty response stream'));
+        fail(new GeminiStreamCompletionError('Empty response stream'));
         return;
       }
       if (!finishReason && !promptFeedback?.blockReason) {
-        fail(new Error('Gemini stream ended without a finish reason'));
+        fail(new GeminiStreamCompletionError('Gemini stream ended without a finish reason'));
         return;
       }
       const response: GeminiResponse = {

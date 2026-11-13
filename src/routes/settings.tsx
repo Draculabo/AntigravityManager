@@ -10,17 +10,10 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { CommitOnBlurNumberInput, Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { useQuery } from '@tanstack/react-query';
 import { checkForUpdates, getAppVersion, getPlatform } from '@/modules/app-shell/actions/app';
 import { useTranslation } from 'react-i18next';
-import { setAppLanguage } from '@/modules/app-shell/actions/language';
+import { DesktopAppearanceSettings } from '@/modules/app-shell/components/DesktopAppearanceSettings';
 import { useAppConfig } from '@/modules/config/hooks/useAppConfig';
 import { useToast } from '@/components/ui/use-toast';
 import { Loader2, FolderOpen, RefreshCw, X, Settings, Palette, Users } from 'lucide-react';
@@ -79,7 +72,7 @@ function parseArgsInput(value: string): string[] {
 
 function SettingsPage() {
   const { theme, setTheme } = useTheme();
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const settings = useAppConfig();
   const {
     config,
@@ -131,13 +124,6 @@ function SettingsPage() {
   const isMac = platform === 'darwin';
   const supportsManualUpdateCheck =
     platform === 'win32' || platform === 'darwin' || platform === 'linux';
-
-  const handleLanguageChange = (value: string) => {
-    setAppLanguage(value, i18n);
-    if (config) {
-      saveConfig({ ...config, language: value });
-    }
-  };
 
   // Helper to update proxyConfig and auto-save
   const updateProxyConfig = async (newProxyConfig: ServiceConfigSnapshot['proxy']) => {
@@ -405,33 +391,7 @@ function SettingsPage() {
                 />
               </div>
 
-              <div className="flex items-center justify-between space-x-2">
-                <div className="space-y-1">
-                  <Label htmlFor="language">{t('settings.language.title')}</Label>
-                  <p className="text-muted-foreground text-sm">
-                    {t('settings.language.description')}
-                  </p>
-                </div>
-                <Select
-                  value={i18n.language}
-                  onValueChange={handleLanguageChange}
-                  key={i18n.language}
-                >
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder={t('settings.language.title')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="en">{t('settings.language.english')}</SelectItem>
-                    <SelectItem value="zh-CN">{t('settings.language.chinese')}</SelectItem>
-                    <SelectItem value="ru">{t('settings.language.russian')}</SelectItem>
-                    <SelectItem value="vi">{t('settings.language.vietnamese')}</SelectItem>
-                    <SelectItem value="tr">{t('settings.language.turkish')}</SelectItem>
-                    <SelectItem value="fr">{t('settings.language.french')}</SelectItem>
-                    <SelectItem value="pt-BR">{t('settings.language.portuguese')}</SelectItem>
-                    <SelectItem value="ja">{t('settings.language.japanese')}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              <DesktopAppearanceSettings />
             </CardContent>
           </Card>
 

@@ -27,6 +27,8 @@ import { DshSyncCard } from '@/modules/proxy-gateway/components/DshSyncCard';
 import { AgentToolSyncCard } from '@/modules/proxy-gateway/components/AgentToolSyncCard';
 import { GlobalSystemPromptCard } from '@/modules/proxy-gateway/components/GlobalSystemPromptCard';
 import { CoworkCompactionCard } from '@/modules/proxy-gateway/components/CoworkCompactionCard';
+import { ModelAliasEditor } from '@/modules/proxy-gateway/components/ModelAliasEditor';
+import { getConfiguredModelMapping } from '@/modules/config/model-aliases';
 import { AuditAndThoughtStoreCard } from '@/modules/proxy-gateway/components/AuditAndThoughtStoreCard';
 import { ProxyServiceControl } from '@/modules/proxy-gateway/components/ProxyServiceControl';
 import { ProxyAccountStrategy } from '@/modules/proxy-gateway/components/ProxyAccountStrategy';
@@ -117,7 +119,8 @@ function ProxyPage() {
   const { t } = useTranslation();
   const { toast } = useToast();
   const settings = useAppConfig();
-  const { config, isLoading, saveConfig, serviceAvailable, serviceLoading, retryService } = settings;
+  const { config, isLoading, saveConfig, serviceAvailable, serviceLoading, retryService } =
+    settings;
   const { data: cloudAccounts = [] } = useCloudAccounts();
 
   // Query all available local IPs
@@ -147,7 +150,9 @@ function ProxyPage() {
   // Local state for proxyConfig editing
   const [proxyConfig, setProxyConfig] = useState<ProxyConfig | undefined>(undefined);
   const sourceProxyConfig = serviceAvailable ? config?.proxy : undefined;
-  const [previousProxyConfig, setPreviousProxyConfig] = useState<ProxyConfig | undefined>(undefined);
+  const [previousProxyConfig, setPreviousProxyConfig] = useState<ProxyConfig | undefined>(
+    undefined,
+  );
   const [isRegenerateDialogOpen, setIsRegenerateDialogOpen] = useState(false);
   const [showKey, setShowKey] = useState(false);
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
@@ -267,10 +272,18 @@ function ProxyPage() {
     }
     updateProxyConfig({
       ...proxyConfig,
-      anthropic_mapping: {
-        ...proxyConfig.anthropic_mapping,
-        ...mappingPatch,
-      },
+      model_aliases: [
+        ...proxyConfig.model_aliases.map((route) =>
+          mappingPatch[route.alias]
+            ? { ...route, target: mappingPatch[route.alias], enabled: true }
+            : route,
+        ),
+        ...Object.entries(mappingPatch)
+          .filter(([alias]) => !proxyConfig.model_aliases.some((route) => route.alias === alias))
+          .map(([alias, target]) => ({ alias, target, enabled: true })),
+      ],
+      custom_mapping: {},
+      anthropic_mapping: {},
     });
   };
 
@@ -442,14 +455,26 @@ print(response.choices[0].message.content)`;
                   aria-hidden="true"
                   className={`size-1.5 rounded-full ${runtimeStatus.data?.running ? 'bg-success' : 'bg-muted-foreground'}`}
                 />
-                {runtimeStatus.isError ? t('proxy.service.status-unavailable') : !runtimeStatus.data ? t('agent-tools.loading') : runtimeStatus.data.running ? t('proxy.service.running') : t('proxy.service.stopped')}
+                {runtimeStatus.isError
+                  ? t('proxy.service.status-unavailable')
+                  : !runtimeStatus.data
+                    ? t('agent-tools.loading')
+                    : runtimeStatus.data.running
+                      ? t('proxy.service.running')
+                      : t('proxy.service.stopped')}
               </span>
-              {runtimeStatus.data && !runtimeStatus.isError ? <ProxyServiceControl
-                config={proxyConfig}
-                running={runtimeStatus.data.running}
-                onRuntimeChange={() => runtimeStatus.refetch()}
-                onError={setGatewayError}
-              /> : <Button variant="outline" onClick={() => void runtimeStatus.refetch()}>{t('agent-tools.retry')}</Button>}
+              {runtimeStatus.data && !runtimeStatus.isError ? (
+                <ProxyServiceControl
+                  config={proxyConfig}
+                  running={runtimeStatus.data.running}
+                  onRuntimeChange={() => runtimeStatus.refetch()}
+                  onError={setGatewayError}
+                />
+              ) : (
+                <Button variant="outline" onClick={() => void runtimeStatus.refetch()}>
+                  {t('agent-tools.retry')}
+                </Button>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -563,7 +588,10 @@ print(response.choices[0].message.content)`;
                         await retryService();
                         setIsRegenerateDialogOpen(false);
                         if (result.state === 'partial-failure') {
-                          toast({ title: t('settings.service-apply-failed'), variant: 'destructive' });
+                          toast({
+                            title: t('settings.service-apply-failed'),
+                            variant: 'destructive',
+                          });
                         } else if (result.state === 'restart-required') {
                           toast({
                             title: t(
@@ -893,7 +921,7 @@ print(response.choices[0].message.content)`;
                   </p>
                   <Select
                     value={resolveAnthropicMappingValue(
-                      proxyConfig.anthropic_mapping,
+                      getConfiguredModelMapping(proxyConfig),
                       ['claude-sonnet-4-6-20260219', 'claude-sonnet-4-5-20250929'],
                       'claude-sonnet-4-6-thinking',
                     )}
@@ -930,7 +958,7 @@ print(response.choices[0].message.content)`;
                   </p>
                   <Select
                     value={resolveAnthropicMappingValue(
-                      proxyConfig.anthropic_mapping,
+                      getConfiguredModelMapping(proxyConfig),
                       ['claude-opus-4-6-20260201', 'opus'],
                       'claude-opus-4-6-thinking',
                     )}
@@ -959,16 +987,22 @@ print(response.choices[0].message.content)`;
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() =>
-                    updateProxyConfig({
-                      ...proxyConfig,
-                      anthropic_mapping: { ...DEFAULT_ANTHROPIC_MAPPING },
-                    })
-                  }
+                  onClick={() => updateAnthropicMapping(DEFAULT_ANTHROPIC_MAPPING)}
                 >
                   {t('proxy.mapping.restore')}
                 </Button>
               </div>
+              <ModelAliasEditor
+                routes={proxyConfig.model_aliases}
+                onSave={async (routes) => {
+                  await updateProxyConfig({
+                    ...proxyConfig,
+                    model_aliases: routes,
+                    custom_mapping: {},
+                    anthropic_mapping: {},
+                  });
+                }}
+              />
             </CardContent>
           </Card>
         </TabsContent>

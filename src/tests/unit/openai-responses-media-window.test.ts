@@ -13,6 +13,114 @@ const image = (data: string, id?: string) => ({
 });
 
 describe('Responses image send window', () => {
+  it('protects tool-only results around calls repaired from the session cache', () => {
+    const first = { type: 'function_call_output', call_id: 'a', output: image('AQ==').content };
+    const second = { type: 'function_call_output', call_id: 'b', output: image('Ag==').content };
+    const result = applyResponsesImageSendWindow(
+      [
+        image('Aw=='),
+        { type: 'function_call', call_id: 'a', name: 'capture' },
+        first,
+        { type: 'function_call', call_id: 'b', name: 'capture' },
+        second,
+      ],
+      {
+        per_account_concurrency: 4,
+        send_window_enabled: true,
+        send_window_strategy: 'count',
+        send_window_count: 1,
+        send_window_memory_mib: 1,
+        send_window_strip_remote_urls: false,
+      },
+      [first, second],
+    );
+    expect(result[1]).toEqual({ type: 'function_call', call_id: 'a', name: 'capture' });
+    expect(result[2]).toEqual(first);
+    expect(result[3]).toEqual({ type: 'function_call', call_id: 'b', name: 'capture' });
+    expect(result[4]).toEqual(second);
+    expect(result[0]).toEqual({
+      type: 'message',
+      role: 'user',
+      content: [{ type: 'input_text', text: expect.stringContaining('image omitted') }],
+    });
+  });
+
+  it('protects a tool result whose missing ID was assigned during association admission', () => {
+    const original = {
+      type: 'function_call_output',
+      output: image(Buffer.alloc(2 * 1024 * 1024).toString('base64')).content,
+    };
+    const admitted = { ...original, call_id: 'assigned' };
+    expect(() =>
+      applyResponsesImageSendWindow(
+        [admitted],
+        {
+          per_account_concurrency: 4,
+          send_window_enabled: true,
+          send_window_strategy: 'memory',
+          send_window_count: 1,
+          send_window_memory_mib: 1,
+          send_window_strip_remote_urls: false,
+        },
+        [original],
+      ),
+    ).toThrow(ResponsesMediaWindowLimitError);
+  });
+
+  it('protects only the current occurrence of an identical repeated image', () => {
+    const old = image('AQ==');
+    const current = structuredClone(old);
+    const input = [old, current];
+    const before = structuredClone(input);
+    const result = applyResponsesImageSendWindow(
+      input,
+      {
+        per_account_concurrency: 4,
+        send_window_enabled: true,
+        send_window_strategy: 'count',
+        send_window_count: 1,
+        send_window_memory_mib: 1,
+        send_window_strip_remote_urls: false,
+      },
+      [structuredClone(current)],
+    );
+    expect(result[0]).toEqual({
+      type: 'message',
+      role: 'user',
+      content: [{ type: 'input_text', text: expect.stringContaining('image omitted') }],
+    });
+    expect(result[1]).toEqual(current);
+    expect(input).toEqual(before);
+  });
+
+  it('windows the supported object URL form without rewriting its original', () => {
+    const old = {
+      role: 'user',
+      content: [
+        { type: 'input_image', image_url: { url: 'data:image/png;base64,AQ==', detail: 'high' } },
+      ],
+    };
+    const current = image('Ag==');
+    const result = applyResponsesImageSendWindow(
+      [old, current],
+      {
+        per_account_concurrency: 4,
+        send_window_enabled: true,
+        send_window_strategy: 'count',
+        send_window_count: 1,
+        send_window_memory_mib: 1,
+        send_window_strip_remote_urls: false,
+      },
+      [current],
+    );
+    expect(result[0]).toEqual({
+      role: 'user',
+      content: [{ type: 'input_text', text: expect.stringContaining('image omitted') }],
+    });
+    expect(old.content[0].image_url.url).toBe('data:image/png;base64,AQ==');
+    expect(result[1]).toEqual(current);
+  });
+
   it('never traverses tool arguments or message metadata as media slots', () => {
     const call = {
       type: 'function_call',

@@ -5,6 +5,7 @@ import { OutputTokenLimitConflictError } from './output-token-limit';
 import { InvalidModelEffortError } from './invalid-model-effort.error';
 import { UpstreamGenerationError } from '../../antigravity/UpstreamGenerationError';
 import { UpstreamRequestError } from './exceptions/upstream-request.exception';
+import { GenerationReplayLimitError } from './exceptions/generation-replay-limit.exception';
 
 type OpenAIErrorFields = {
   type: 'invalid_request_error' | 'rate_limit_error' | 'server_error';
@@ -16,7 +17,7 @@ type OpenAIErrorFields = {
 export function openAIHttpErrorFields(status: number, error: unknown): OpenAIErrorFields {
   const type =
     status === 429 ? 'rate_limit_error' : status < 500 ? 'invalid_request_error' : 'server_error';
-  if (error instanceof UpstreamGenerationError) {
+  if (error instanceof UpstreamGenerationError || error instanceof GenerationReplayLimitError) {
     return { type, code: error.code, param: null };
   }
   if (error instanceof UpstreamRequestError && error.upstreamStatus) {

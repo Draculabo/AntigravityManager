@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   listeners: new Map<string, (event: unknown, payload: unknown) => void>(),
   off: vi.fn(),
   invoke: vi.fn(),
+  setZoomFactor: vi.fn(),
 }));
 
 vi.mock('electron', () => ({
@@ -16,6 +17,7 @@ vi.mock('electron', () => ({
     send: vi.fn(),
   },
   contextBridge: { exposeInMainWorld: vi.fn() },
+  webFrame: { setZoomFactor: mocks.setZoomFactor },
 }));
 
 beforeEach(async () => {
@@ -23,6 +25,7 @@ beforeEach(async () => {
   mocks.listeners.clear();
   mocks.off.mockClear();
   mocks.invoke.mockReset();
+  mocks.setZoomFactor.mockReset();
   vi.spyOn(window, 'addEventListener').mockImplementation(() => {});
   await import('@/preload');
 });
@@ -33,6 +36,17 @@ afterEach(() => {
 });
 
 describe('preload traffic event delivery', () => {
+  it('passes HAR export only through the dedicated chooser channel', async () => {
+    mocks.invoke.mockResolvedValue({ status: 'cancelled' });
+    expect(await window.electron.saveTrafficAuditHar('request-1', 'request.har')).toEqual({
+      status: 'cancelled',
+    });
+    expect(mocks.invoke).toHaveBeenCalledExactlyOnceWith(
+      'save-traffic-audit-har',
+      'request-1',
+      'request.har',
+    );
+  });
   it('passes session export only through the dedicated desktop chooser channel', async () => {
     const sessionId = `session:affinity:v1:${'a'.repeat(64)}`;
     mocks.invoke.mockResolvedValue({ status: 'cancelled' });
@@ -68,5 +82,23 @@ describe('preload traffic event delivery', () => {
     expect(callback.mock.calls).toEqual(events.map((event) => [event]));
     unsubscribe();
     expect(mocks.off.mock.calls).toEqual([['traffic-audit-event', handler]]);
+  });
+});
+
+describe('preload desktop zoom', () => {
+  it('accepts supported factors and only forwards recognized menu commands', () => {
+    window.electron.setDesktopZoom(125);
+    expect(() => Reflect.apply(window.electron.setDesktopZoom, undefined, [175])).toThrow(RangeError);
+    expect(mocks.setZoomFactor).toHaveBeenCalledExactlyOnceWith(1.25);
+
+    const callback = vi.fn();
+    const unsubscribe = window.electron.onDesktopZoomCommand(callback);
+    const listener = mocks.listeners.get('desktop-zoom-command');
+    expect(listener).toBeDefined();
+    listener?.({}, 'out');
+    listener?.({}, 'unsupported');
+    expect(callback).toHaveBeenCalledExactlyOnceWith('out');
+    unsubscribe();
+    expect(mocks.off).toHaveBeenCalledExactlyOnceWith('desktop-zoom-command', listener);
   });
 });

@@ -4,10 +4,21 @@ import {
   AuditFileExportInputSchema,
   AuditFileExportResultSchema,
   AuditSessionFileExportInputSchema,
+  AuditHarFileExportInputSchema,
 } from './audit-file-owner.schema';
 
 export function createAuditFileRouter(owner: AuditFileOperations) {
   return os.router({
+    exportHar: os
+      .input(AuditHarFileExportInputSchema)
+      .output(AuditFileExportResultSchema)
+      .handler(async ({ input }) => {
+        try {
+          return await owner.exportHar(input);
+        } catch {
+          throw new ORPCError('SERVICE_UNAVAILABLE', { message: 'Audit export is unavailable.' });
+        }
+      }),
     exportSession: os
       .input(AuditSessionFileExportInputSchema)
       .output(AuditFileExportResultSchema)

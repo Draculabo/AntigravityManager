@@ -39,7 +39,10 @@ const credential = {
 };
 const summary = {
   fingerprint: 'fingerprint-a',
-  sources: [{ id: 'antigravity-keyring' as const, location: 'system-keyring' }],
+  sources: [
+    { id: 'antigravity-keyring' as const, location: 'system-keyring' },
+    { id: 'antigravity-agy-file' as const },
+  ],
   emailHints: ['person@example.com'],
   hasAccessToken: true,
   hasIdToken: true,
@@ -95,6 +98,7 @@ beforeEach(async () => {
     refreshProcessCache: async () => {},
     getCurrentAccountInfo: () => ({ isAuthenticated: false, email: '' }),
     usesCredentialStore: () => false,
+    readAgyAccountToken: async () => null,
     getActiveAccountId: () => '',
     warn: vi.fn(),
   });

@@ -99,6 +99,7 @@ interface AnthropicUpstreamResult {
 
 const ANTHROPIC_STREAM_IDLE_TIMEOUT_MS = 120_000;
 const ANTHROPIC_STREAM_PING_INTERVAL_MS = 20_000;
+const ANTHROPIC_STREAM_PING_FRAME = 'event: ping\ndata: {"type":"ping"}\n\n';
 const ANTHROPIC_STREAM_MAX_CONSECUTIVE_PINGS = 5;
 const ANTHROPIC_STREAM_FIRST_EVENT_TIMEOUT_MS = 30_000;
 
@@ -145,7 +146,10 @@ export class AnthropicService extends BaseProxyService {
     } finally {
       reportSchemaIssues(batch, 'anthropic-count-tokens');
     }
-    const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(request.model);
+    const routeResolution = this.resolveRequestModelRoute(
+      request.model,
+      request.output_config?.effort,
+    );
     const targetModel = routeResolution.resolvedModel;
     this.logger.log(
       `Anthropic count_tokens request received: model=${request.model}, mappedModel=${targetModel}, routeSource=${routeResolution.source}`,
@@ -228,7 +232,10 @@ export class AnthropicService extends BaseProxyService {
     } finally {
       reportSchemaIssues(batch, 'anthropic');
     }
-    const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(request.model);
+    const routeResolution = this.resolveRequestModelRoute(
+      request.model,
+      request.output_config?.effort,
+    );
     const explicitPhysicalTarget =
       routeResolution.source === 'configured' || routeResolution.source === 'dynamic-legacy';
     const appliedVariantRequest = applyAnthropicModelVariant(
@@ -266,7 +273,10 @@ export class AnthropicService extends BaseProxyService {
     ).length;
 
     const targetModel = routedRequest.model;
-    const extraHeaders = this.createModelSpecificHeaders(request.model);
+    const extraHeaders = this.modelRoutingPolicy.createModelSpecificHeaders(
+      targetModel,
+      requestContext?.headers['anthropic-beta'],
+    );
     this.logger.log(
       `Anthropic request received: model=${request.model}, mappedModel=${targetModel}, stream=${request.stream}, routeSource=${routeResolution.source}`,
     );
@@ -811,7 +821,7 @@ export class AnthropicService extends BaseProxyService {
             `[Claude-SSE] SSE idle ping #${consecutiveIdlePings}/${ANTHROPIC_STREAM_MAX_CONSECUTIVE_PINGS}`,
           );
           if (!observable.isPaused) {
-            subscriber.next(': ping\n\n');
+            subscriber.next(ANTHROPIC_STREAM_PING_FRAME);
           }
           schedulePing();
         }, ANTHROPIC_STREAM_PING_INTERVAL_MS);
@@ -1056,7 +1066,11 @@ export class AnthropicService extends BaseProxyService {
         next: (chunk) => {
           if (!ready) {
             const trimmed = chunk.trim();
-            if (trimmed.length === 0 || trimmed.startsWith(':')) {
+            if (
+              chunk === ANTHROPIC_STREAM_PING_FRAME ||
+              trimmed.length === 0 ||
+              trimmed.startsWith(':')
+            ) {
               return;
             }
             if (trimmed.startsWith('event: error')) {
@@ -1093,7 +1107,7 @@ export class AnthropicService extends BaseProxyService {
           const message = error instanceof Error ? error.message : String(error);
           const errorEvent = `event: error\ndata: ${JSON.stringify({
             type: 'error',
-            error: { type: 'api_error', message },
+            error: { type: 'api_error', message: publicProxyErrorMessage(message) },
           })}\n\n`;
           if (downstream) {
             downstream.next(errorEvent);

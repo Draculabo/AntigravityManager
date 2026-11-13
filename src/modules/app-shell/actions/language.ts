@@ -1,20 +1,29 @@
 import type { i18n } from 'i18next';
+import { LOCAL_STORAGE_KEYS } from '@/shared/constants';
+import type { DesktopLanguage } from '../desktop-appearance';
 
-export function setAppLanguage(lang: string, i18n: i18n) {
-  i18n
-    .changeLanguage(lang)
-    .then(() => {
-      localStorage.setItem('lang', lang);
-      document.documentElement.lang = lang;
-      if (window.electron?.changeLanguage) {
-        window.electron.changeLanguage(lang);
+export function createDesktopLanguageSynchronizer(
+  translations: Pick<i18n, 'language' | 'changeLanguage'>,
+) {
+  let latest: DesktopLanguage;
+  let pending: Promise<void> = Promise.resolve();
+
+  return (language: DesktopLanguage): Promise<void> => {
+    latest = language;
+    const apply = pending.then(async () => {
+      if (latest !== language) {
+        return;
       }
-    })
-    .catch((err) => {
-      console.error('[Language] Failed to change language:', err);
+      if (translations.language !== language) {
+        await translations.changeLanguage(language);
+      }
+      if (latest === language) {
+        document.documentElement.lang = language;
+        // The cache accelerates the next paint. Desktop preferences own the saved value.
+        localStorage.setItem(LOCAL_STORAGE_KEYS.LANGUAGE, language);
+      }
     });
-}
-
-export function updateAppLanguage(i18n: i18n) {
-  document.documentElement.lang = i18n.language;
+    pending = apply.catch(() => undefined);
+    return apply;
+  };
 }

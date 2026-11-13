@@ -270,16 +270,16 @@ describe('ProxyController Integration', () => {
     ]);
   });
 
-  it('compacts repeated apply_patch failures in Responses history', async () => {
+  it('preserves distinct apply_patch failures with the same first eight lines', async () => {
     const controller = new ProxyController({
       handleChatCompletions: vi.fn(),
       handleAnthropicMessages: vi.fn(),
     } as any);
-    const failure = [
+    const prefix = [
       'apply_patch verification failed',
-      'Failed to find expected lines in src/example.ts:',
-      'const value = 1;',
+      ...Array.from({ length: 7 }, (_, index) => `Context line ${index + 1}`),
     ].join('\n');
+    const failures = [`${prefix}\nFile: first.ts`, `${prefix}\nFile: second.ts`];
 
     const prepared = await controller.prepareResponsesRequest({
       model: 'gpt-5-codex',
@@ -298,7 +298,7 @@ describe('ProxyController Integration', () => {
         {
           type: 'custom_tool_call_output',
           call_id: 'call_failure_1',
-          output: failure,
+          output: failures[0],
         },
         {
           type: 'custom_tool_call',
@@ -309,19 +309,20 @@ describe('ProxyController Integration', () => {
         {
           type: 'custom_tool_call_output',
           call_id: 'call_failure_2',
-          output: failure,
+          output: failures[1],
         },
       ],
     });
 
     const toolMessages = prepared?.request.messages.filter((message) => message.role === 'tool');
-    expect(toolMessages).toEqual([
-      expect.objectContaining({ content: failure }),
-      expect.objectContaining({
-        content:
-          '[Repeated apply_patch failure omitted: the same error was already provided earlier in this request.]',
-      }),
-    ]);
+    expect(toolMessages).toEqual(
+      failures.map((content, index) => ({
+        role: 'tool',
+        tool_call_id: `call_failure_${index + 1}`,
+        name: 'apply_patch',
+        content,
+      })),
+    );
   });
 
   it('lists Antigravity public presets alongside discovered chat models', () => {
@@ -794,11 +795,8 @@ describe('ProxyController Integration', () => {
               tool_calls: [
                 {
                   id: 'call_patch_2',
-                  type: 'function',
-                  function: {
-                    name: 'apply_patch',
-                    arguments: JSON.stringify({ command: ['apply_patch', patch] }),
-                  },
+                  type: 'custom',
+                  custom: { name: 'apply_patch', input: patch },
                 },
               ],
             },
@@ -937,11 +935,8 @@ describe('ProxyController Integration', () => {
                 tool_calls: [
                   {
                     id: 'call_patch_compacted',
-                    type: 'function',
-                    function: {
-                      name: 'apply_patch',
-                      arguments: JSON.stringify({ command: ['apply_patch', patch] }),
-                    },
+                    type: 'custom',
+                    custom: { name: 'apply_patch', input: patch },
                   },
                 ],
               },
@@ -1056,6 +1051,7 @@ describe('ProxyController Integration', () => {
       undefined,
       undefined,
       undefined,
+      expect.any(Function),
     );
     expect(reply.status).toHaveBeenCalledWith(200);
     expect(reply.send).toHaveBeenCalledWith(
@@ -1124,6 +1120,7 @@ describe('ProxyController Integration', () => {
       undefined,
       undefined,
       undefined,
+      expect.any(Function),
     );
     expect(reply.status).toHaveBeenCalledWith(200);
   });
@@ -1285,6 +1282,7 @@ describe('ProxyController Integration', () => {
       }),
       'image_gen',
       expect.any(AbortSignal),
+      expect.any(Function),
     );
     expect(reply.status).toHaveBeenCalledWith(200);
     expect(reply.send).toHaveBeenCalledWith(
@@ -1448,6 +1446,7 @@ describe('ProxyController Integration', () => {
       undefined,
       undefined,
       { headers: { 'content-type': 'multipart/form-data; boundary=----parity' }, url: undefined },
+      expect.any(Function),
     );
     expect(reply.status).toHaveBeenCalledWith(200);
   });
@@ -1531,6 +1530,7 @@ describe('ProxyController Integration', () => {
       }),
       'image_gen',
       expect.any(AbortSignal),
+      expect.any(Function),
     );
     expect(reply.status).toHaveBeenCalledWith(200);
   });

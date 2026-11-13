@@ -510,6 +510,7 @@ describe('GeminiClient internal endpoint selection', () => {
         '[ContextEstimate] ' +
           JSON.stringify({
             phase: 'physical-send',
+            requestId: null,
             attempt: null,
             semanticEstimate: {
               algorithmVersion: 2,
@@ -529,6 +530,7 @@ describe('GeminiClient internal endpoint selection', () => {
             serializedBytes: Buffer.byteLength(JSON.stringify(expectedSent)),
             cachedPrefix: true,
             transformations: { entries: [], dropped: 0 },
+            thoughtRestore: null,
           }),
       );
       expect(axiosMock.post).toHaveBeenCalledOnce();

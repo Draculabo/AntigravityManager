@@ -1,4 +1,12 @@
 import { FlowControlledSseStream } from '../../common/flow-controlled-sse-stream';
+import { UpstreamGenerationError } from '../../../antigravity/UpstreamGenerationError';
+import { GeminiStreamCompletionError } from '../../common/collect-gemini-stream';
+import { UnsupportedGeminiFinishReasonError } from '../../../antigravity/GeminiFinishReason';
+import {
+  classifyMissingImage,
+  IMAGE_OUTPUT_FAILURE_MESSAGES,
+  type ImageOutputFailure,
+} from './media/image-output-failure';
 import { admitGenerationProjectRecovery } from '../../common/generation-project-recovery';
 import { resolveClientSessionHint } from '../../common/client-session-hint';
 import { admitOpenAIInlineMedia } from '../../common/inline-media-admission';
@@ -68,7 +76,6 @@ import { getServerConfig } from '@/server/server-config';
 import { GenerationDeadlineScope } from '../../common/generation-deadline';
 import { awaitRequestOperation } from '../../common/request-cancellation';
 import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
-import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
 import {
   type ImageMonitoringInput,
   type ImageMonitoringRequest,
@@ -100,11 +107,14 @@ import {
 } from './responses/openai-responses-request';
 import {
   boundResponsesInputItems,
-  latestUserTurnForMediaValidation,
+  resolveResponsesMediaTurn,
   omitMediaBeforeLatestUserTurn,
   validateResponsesInputImageLimits,
 } from './responses/openai-responses-inline-media';
-import { applyResponsesImageSendWindow } from './responses/openai-responses-media-window';
+import {
+  applyResponsesImageSendWindow,
+  ResponsesMediaWindowLimitError,
+} from './responses/openai-responses-media-window';
 import { parseChatResponsesCompatibility } from './chat/chat-responses-compatibility';
 
 export const IMAGE_QUOTA_REFRESH = Symbol('IMAGE_QUOTA_REFRESH');
@@ -132,6 +142,7 @@ export interface OpenAITextCompletionRequest {
 
 export interface PreparedResponsesRequest {
   transient?: true;
+  mediaWindowProtectLatestUserTurn?: true;
   parent: OpenAIResponsesSessionParent | null;
   request: OpenAIChatRequest;
   requestSessionId: string;
@@ -750,8 +761,10 @@ export class OpenAIOperations extends BaseProxyController {
       throw new BadRequestException('Client supplied an internal Responses media reference');
     }
     const currentInputItems = omitMediaBeforeLatestUserTurn(originalInputItems);
+    const currentMediaTurn = resolveResponsesMediaTurn(currentInputItems);
     try {
-      validateResponsesInputImageLimits(latestUserTurnForMediaValidation(originalInputItems));
+      validateResponsesInputImageLimits(originalInputItems, 'per-image');
+      validateResponsesInputImageLimits(currentMediaTurn.items);
     } catch (error) {
       throw new BadRequestException(error instanceof Error ? error.message : String(error));
     }
@@ -789,11 +802,21 @@ export class OpenAIOperations extends BaseProxyController {
     ) {
       throw new GoneException('Responses history was invalidated. Start a new conversation.');
     }
-    const requestInput = applyResponsesImageSendWindow(
-      restoredRequestInput,
-      getServerConfig()?.image_scheduler,
-      currentInputItems,
-    );
+    let requestInput: unknown[];
+    try {
+      requestInput = applyResponsesImageSendWindow(
+        restoredRequestInput,
+        getServerConfig()?.image_scheduler,
+        currentMediaTurn.hasUserMessage
+          ? resolveResponsesMediaTurn(restoredRequestInput).items
+          : currentMediaTurn.items,
+      );
+    } catch (error) {
+      if (error instanceof ResponsesMediaWindowLimitError) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
     const request = admitOpenAIInlineMedia(
       buildResponsesChatRequest({
         ...body,
@@ -829,6 +852,7 @@ export class OpenAIOperations extends BaseProxyController {
 
     return {
       transient: body.store === false ? true : undefined,
+      mediaWindowProtectLatestUserTurn: currentMediaTurn.hasUserMessage ? true : undefined,
       parent:
         body.store === false || preparedInput.resetParent
           ? null
@@ -1034,6 +1058,7 @@ export class OpenAIOperations extends BaseProxyController {
       identity: prepared.session.identity,
       transient: prepared.transient,
       mediaAdmitted: true,
+      mediaWindowProtectLatestUserTurn: prepared.mediaWindowProtectLatestUserTurn,
       requestSessionId: prepared.requestSessionId,
       responseId: prepared.responseId,
       routingSessionId: prepared.routingSessionId,
@@ -1072,6 +1097,7 @@ export class OpenAIOperations extends BaseProxyController {
       (getServerConfig()?.request_timeout ?? 300) * 1000,
       abortScope.signal,
     );
+    let upstreamImageFailure: ImageOutputFailure | undefined;
     try {
       const result = await awaitRequestOperation(
         this.proxyService.handleChatCompletions(
@@ -1081,6 +1107,9 @@ export class OpenAIOperations extends BaseProxyController {
           undefined,
           undefined,
           req ? { headers: req.headers, url: req.url } : undefined,
+          (failure) => {
+            upstreamImageFailure = failure;
+          },
         ),
         deadline.signal,
       );
@@ -1102,17 +1131,7 @@ export class OpenAIOperations extends BaseProxyController {
       const content = result.choices?.[0]?.message?.content;
       const image = this.extractInlineBase64Image(isString(content) ? content : '');
       if (!image) {
-        this.logProxyEndpointError(
-          path,
-          HttpStatus.BAD_GATEWAY,
-          'Upstream did not return inline image data',
-        );
-        res.status(HttpStatus.BAD_GATEWAY).send({
-          error: {
-            message: 'Upstream did not return inline image data',
-            type: 'invalid_response_error',
-          },
-        });
+        this.sendMissingImageResponse(res, path, upstreamImageFailure ?? 'image_missing_data');
         return;
       }
 
@@ -1128,11 +1147,16 @@ export class OpenAIOperations extends BaseProxyController {
       this.scheduleImageQuotaRefresh();
       res.status(HttpStatus.OK).send(response);
     } catch (error) {
+      if (upstreamImageFailure && this.isMissingImageFailure(error, upstreamImageFailure)) {
+        this.sendMissingImageResponse(res, path, upstreamImageFailure);
+        return;
+      }
       let message = error instanceof Error ? error.message : 'Internal Server Error';
       let resolvedError = error;
 
       if (admitGenerationProjectRecovery(error, deadline.signal)) {
         try {
+          upstreamImageFailure = undefined;
           const geminiRequest = this.buildGeminiImageRequest(request, prompt);
           const { parsedBaseModel } = resolveImageGenerationConfig(request.model, {
             imageSize: request.image_size,
@@ -1145,6 +1169,9 @@ export class OpenAIOperations extends BaseProxyController {
               geminiRequest,
               'image_gen',
               deadline.signal,
+              (response) => {
+                upstreamImageFailure = response && classifyMissingImage(response);
+              },
             ),
             deadline.signal,
           );
@@ -1163,12 +1190,16 @@ export class OpenAIOperations extends BaseProxyController {
             res.status(HttpStatus.OK).send(response);
             return;
           }
-          message = 'Upstream did not return inline image data';
-          resolvedError = new UpstreamRequestError({
-            message,
-            status: HttpStatus.BAD_GATEWAY,
-          });
+          this.sendMissingImageResponse(res, path, classifyMissingImage(geminiResult));
+          return;
         } catch (fallbackError) {
+          if (
+            upstreamImageFailure &&
+            this.isMissingImageFailure(fallbackError, upstreamImageFailure)
+          ) {
+            this.sendMissingImageResponse(res, path, upstreamImageFailure);
+            return;
+          }
           resolvedError = fallbackError;
           message = fallbackError instanceof Error ? fallbackError.message : message;
         }
@@ -1179,6 +1210,34 @@ export class OpenAIOperations extends BaseProxyController {
       abortScope.dispose();
       deadline.dispose();
     }
+  }
+
+  private sendMissingImageResponse(
+    res: FastifyReply,
+    path: string,
+    code: ImageOutputFailure,
+  ): void {
+    const status =
+      code === 'image_policy_blocked' ? HttpStatus.BAD_REQUEST : HttpStatus.BAD_GATEWAY;
+    const message = IMAGE_OUTPUT_FAILURE_MESSAGES[code];
+    this.logProxyEndpointError(path, status, `${code}: ${message}`);
+    res.status(status).send({
+      error: {
+        code,
+        message,
+        type:
+          status === HttpStatus.BAD_REQUEST ? 'invalid_request_error' : 'invalid_response_error',
+      },
+    });
+  }
+
+  private isMissingImageFailure(error: unknown, failure: ImageOutputFailure): boolean {
+    return (
+      (error instanceof UpstreamGenerationError &&
+        (error.code === 'empty_upstream_response' || error.code === 'empty_thinking_response')) ||
+      (failure === 'image_policy_blocked' && error instanceof UnsupportedGeminiFinishReasonError) ||
+      (failure === 'image_empty_response' && error instanceof GeminiStreamCompletionError)
+    );
   }
 
   private logImageMonitoringSummary(direction: 'request' | 'response', summary: unknown): void {
@@ -1203,7 +1262,7 @@ export class OpenAIOperations extends BaseProxyController {
     mimeType: string;
     data: string;
   } | null {
-    const pattern = /data:(?<mime>[\w/+.-]+);base64,(?<data>[A-Za-z0-9+/=]+)/;
+    const pattern = /data:(?<mime>image\/[\w+.-]+);base64,(?<data>[A-Za-z0-9+/=]+)/i;
     const matched = content.match(pattern);
     if (!matched || !matched.groups) {
       return null;
@@ -1221,9 +1280,13 @@ export class OpenAIOperations extends BaseProxyController {
   } | null {
     const parts = response.candidates?.[0]?.content?.parts ?? [];
     for (const part of parts) {
-      if (part.inlineData?.data) {
+      const mimeType = part.inlineData?.mimeType;
+      if (
+        part.inlineData?.data &&
+        (!mimeType || (typeof mimeType === 'string' && mimeType.toLowerCase().startsWith('image/')))
+      ) {
         return {
-          mimeType: part.inlineData.mimeType ?? 'image/jpeg',
+          mimeType: mimeType ?? 'image/jpeg',
           data: part.inlineData.data,
         };
       }

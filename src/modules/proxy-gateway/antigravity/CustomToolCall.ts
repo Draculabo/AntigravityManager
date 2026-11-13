@@ -1,47 +1,12 @@
-const APPLY_PATCH_TOOL_NAMES = new Set(['apply_patch', 'apply_patch_v2']);
+import type { OpenAITool } from '../server/common/interfaces/request-interfaces';
+import { flattenOpenAITools, getOpenAIToolName } from './ToolNamespace';
 
-export function isCustomToolCall(name: string): boolean {
-  return APPLY_PATCH_TOOL_NAMES.has(name);
+export function isDeclaredOpenAICustomTool(name: string, tools: OpenAITool[] | undefined): boolean {
+  const declaration = flattenOpenAITools(tools)?.find((tool) => getOpenAIToolName(tool) === name);
+  return declaration?.type === 'custom';
 }
 
-export function extractCustomToolInput(name: string, args: Record<string, unknown>): string {
-  if (!isCustomToolCall(name)) {
-    return JSON.stringify(args);
-  }
-
-  const command = args.command;
-  if (Array.isArray(command) && typeof command[1] === 'string') {
-    return command[1];
-  }
-
-  if (typeof command === 'string') {
-    if (command.startsWith('apply_patch\n')) {
-      return command.slice('apply_patch\n'.length);
-    }
-    if (command.startsWith('apply_patch ')) {
-      return command.slice('apply_patch '.length);
-    }
-    return command;
-  }
-
-  for (const field of ['patch_text', 'input', 'patch', 'diff', 'content']) {
-    const value = args[field];
-    if (typeof value === 'string') {
-      return value;
-    }
-  }
-
-  return JSON.stringify(args);
-}
-
-export function toCustomToolArguments(name: string, input: string): Record<string, unknown> {
-  if (isCustomToolCall(name)) {
-    return {
-      input,
-    };
-  }
-
-  return {
-    input,
-  };
+/** Read the freeform input envelope used by the upstream function declaration. */
+export function readCustomToolInput(args: Record<string, unknown>): string {
+  return typeof args.input === 'string' ? args.input : JSON.stringify(args);
 }

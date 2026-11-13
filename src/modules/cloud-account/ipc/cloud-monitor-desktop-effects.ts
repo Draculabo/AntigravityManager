@@ -2,7 +2,7 @@ import { collectCloudMonitorAlerts } from '../services/cloud-monitor-alerts.serv
 import { getDesktopPreferencesLanguage } from '@/modules/config/ipc/desktop-preferences';
 import type { AccountOwnerEventDraft } from '../services/account-owner-events.schema';
 import type { CloudAccountView } from '../services/cloud-account-view';
-import { updateTrayMenu } from '@/modules/app-shell/ipc/tray/handler';
+import { refreshTrayAccount } from '@/modules/app-shell/ipc/tray/handler';
 import { Notification } from 'electron';
 import type { CloudAccount } from '../types';
 import { CloudMonitorService } from '../services/CloudMonitorService';
@@ -65,18 +65,19 @@ const CLOUD_MONITOR_NOTIFICATION_TEXT: Record<
 
 export function presentAccountOwnerEvent(
   event: AccountOwnerEventDraft,
-  views: Array<Pick<CloudAccountView, 'id' | 'email' | 'quota' | 'is_active'>>,
+  views: Array<Pick<CloudAccountView, 'id' | 'email' | 'quota'>>,
 ): void {
   const account = views.find((view) => view.id === event.accountId);
-  if (!account) {
-    return;
-  }
   if (event.kind === 'account-switched') {
-    // Historical switch hints must not replace the current owner snapshot in the tray.
-    updateTrayMenu(views.find((view) => view.is_active) ?? account);
-    if (event.reason === 'auto') {
+    if (event.target === 'classic') {
+      void refreshTrayAccount();
+    }
+    if (account && event.reason === 'auto') {
       showAutoSwitch(account.email);
     }
+    return;
+  }
+  if (!account) {
     return;
   }
   const language = getDesktopPreferencesLanguage(event.language);

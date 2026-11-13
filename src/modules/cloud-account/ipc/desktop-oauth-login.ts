@@ -20,6 +20,7 @@ import { notifyTrayUpdate } from './quota-refresh-desktop';
 import { DesktopOAuthLoginError } from '@/modules/cloud-account/services/desktop-oauth-login.error';
 import { GoogleLoginOperation } from '@/modules/cloud-account/services/google-login-operation';
 import { classifyOperationCause } from '@/modules/cloud-account/services/operation-cause';
+import { InvalidManualOAuthInputError } from '@/modules/cloud-account/services/manual-oauth-input';
 
 interface OAuthSessionClient {
   start(
@@ -156,7 +157,19 @@ export class DesktopOAuthLogin {
     const operation = new GoogleLoginOperation();
     operation.enter('authorization');
     const sessionId = this.sessionId;
-    if (!sessionId || !this.dependencies.session.completeCode(sessionId, code)) {
+    let accepted = false;
+    try {
+      accepted = sessionId !== null && this.dependencies.session.completeCode(sessionId, code);
+    } catch (error) {
+      if (!(error instanceof InvalidManualOAuthInputError)) {
+        throw error;
+      }
+      throw new DesktopOAuthLoginError(
+        'invalid-manual-input',
+        operation.finish(undefined, 'malformed-response', true),
+      );
+    }
+    if (!accepted) {
       operation.accountCommit = sessionId ? 'uncertain' : 'not-attempted';
       throw new DesktopOAuthLoginError(
         'login-failed',
@@ -177,7 +190,7 @@ export const desktopOAuthLogin = new DesktopOAuthLogin({
     async (code, options) => {
       const account = await enrollGoogleAccount(code, options);
       if (account.quota) {
-        notifyTrayUpdate(account);
+        notifyTrayUpdate();
       }
       return account;
     },

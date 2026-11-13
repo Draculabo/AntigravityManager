@@ -17,6 +17,8 @@ const directory = await mkdtemp(path.join(parent, 'agm-installed-msi-'));
 const target = path.join(directory, 'application');
 const backup = path.join(directory, 'login-settings.json');
 const environment = { ...process.env, AGM_ACCEPTANCE_MSI: msi };
+// Full repair took over ten minutes on the native host, beyond the child-process default.
+const installerTimeoutMs = 15 * 60_000;
 function run(executable, args, timeout = 300_000) {
   const result = spawnSync(executable, args, {
     env: environment,
@@ -64,8 +66,12 @@ function existingSquirrelInstallation() {
     '-NoProfile',
     '-Command',
     `
-$entry = Get-ItemProperty -LiteralPath 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\antigravity_manager' -ErrorAction SilentlyContinue
-if ($entry) { $entry | Select-Object DisplayVersion, InstallLocation, UninstallString | ConvertTo-Json -Compress }
+$path = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\antigravity_manager'
+if (-not (Test-Path -LiteralPath $path -ErrorAction Stop)) {
+  exit 0
+}
+$entry = Get-ItemProperty -LiteralPath $path -ErrorAction Stop
+$entry | Select-Object DisplayVersion, InstallLocation, UninstallString | ConvertTo-Json -Compress
 `,
   ]).trim();
 }
@@ -116,19 +122,23 @@ let complete = false;
 let acceptanceError;
 let recoveryError;
 function install(file, log) {
-  run('msiexec.exe', [
-    '/i',
-    file,
-    '/qn',
-    '/norestart',
-    '/l*v',
-    path.join(directory, log),
-    `APPLICATIONROOTDIRECTORY=${target}`,
-    'ALLUSERS=2',
-    'MSIINSTALLPERUSER=1',
-    'INSTALLLEVEL=1',
-    'AUTOUPDATEENABLED=0',
-  ]);
+  run(
+    'msiexec.exe',
+    [
+      '/i',
+      file,
+      '/qn',
+      '/norestart',
+      '/l*v',
+      path.join(directory, log),
+      `APPLICATIONROOTDIRECTORY=${target}`,
+      'ALLUSERS=2',
+      'MSIINSTALLPERUSER=1',
+      'INSTALLLEVEL=1',
+      'AUTOUPDATEENABLED=0',
+    ],
+    installerTimeoutMs,
+  );
 }
 try {
   installationAttempted = true;
@@ -167,14 +177,18 @@ try {
     .digest('hex');
   assert((await realpath(worker)).startsWith(`${target}${path.sep}`));
   await rm(worker);
-  run('msiexec.exe', [
-    '/fa',
-    properties.ProductCode,
-    '/qn',
-    '/norestart',
-    '/l*v',
-    path.join(directory, 'repair.log'),
-  ]);
+  run(
+    'msiexec.exe',
+    [
+      '/fa',
+      properties.ProductCode,
+      '/qn',
+      '/norestart',
+      '/l*v',
+      path.join(directory, 'repair.log'),
+    ],
+    installerTimeoutMs,
+  );
   assert.equal(
     createHash('sha256')
       .update(await readFile(worker))
@@ -186,7 +200,11 @@ try {
     run(process.execPath, ['scripts/acceptance/runtime/installed-runtime-native.mjs', resources]),
   );
   process.stdout.write(
-    run(process.execPath, ['scripts/acceptance/runtime/packaged-desktop-native.mjs', executable]),
+    run(
+      process.execPath,
+      ['scripts/acceptance/runtime/packaged-desktop-native.mjs', executable],
+      installerTimeoutMs,
+    ),
   );
   if (operationDiagnostics) {
     process.stdout.write(
@@ -205,7 +223,7 @@ try {
       const result = spawnSync(
         'msiexec.exe',
         ['/x', identity, '/qn', '/norestart', '/l*v', path.join(directory, 'uninstall.log')],
-        { windowsHide: true, timeout: 180_000, encoding: 'utf8', maxBuffer: 4000 },
+        { windowsHide: true, timeout: installerTimeoutMs, encoding: 'utf8', maxBuffer: 4000 },
       );
       if (result.error || (result.status !== 0 && result.status !== 1605)) {
         cleanupError = new Error(`MSI cleanup failed; recovery files: ${directory}`);

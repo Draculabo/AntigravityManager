@@ -98,6 +98,7 @@ export interface OpenAITool {
   type: string;
   name?: string;
   tools?: OpenAITool[];
+  custom?: { name: string; description?: string };
   function?: {
     name: string;
     description?: string;
@@ -113,6 +114,7 @@ export interface OpenAIToolCall {
     name: string;
     arguments: string;
   };
+  custom?: { name: string; input: string };
   status?: string;
   call_id?: string;
   operation?: {

@@ -3,8 +3,7 @@ import { SignatureStore } from './SignatureStore';
 import { ResponseToolCallIdentity } from './ResponseToolCallIdentity';
 import { hashSessionAnchor } from '../server/common/session-anchor-hash';
 import { readThoughtSignature } from './signature-utils';
-import { optimizeApplyPatch, validateApplyPatchV4A } from './ApplyPatchPreflight';
-import { extractCustomToolInput, isCustomToolCall } from './CustomToolCall';
+import { isDeclaredOpenAICustomTool, readCustomToolInput } from './CustomToolCall';
 import {
   isMalformedFunctionCallFinishReason,
   MALFORMED_FUNCTION_CALL_RECOVERY_TEXT,
@@ -464,24 +463,9 @@ export class OpenAIResponsesStreamingMapper {
       this.emittedToolCallIds.add(callId);
     }
     const normalizedArguments = functionCall.args;
-    const isCustomTool = isCustomToolCall(functionName);
+    const isCustomTool = isDeclaredOpenAICustomTool(functionCall.name, this.options.clientTools);
     const argumentsString = JSON.stringify(normalizedArguments);
-    let input = isCustomTool
-      ? isCustomToolCall(functionName)
-        ? extractCustomToolInput(functionName, normalizedArguments)
-        : argumentsString
-      : undefined;
-    if (isCustomToolCall(functionName) && input !== undefined) {
-      const optimizedPatch = optimizeApplyPatch(input);
-      const validationError = validateApplyPatchV4A(optimizedPatch.input);
-      if (validationError) {
-        yield* this.processText(
-          `[apply_patch rejected: invalid V4A syntax at line ${validationError.line}: ${validationError.message}]`,
-        );
-        return;
-      }
-      input = optimizedPatch.input;
-    }
+    const input = isCustomTool ? readCustomToolInput(normalizedArguments) : '';
     const outputIndex = this.nextOutputIndex;
     this.nextOutputIndex += 1;
     const itemId = `item_${this.options.responseId}_${outputIndex}`;
@@ -509,7 +493,7 @@ export class OpenAIResponsesStreamingMapper {
         ? {
             call_id: callId,
             id: itemId,
-            input: input ?? '',
+            input,
             name: functionName,
             ...(splitName.namespace ? { namespace: splitName.namespace } : {}),
             status: 'completed',
@@ -536,14 +520,14 @@ export class OpenAIResponsesStreamingMapper {
     if (isCustomTool) {
       yield this.serialize({
         call_id: callId,
-        delta: input ?? '',
+        delta: input,
         item_id: itemId,
         output_index: outputIndex,
         type: 'response.custom_tool_call_input.delta',
       });
       yield this.serialize({
         call_id: callId,
-        input: input ?? '',
+        input,
         item_id: itemId,
         output_index: outputIndex,
         type: 'response.custom_tool_call_input.done',

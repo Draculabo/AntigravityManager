@@ -97,26 +97,30 @@ export function CoworkCompactionCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t('proxy.compaction.title')}</CardTitle>
-        <CardDescription>{t('proxy.compaction.description')}</CardDescription>
+        <CardTitle>{t('proxy.config.compaction.title')}</CardTitle>
+        <CardDescription>{t('proxy.config.compaction.description')}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          <p className="text-sm font-medium">{t('proxy.compaction.trusted-sources')}</p>
-          <p className="text-muted-foreground text-xs">{t('proxy.compaction.trust-desc')}</p>
+          <p className="text-sm font-medium">{t('proxy.config.compaction.trusted-sources')}</p>
+          <p className="text-muted-foreground text-xs">{t('proxy.config.compaction.trust-desc')}</p>
           <Button
             type="button"
             variant="outline"
             disabled={pending || !apiKeyConfigured || config.trusted_client_key_hashes.length >= 32}
             onClick={() => void trustCurrentCredential()}
           >
-            {t('proxy.compaction.trust-current-key')}
+            {t('proxy.config.compaction.trust-current-key')}
           </Button>
           {!apiKeyConfigured ? (
-            <p className="text-muted-foreground text-xs">{t('proxy.compaction.key-required')}</p>
+            <p className="text-muted-foreground text-xs">
+              {t('proxy.config.compaction.key-required')}
+            </p>
           ) : null}
           {config.trusted_client_key_hashes.length === 0 ? (
-            <p className="text-muted-foreground text-xs">{t('proxy.compaction.no-trusted-sources')}</p>
+            <p className="text-muted-foreground text-xs">
+              {t('proxy.config.compaction.no-trusted-sources')}
+            </p>
           ) : (
             <ul className="space-y-2">
               {config.trusted_client_key_hashes.map((digest) => (
@@ -129,7 +133,7 @@ export function CoworkCompactionCard({
                     variant="outline"
                     size="xs"
                     disabled={pending}
-                    aria-label={t('proxy.compaction.revoke-key-label', { digest })}
+                    aria-label={t('proxy.config.compaction.revoke-key-label', { digest })}
                     onClick={() =>
                       void save({
                         trusted_client_key_hashes: config.trusted_client_key_hashes.filter(
@@ -138,38 +142,42 @@ export function CoworkCompactionCard({
                       })
                     }
                   >
-                    {t('proxy.compaction.revoke-key')}
+                    {t('proxy.config.compaction.revoke-key')}
                   </Button>
                 </li>
               ))}
             </ul>
           )}
           {config.trusted_client_key_hashes.length >= 32 ? (
-            <p className="text-muted-foreground text-xs">{t('proxy.compaction.trust-limit')}</p>
+            <p className="text-muted-foreground text-xs">
+              {t('proxy.config.compaction.trust-limit')}
+            </p>
           ) : null}
         </div>
         {pending ? (
           <p role="status" className="text-muted-foreground text-xs">
-            {t('proxy.compaction.saving')}
+            {t('proxy.config.compaction.saving')}
           </p>
         ) : null}
         {saveState.kind === 'failed' ? (
           <div role="alert" className="space-y-2">
-            <p className="text-destructive text-xs">{t('proxy.compaction.save-failed')}</p>
+            <p className="text-destructive text-xs">{t('proxy.config.compaction.save-failed')}</p>
             <Button
               type="button"
               variant="outline"
               size="xs"
               onClick={() => void runChange(saveState.retry)}
             >
-              {t('proxy.compaction.retry')}
+              {t('proxy.config.compaction.retry')}
             </Button>
           </div>
         ) : null}
         <div className="flex items-center justify-between gap-4">
           <div className="space-y-1">
-            <Label htmlFor="cowork-auto-compaction">{t('proxy.compaction.auto')}</Label>
-            <p className="text-muted-foreground text-xs">{t('proxy.compaction.auto-desc')}</p>
+            <Label htmlFor="cowork-auto-compaction">{t('proxy.config.compaction.auto')}</Label>
+            <p className="text-muted-foreground text-xs">
+              {t('proxy.config.compaction.auto-desc')}
+            </p>
           </div>
           <Switch
             id="cowork-auto-compaction"
@@ -180,8 +188,10 @@ export function CoworkCompactionCard({
         </div>
         <div className="flex items-center justify-between gap-4">
           <div className="space-y-1">
-            <Label htmlFor="cowork-manual-compaction">{t('proxy.compaction.manual')}</Label>
-            <p className="text-muted-foreground text-xs">{t('proxy.compaction.manual-desc')}</p>
+            <Label htmlFor="cowork-manual-compaction">{t('proxy.config.compaction.manual')}</Label>
+            <p className="text-muted-foreground text-xs">
+              {t('proxy.config.compaction.manual-desc')}
+            </p>
           </div>
           <Switch
             id="cowork-manual-compaction"
@@ -191,7 +201,7 @@ export function CoworkCompactionCard({
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="cowork-auto-threshold">{t('proxy.compaction.threshold')}</Label>
+          <Label htmlFor="cowork-auto-threshold">{t('proxy.config.compaction.threshold')}</Label>
           <Input
             id="cowork-auto-threshold"
             type="number"
@@ -208,7 +218,9 @@ export function CoworkCompactionCard({
               }
             }}
           />
-          <p className="text-muted-foreground text-xs">{t('proxy.compaction.threshold-desc')}</p>
+          <p className="text-muted-foreground text-xs">
+            {t('proxy.config.compaction.threshold-desc')}
+          </p>
         </div>
       </CardContent>
     </Card>

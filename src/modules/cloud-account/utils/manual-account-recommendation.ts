@@ -1,4 +1,5 @@
 import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
+import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { aggregateVisibleQuotaModelFamilies } from '@/modules/cloud-account/utils/quota-model-families';
 import { selectWeeklyQuotaItems } from '@/modules/cloud-account/utils/quota-groups';
 import type { AccountSortKey } from '@/modules/cloud-account/utils/quota-display';
@@ -10,6 +11,7 @@ export type ManualRecommendationContext = 'overall' | 'claude' | 'pro3' | 'flash
 
 export interface ManualAccountRecommendation {
   accountId: string;
+  appTarget: AntigravityAppTarget;
   context: ManualRecommendationContext;
   fiveHourPercentage: number;
   weeklyPercentage: number;
@@ -17,12 +19,13 @@ export interface ManualAccountRecommendation {
 }
 
 interface ManualAccountRecommendationOptions {
+  appTarget: AntigravityAppTarget;
   sortKey: AccountSortKey;
   modelVisibility: Record<string, boolean>;
   now?: number;
 }
 
-interface RankedRecommendation extends ManualAccountRecommendation {
+interface RankedRecommendation extends Omit<ManualAccountRecommendation, 'appTarget'> {
   lastUsed: number;
   resetCohort: number;
   resetTimeMs: number;
@@ -59,13 +62,21 @@ export function getManualRecommendationContext(
   }
 }
 
-function isActiveAnywhere(account: CloudAccountView): boolean {
-  return Boolean(
-    account.is_active ||
-    account.is_active_classic ||
-    account.is_active_ide ||
-    account.is_active_agy,
-  );
+function isActiveForTarget(account: CloudAccountView, appTarget: AntigravityAppTarget): boolean {
+  switch (appTarget) {
+    case 'classic':
+      // Snapshots without client-specific flags used is_active for Classic.
+      return (
+        account.is_active_classic ??
+        (account.is_active_ide === undefined &&
+          account.is_active_agy === undefined &&
+          account.is_active === true)
+      );
+    case 'ide':
+      return account.is_active_ide === true;
+    case 'agy':
+      return account.is_active_agy === true;
+  }
 }
 
 function getFiveHourPercentage(
@@ -97,10 +108,6 @@ function rankAccount(
   modelVisibility: Record<string, boolean>,
   now: number,
 ): RankedRecommendation | null {
-  if (account.status !== 'active' || isActiveAnywhere(account)) {
-    return null;
-  }
-
   const fiveHourPercentage = getFiveHourPercentage(account, context, modelVisibility);
   if (
     fiveHourPercentage === null ||
@@ -150,6 +157,9 @@ export function getManualAccountRecommendation(
   const context = getManualRecommendationContext(options.sortKey);
   const now = options.now ?? Date.now();
   const ranked = accounts
+    .filter(
+      (account) => account.status === 'active' && !isActiveForTarget(account, options.appTarget),
+    )
     .map((account) => rankAccount(account, context, options.modelVisibility, now))
     .filter((candidate): candidate is RankedRecommendation => candidate !== null)
     .sort((left, right) => {
@@ -178,6 +188,7 @@ export function getManualAccountRecommendation(
 
   return {
     accountId: recommendation.accountId,
+    appTarget: options.appTarget,
     context: recommendation.context,
     fiveHourPercentage: recommendation.fiveHourPercentage,
     weeklyPercentage: recommendation.weeklyPercentage,
@@ -194,7 +205,7 @@ export function prioritizeRecommendedAccount(
   }
 
   const recommendedIndex = accounts.findIndex((account) => account.id === recommendation.accountId);
-  if (recommendedIndex < 0) {
+  if (recommendedIndex < 0 || accounts[recommendedIndex].is_active) {
     return accounts;
   }
 

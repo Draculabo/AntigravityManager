@@ -22,7 +22,12 @@ export const GEMINI_TRANSPORT_LIMITS = {
 
 type TransportLimits = typeof GEMINI_TRANSPORT_LIMITS;
 type ConnectOptions = Parameters<HttpsProxyAgent<string>['connect']>[1];
-const connectionSignals = new AsyncLocalStorage<AbortSignal>();
+interface ConnectionContext {
+  signal: AbortSignal;
+  observeRequest?: (request: ClientRequest) => void;
+}
+
+const connectionContext = new AsyncLocalStorage<ConnectionContext>();
 
 function agentOptions(limits: TransportLimits) {
   return {
@@ -35,10 +40,32 @@ function agentOptions(limits: TransportLimits) {
 }
 
 export function withGeminiConnectionSignal<T>(
-  signal: AbortSignal,
+  context: ConnectionContext,
   execute: () => Promise<T>,
 ): Promise<T> {
-  return connectionSignals.run(signal, execute);
+  return connectionContext.run(context, execute);
+}
+
+function dispatchRequest(agent: HttpAgent, request: ClientRequest, options: RequestOptions): void {
+  connectionContext.getStore()?.observeRequest?.(request);
+  // Node's Agent hook is inherited by HTTPS and available at runtime, but absent from its types.
+  const dispatch: unknown = Reflect.get(HttpAgent.prototype, 'addRequest');
+  if (typeof dispatch !== 'function') {
+    throw new Error('Node HTTP Agent request dispatch is unavailable');
+  }
+  Reflect.apply(dispatch, agent, [request, options]);
+}
+
+class DirectHttpAgent extends HttpAgent {
+  addRequest(request: ClientRequest, options: RequestOptions): void {
+    dispatchRequest(this, request, options);
+  }
+}
+
+class DirectHttpsAgent extends HttpsAgent {
+  addRequest(request: ClientRequest, options: RequestOptions): void {
+    dispatchRequest(this, request, options);
+  }
 }
 
 /** Connection-local cancellation keeps a pooled agent independent of any earlier request. */
@@ -52,16 +79,11 @@ class PooledProxyAgent extends HttpsProxyAgent<string> {
 
   // Bind before Node queues the request. A later socket callback can run in another request's context.
   addRequest(request: ClientRequest, options: RequestOptions): void {
-    const signal = connectionSignals.getStore();
+    const signal = connectionContext.getStore()?.signal;
     if (signal) {
       this.requestSignals.set(request, signal);
     }
-    // Node's Agent hook is available at runtime but omitted from its public type declarations.
-    const dispatch: unknown = Reflect.get(HttpAgent.prototype, 'addRequest');
-    if (typeof dispatch !== 'function') {
-      throw new Error('Node HTTP Agent request dispatch is unavailable');
-    }
-    Reflect.apply(dispatch, this, [request, options]);
+    dispatchRequest(this, request, options);
   }
 
   override async connect(request: ClientRequest, options: ConnectOptions): Promise<Socket> {
@@ -141,8 +163,8 @@ export class GeminiTransportPool {
       const options = agentOptions(this.limits);
       const httpAgent = resolved
         ? new PooledProxyAgent(resolved, this.limits)
-        : new HttpAgent(options);
-      const httpsAgent = resolved ? httpAgent : new HttpsAgent(options);
+        : new DirectHttpAgent(options);
+      const httpsAgent = resolved ? httpAgent : new DirectHttpsAgent(options);
       for (const agent of new Set([httpAgent, httpsAgent])) {
         agent.maxTotalSockets = this.limits.maxSockets;
         agent.on('free', (socket: Socket) => {

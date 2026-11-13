@@ -94,6 +94,36 @@ function payload() {
 }
 
 describe('native Thought Store part persistence', () => {
+  it.each(['skip_thought_signature_validator', 'c2tpcF90aG91Z2h0X3NpZ25hdHVyZV92YWxpZGF0b3I='])(
+    'omits %s on save and historical read while preserving genuine part signatures',
+    (signature) => {
+      const repository = open();
+      const input = { ...payload(), signature };
+      const save = () =>
+        repository.execute(
+          ThoughtStoreWorkerCommandSchema.parse({ operation: 'save', payload: input }),
+        );
+      const read = () =>
+        repository.execute({
+          operation: 'getSession',
+          payload: { sessionKey: input.sessionKey },
+        });
+      const database = raw();
+      const stored = database.prepare('SELECT signature FROM thinking_records WHERE session_key=?');
+
+      save();
+      expect(stored.all(input.sessionKey)).toEqual([{ signature: null }]);
+      database
+        .prepare('UPDATE thinking_records SET signature=? WHERE session_key=?')
+        .run(signature, input.sessionKey);
+      const historical = read();
+      expect(historical).toMatchObject([{ signature: null, partSignatures: input.partSignatures }]);
+      save();
+      expect(read()).toEqual(historical);
+      expect(stored.all(input.sessionKey)).toEqual([{ signature: null }]);
+    },
+  );
+
   it.each(['save', 'ingestHistory'] as const)(
     'retains exact part provenance through %s, close and reopen',
     (operation) => {

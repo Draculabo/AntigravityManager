@@ -34,6 +34,21 @@ export class AccountLeaseTokenCache {
     this.loadGeneration = Symbol();
   }
 
+  replaceAccountToken(account: CloudAccount): void {
+    this.invalidateLoads();
+    const tokens = this.options.getTokenCache();
+    const previous = tokens.get(account.id);
+    if (!previous) {
+      return;
+    }
+    const replacement = this.mapAccountToTokenData(
+      account,
+      buildAccountLeaseQuotaSnapshot(account.quota),
+    );
+    replacement.session_id = account.token.session_id || previous.session_id;
+    tokens.set(account.id, replacement);
+  }
+
   async loadAccounts(): Promise<number> {
     try {
       return await this.replaceAccounts();

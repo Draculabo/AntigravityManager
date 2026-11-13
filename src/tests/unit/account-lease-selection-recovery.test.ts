@@ -65,13 +65,14 @@ describe('account selection ordering and recovery', () => {
 
   it('uses stable order without changing quota weights or account-first affinity', async () => {
     const policy = new AccountLeaseSelectionPolicy();
-    const input = request({ model: 'model', getModelQuota: (id) => (id === 'b' ? 90 : 0) });
+    const input = request({ model: 'model', getModelQuota: (id) => (id === 'b' ? 90 : 10) });
     const selections = [];
     for (let index = 0; index < 5; index++) {
       selections.push((await policy.selectCandidate(input))?.[0]);
     }
     expect(selections).toEqual(['a', 'b', 'b', 'b', 'c']);
     input.config.accountSelectionStrategy = 'account-first';
+    input.getModelQuota = (id) => (id === 'b' ? 90 : 0);
     expect((await policy.selectCandidate(input))?.[0]).toBe('b');
     input.getModelQuota = () => 80;
     expect((await policy.selectCandidate(input))?.[0]).toBe('a');

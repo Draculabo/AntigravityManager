@@ -34,7 +34,11 @@ function fixture(overrides: Partial<ProxyConfig> = {}, expiredFirst = false) {
     quota: {
       models: {
         'claude-sonnet': { percentage: 80, resetTime: '' },
-        'gemini-3-flash': { percentage: index === 0 ? 0 : 80, resetTime: '' },
+        'gemini-3.5-flash-extra-low': {
+          percentage: index === 0 ? 0 : 80,
+          resetTime: '',
+          display_name: 'Gemini 3.5 Flash (Low)',
+        },
       },
     },
   }));
@@ -84,11 +88,14 @@ describe('account-first leases through the running service', () => {
         service.getEligibleRetryAccountCount({ model: 'claude-sonnet', excludeAccountIds: [] }),
       ).toBe(2);
       expect(
-        service.getEligibleRetryAccountCount({ model: 'gemini-3-flash', excludeAccountIds: [] }),
+        service.getEligibleRetryAccountCount({
+          model: 'gemini-3.5-flash-low',
+          excludeAccountIds: [],
+        }),
       ).toBe(1);
       expect(
         service.getEligibleRetryAccountCount({
-          model: 'gemini-3-flash',
+          model: 'gemini-3.5-flash-low',
           excludeAccountIds: ['acc-2'],
         }),
       ).toBe(0);
@@ -154,7 +161,7 @@ describe('account-first leases through the running service', () => {
         );
       }
       expect(consecutive).toEqual(['acc-1', 'acc-1', 'acc-1', 'acc-1']);
-      expect((await service.getNextToken({ model: 'gemini-3-flash' }))?.id).toBe('acc-2');
+      expect((await service.getNextToken({ model: 'gemini-3.5-flash-low' }))?.id).toBe('acc-2');
       const successfulReplacement = await service.getNextToken({
         model: 'claude-sonnet',
         excludeAccountIds: ['acc-1'],

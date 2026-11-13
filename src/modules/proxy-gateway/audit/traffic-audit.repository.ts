@@ -361,6 +361,7 @@ export class TrafficAuditRepository {
     return this.orm
       .update(upstreamAttempts)
       .set({
+        timingJson: payload.timing ? JSON.stringify(payload.timing) : null,
         completedAt: payload.completedAt,
         durationMs: payload.durationMs,
         error: payload.error,
