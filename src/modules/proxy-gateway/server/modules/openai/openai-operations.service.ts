@@ -131,6 +131,7 @@ export interface OpenAITextCompletionRequest {
 }
 
 export interface PreparedResponsesRequest {
+  transient?: true;
   parent: OpenAIResponsesSessionParent | null;
   request: OpenAIChatRequest;
   requestSessionId: string;
@@ -827,6 +828,7 @@ export class OpenAIOperations extends BaseProxyController {
     }
 
     return {
+      transient: body.store === false ? true : undefined,
       parent:
         body.store === false || preparedInput.resetParent
           ? null
@@ -1030,6 +1032,7 @@ export class OpenAIOperations extends BaseProxyController {
   ): OpenAIResponsesExecutionContext {
     return {
       identity: prepared.session.identity,
+      transient: prepared.transient,
       mediaAdmitted: true,
       requestSessionId: prepared.requestSessionId,
       responseId: prepared.responseId,

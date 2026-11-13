@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Observable } from 'rxjs';
+import { map, Observable } from 'rxjs';
 import { z } from 'zod';
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
 import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
 import { OpenAIResponsesSessionStore } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
+import { createResponsesWebSocketOperations } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.operations';
 import type {
   AnthropicChatRequest,
   OpenAIChatRequest,
@@ -141,9 +142,14 @@ describe('opaque signatures through the real gateway tool continuation', () => {
     ).toEqual([signature]);
   });
 
-  it.each([false, true])(
-    'Responses retains Base64 through its parent lineage, stream=%s',
-    async (stream) => {
+  it.each([
+    { stream: false, store: true },
+    { stream: true, store: true },
+    { stream: false, store: false },
+    { stream: true, store: false },
+  ])(
+    'Responses retains Base64 through its parent lineage, stream=$stream, store=$store',
+    async ({ stream, store }) => {
       const upstream = createUpstream({
         generate: response,
         streamFrames: [geminiStreamFrame(response)],
@@ -183,6 +189,7 @@ describe('opaque signatures through the real gateway tool continuation', () => {
         {
           model: 'gemini-pro-agent',
           previous_response_id: responseId,
+          store,
           input: [
             { type: 'function_call_output', call_id: 'call_roundtrip', output: 'fixture result' },
           ],
@@ -201,4 +208,103 @@ describe('opaque signatures through the real gateway tool continuation', () => {
       ).toEqual([signature]);
     },
   );
+
+  it.each([false, true])(
+    'transient Responses restores signatures from complete history and isolates a different task, stream=%s',
+    async (stream) => {
+      const upstream = createUpstream({
+        generate: response,
+        streamFrames: [geminiStreamFrame(response)],
+      });
+      const { openAIService } = createGateway(upstream, createLease([createAccount('roundtrip')]));
+      const operations = new OpenAIOperations(openAIService);
+      const tools = [{ type: 'function', name: 'read', parameters: { type: 'object' } }];
+      const first = createReply();
+      await operations.responses(
+        {
+          model: 'gemini-pro-agent',
+          input: 'Read the synthetic fixture',
+          tools,
+          stream,
+          store: false,
+        },
+        first as never,
+      );
+      if (first.body instanceof Observable) {
+        await collect(first.body);
+      }
+      for (const task of ['Read the synthetic fixture', 'Read a different task']) {
+        const next = createReply();
+        await operations.responses(
+          {
+            model: 'gemini-pro-agent',
+            store: false,
+            stream,
+            tools,
+            input: [
+              { type: 'message', role: 'user', content: task },
+              { type: 'function_call', call_id: 'call_roundtrip', name: 'read', arguments: '{}' },
+              { type: 'function_call_output', call_id: 'call_roundtrip', output: 'fixture failed' },
+            ],
+          },
+          next as never,
+        );
+        if (next.body instanceof Observable) {
+          await collect(next.body);
+        }
+      }
+      expect(
+        upstream.calls.slice(1).map(({ body }) =>
+          body.request.contents
+            .flatMap((item) => item.parts)
+            .filter((part) => part.functionCall)
+            .map((part) => part.thoughtSignature),
+        ),
+      ).toEqual([[signature], [undefined]]);
+    },
+  );
+
+  it('restores a transient full transcript through the WebSocket operations boundary', async () => {
+    const upstream = createUpstream({ streamFrames: [geminiStreamFrame(response)] });
+    const { openAIService } = createGateway(upstream, createLease([createAccount('roundtrip')]));
+    const operations = createResponsesWebSocketOperations(
+      new OpenAIOperations(openAIService),
+      openAIService,
+    );
+    const validate = operations.validateRequest;
+    if (!validate) {
+      throw new Error('Responses operations must validate WebSocket requests');
+    }
+    const input = [{ type: 'message', role: 'user', content: 'Read the synthetic fixture' }];
+    const first = {
+      model: 'gemini-pro-agent',
+      store: false,
+      stream: true,
+      input,
+      tools: [{ type: 'function', name: 'read', parameters: { type: 'object' } }],
+    };
+    const context = { headers: { 'x-session-id': 'transient-socket' }, url: '/v1/responses' };
+    await validate(first, 'generate', context);
+    await collect(
+      (await operations.streamRequest(first)).pipe(map((event) => z.string().parse(event))),
+    );
+    const next = {
+      ...first,
+      input: [
+        ...input,
+        { type: 'function_call', call_id: 'call_roundtrip', name: 'read', arguments: '{}' },
+        { type: 'function_call_output', call_id: 'call_roundtrip', output: 'fixture failed' },
+      ],
+    };
+    await validate(next, 'generate', context);
+    await collect(
+      (await operations.streamRequest(next)).pipe(map((event) => z.string().parse(event))),
+    );
+    expect(
+      upstream.calls[1]?.body.request.contents
+        .flatMap((item) => item.parts)
+        .filter((part) => part.functionCall)
+        .map((part) => part.thoughtSignature),
+    ).toEqual([signature]);
+  });
 });

@@ -52,6 +52,7 @@ export function createResponsesWebSocketOperations(
         signal,
         {
           identity: prepared.session.identity,
+          transient: prepared.transient,
           mediaAdmitted: true,
           requestSessionId: prepared.requestSessionId,
           responseId: prepared.responseId,

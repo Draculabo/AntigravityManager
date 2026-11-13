@@ -28,6 +28,17 @@ Continuation deltas use the established compatibility precedence: compaction sta
 
 Only explicit `store: false` disables retention. Such a request may read a valid parent and send the complete reconstructed input upstream, but it creates no child node, response payload, input delta, output, parent reference or tool-call cache. Its returned response and SSE remain normal, while GET or continuation using that transient response ID returns not found. Omitted or true storage behavior is unchanged, and an invalid parent still fails before upstream execution.
 
+Transient Responses use the existing bounded signature cache under the credential,
+initial-task and client-session scope when replaying a complete transcript. They write
+new signatures under that same scope. If they explicitly address a retained parent,
+signature reads still use the parent response ID. HTTP and WebSocket preparation both
+identify this mode. Stored Responses continue to read and write response-ID scopes,
+preserving their branch isolation. This fixes the live Codex `store: false` tool cycle,
+whose complete transcript lacks `previous_response_id` and otherwise cannot retrieve
+the signature cached under a discarded response ID. It adds no durable history or
+signature format. Reusing response IDs for these requests would leave the lookup
+unreachable, and changing every Responses signature key would change stored branches.
+
 Emit both tool configuration aliases for mapped function calls, with explicit source profiles at all OpenAI and Anthropic entry points. Keep the existing explicit Anthropic tool-choice semantics. Native Gemini aliases retain independently supplied valid fields and defaults. Strict request validation remains intentional: malformed aliases and non-array `tools` return a client error before account selection instead of forwarding invalid values to the provider.
 
 Only cache tool configurations representable by the existing cachedContents API. Equivalent aliases use its canonical camelCase payload; conflicting aliases and unknown extensions bypass explicit caching. Cache-backed generation removes both aliases. Failed cache creation and rejected cache resources use the untouched full generation body.
@@ -56,6 +67,11 @@ The durable JSON representation changes from a flat materialized session to a le
 Configuration extensions continue to reach generation, but bypass explicit caching until the cache API can represent them. No durable migration, database change, authentication change, new dependency, or release action is included.
 
 ## Verification
+
+The transient signature regression reproduces missing signatures before the fix in
+both unary and streaming Responses operations. It also keeps a different initial task
+unsigned. HTTP cases check the same transcript against changed tasks, session hints
+and credentials. Stored-parent and WebSocket checks retain their owning scenarios.
 
 Native streaming-reasoning regressions pin the complete summary lifecycle, multiple thought chunks, final-text and tool ordering, reasoning-only and truncated termination, independent `rs_` IDs, late-thought suppression, and monotonic SSE sequencing. Session-store regressions keep native reasoning in the stored completed response while excluding it from merged continuation history alongside legacy commentary transcripts.
 

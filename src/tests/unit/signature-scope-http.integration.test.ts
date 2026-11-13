@@ -9,6 +9,7 @@ import { getServerConfig, setServerConfig } from '@/server/server-config';
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
 import { ProxyGuard } from '@/modules/proxy-gateway/server/guards/proxy.guard';
 import { OpenAIChatController } from '@/modules/proxy-gateway/server/modules/openai/openai-chat.controller';
+import { OpenAIResponsesController } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses.controller';
 import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
 import { AnthropicController } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
 import { AnthropicService } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.service';
@@ -70,7 +71,12 @@ async function surface() {
   const lease = createLease([createAccount('acc-1')]);
   const gateway = createGateway(upstream, lease);
   @Module({
-    controllers: [OpenAIChatController, AnthropicController, GeminiController],
+    controllers: [
+      OpenAIChatController,
+      OpenAIResponsesController,
+      AnthropicController,
+      GeminiController,
+    ],
     providers: [
       ProxyGuard,
       { provide: OpenAIOperations, useValue: new OpenAIOperations(gateway.openAIService) },
@@ -91,6 +97,56 @@ async function surface() {
 }
 
 describe('HTTP signature scope admission', () => {
+  it.each(['same', 'task', 'session', 'credential'])(
+    'restores transient Responses signatures only within the same request scope: %s',
+    async (changed) => {
+      const { app, upstream, signatureA } = await surface();
+      const url = '/v1/responses';
+      const headers = {
+        authorization: 'Bearer synthetic-tenant-a',
+        'x-client-session-id': 'transient-a',
+      };
+      const input = [{ type: 'message', role: 'user', content: 'Read task A' }];
+      const initial = {
+        model: 'gemini-pro-agent',
+        input,
+        store: false,
+        tools: [{ type: 'function', name: 'read', parameters: { type: 'object' } }],
+      };
+      expect(
+        (await app.inject({ method: 'POST', url, headers, payload: initial })).statusCode,
+      ).toBe(200);
+      const nextHeaders = { ...headers };
+      if (changed === 'session') {
+        nextHeaders['x-client-session-id'] = 'transient-b';
+      }
+      if (changed === 'credential') {
+        setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, api_key: 'synthetic-tenant-b' });
+        nextHeaders.authorization = 'Bearer synthetic-tenant-b';
+      }
+      const next = await app.inject({
+        method: 'POST',
+        url,
+        headers: nextHeaders,
+        payload: {
+          ...initial,
+          input: [
+            { ...input[0], content: changed === 'task' ? 'Read task B' : 'Read task A' },
+            { type: 'function_call', call_id: 'call_reused', name: 'read', arguments: '{}' },
+            { type: 'function_call_output', call_id: 'call_reused', output: 'fixture failed' },
+          ],
+        },
+      });
+      expect(next.statusCode).toBe(200);
+      expect(
+        upstream.calls[1]?.body.request.contents
+          .flatMap((item) => item.parts)
+          .filter((part) => part.functionCall)
+          .map((part) => part.thoughtSignature),
+      ).toEqual([changed === 'same' ? signatureA : undefined]);
+    },
+  );
+
   it('passes native Gemini credential, header and actual query hints to account selection', async () => {
     const { app, lease } = await surface();
     const payload = { contents: [{ role: 'user', parts: [{ text: 'synthetic task' }] }] };

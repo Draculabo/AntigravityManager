@@ -112,6 +112,8 @@ export type OpenAIOutputProtocol = 'chat-completions' | 'responses';
 
 export interface OpenAIResponsesExecutionContext {
   identity?: ResponsesInitialIdentity;
+  /** Explicit store:false requests continue with complete client-owned transcripts. */
+  transient?: true;
   /** Trusted preparation has already normalized/admitted this request's inline media. */
   mediaAdmitted?: true;
   requestSessionId: string;
@@ -226,12 +228,18 @@ export class OpenAIService extends BaseProxyService {
       : resolveOpenAISessionScope(request, requestContext?.headers, requestContext?.url);
     const routingSessionKey = scope.affinityKey;
     captureCurrentAuditSession(scope);
-    const signatureReadSessionKey = responsesContext
-      ? this.toOpenAISessionKey(responsesContext.requestSessionId)
-      : scope.cacheKey;
-    const responseSessionKey = responsesContext
-      ? this.toOpenAISessionKey(responsesContext.responseId)
-      : scope.cacheKey;
+    // A transient response has no retained ID for full-history clients to replay.
+    // An explicitly addressed parent still owns its historical signature scope.
+    const signatureReadSessionKey =
+      responsesContext &&
+      (!responsesContext.transient ||
+        responsesContext.requestSessionId !== responsesContext.responseId)
+        ? this.toOpenAISessionKey(responsesContext.requestSessionId)
+        : scope.cacheKey;
+    const responseSessionKey =
+      responsesContext && !responsesContext.transient
+        ? this.toOpenAISessionKey(responsesContext.responseId)
+        : scope.cacheKey;
     const targetAccountId = readTargetAccountHeader(requestContext?.headers);
     const targetModel = routedRequest.model;
     const effort = resolveOpenAIRequestEffort(routedRequest);

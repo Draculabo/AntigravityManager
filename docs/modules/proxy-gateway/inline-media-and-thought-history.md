@@ -111,6 +111,10 @@ even when its thought text is a placeholder, so later tool history can restore i
 Restoration upgrades matching tool history from a sentinel to a real signature while
 preserving tool IDs, names and argument objects. Complete signed history is not replaced.
 Disabling new thinking generation at the mapper does not remove existing history signatures.
+Explicit `store: false` Responses requests use the bounded in-memory signature cache
+for complete client-owned transcripts, scoped by credential, initial task and client
+session hint. A transient request that explicitly addresses a stored parent reads that
+parent's signature scope. Stored Responses retain their response-ID signature scopes.
 Public gateway model profiles and direct Gemini agent routes retain their existing
 server-authoritative thinking budget policy; a client `thinking.type: disabled` request
 does not override that policy.
