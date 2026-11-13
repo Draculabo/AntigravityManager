@@ -88,4 +88,32 @@ describe('engine role identity', () => {
       ]),
     ).toBe(false);
   });
+  it('excludes the Classic sidecar loaded through sidecar_sdk from main discovery', () => {
+    const args = [
+      '--import=file:///C:/Users/test/.gemini/antigravity/lib/node_modules/sidecar_sdk/register_loader.js',
+      'main.mjs',
+    ];
+    expect(isAntigravityHelperProcess('Antigravity.exe', args)).toBe(true);
+    expect(
+      isTargetAntigravityProcessCandidate(
+        {
+          name: 'Antigravity.exe',
+          executablePath: 'C:\\Apps\\Antigravity.exe',
+          commandLine: `C:\\Apps\\Antigravity.exe ${args.join(' ')}`,
+        },
+        'classic',
+        { ignoreExecutableConfiguration: true },
+      ),
+    ).toBe(false);
+    expect(
+      isAntigravityHelperProcess('Antigravity.exe', [
+        '--import=C:\\Users\\test\\sidecar_sdk\\register_loader.js',
+      ]),
+    ).toBe(true);
+    expect(
+      isAntigravityHelperProcess('Antigravity.exe', [
+        '--import=C:\\Users\\test\\sidecar_sdk\\other_loader.js',
+      ]),
+    ).toBe(false);
+  });
 });
