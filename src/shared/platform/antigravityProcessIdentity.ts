@@ -17,14 +17,22 @@ export function getAntigravityExecutableTarget(value: string): 'classic' | 'ide'
   return match ? (match[1] ? 'ide' : 'classic') : null;
 }
 
+function isAntigravitySidecarImport(argument: string): boolean {
+  const normalized = argument.toLowerCase().replaceAll('\\', '/');
+  return (
+    normalized.startsWith('--import=') && normalized.endsWith('/sidecar_sdk/register_loader.js')
+  );
+}
+
 /** Role arguments take precedence over a configured or captured executable match. */
 export function isAntigravityHelperProcess(name: string, args: readonly string[]): boolean {
   return (
     /helper|plugin|renderer|gpu|crashpad|utility|audio|sandbox|language_server/i.test(name) ||
-    args.some((arg) =>
-      /^--(?:type|standalone|subclient_type|override_ide_name|clientProcessId|node-ipc|useNodeIpc)(?:=|$)/i.test(
-        arg,
-      ),
+    args.some(
+      (arg) =>
+        /^--(?:type|standalone|subclient_type|override_ide_name|clientProcessId|node-ipc|useNodeIpc)(?:=|$)/i.test(
+          arg,
+        ) || isAntigravitySidecarImport(arg),
     )
   );
 }
