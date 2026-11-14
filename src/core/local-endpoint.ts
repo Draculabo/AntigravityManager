@@ -5,6 +5,25 @@ import os from 'node:os';
 import path from 'node:path';
 import { getAgentDir } from '@/shared/platform/paths';
 
+// Leave headroom for Node's terminator and platform-specific Unix socket limits.
+const MAX_UNIX_SOCKET_PATH_LENGTH = 100;
+
+function getUnixEndpoint(name: string, platform: NodeJS.Platform): string {
+  const endpoint = path.join(getAgentDir({ platform }), 'runtime', `${name}.sock`);
+  if (endpoint.length <= MAX_UNIX_SOCKET_PATH_LENGTH) {
+    return endpoint;
+  }
+
+  const scope = crypto.createHash('sha256').update(endpoint).digest('hex').slice(0, 16);
+  const socketDirectory = `agm-${scope}`;
+  const socketPath = (root: string) =>
+    path.join(root, 'antigravity-manager', socketDirectory, `${name}.sock`);
+  const temporaryEndpoint = socketPath(os.tmpdir());
+  return temporaryEndpoint.length <= MAX_UNIX_SOCKET_PATH_LENGTH
+    ? temporaryEndpoint
+    : socketPath('/tmp');
+}
+
 export function getLocalEndpoint(
   name: string,
   platform: NodeJS.Platform = process.platform,
@@ -18,7 +37,7 @@ export function getLocalEndpoint(
       .slice(0, 16);
     return `\\\\.\\pipe\\antigravity-manager-${name}-${userScope}`;
   }
-  return path.join(getAgentDir({ platform }), 'runtime', `${name}.sock`);
+  return getUnixEndpoint(name, platform);
 }
 
 async function isLiveEndpoint(endpoint: string): Promise<boolean> {

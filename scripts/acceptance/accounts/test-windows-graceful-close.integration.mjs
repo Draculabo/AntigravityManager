@@ -24,6 +24,16 @@ class Confirmation : Form {
 }
 class Fixture {
   [STAThread] static void Main(string[] args) {
+    if (args[1] == "child") {
+      while (!File.Exists(args[0]+".saved") && !File.Exists(args[0]+".child-stop")) {
+        System.Threading.Thread.Sleep(50);
+      }
+      return;
+    }
+    if (args[1] == "pending-path") {
+      var child = System.Diagnostics.Process.Start(Application.ExecutablePath, ((char)34) + args[0] + ((char)34) + " child");
+      File.WriteAllText(args[0]+".child", child.Id.ToString());
+    }
     var form = new Form(); form.Text = "Disposable account switch fixture";
     form.Shown += (s,e) => File.WriteAllText(args[0]+".ready", "ready");
     if (args[1] == "refuse") {
@@ -76,8 +86,13 @@ const nativeClose = loadProductionModule('src/modules/antigravity-runtime/window
     'src/shared/observability/processDiagnostic.ts',
   ),
 });
-const nativeQuery = loadProductionModule('src/shared/platform/nativeProcessQuery.ts');
+const nativeQuery = loadProductionModule('src/shared/platform/nativeProcessQuery.ts', {
+  '@/shared/errors/error-guards': loadProductionModule('src/shared/errors/error-guards.ts'),
+});
 let child;
+let hideDescendantPath = false;
+let descendant;
+let descendantStopMarker;
 let exited;
 const context = { target: 'ide', executablePath: exe, processes: [] };
 const dependencies = {
@@ -95,18 +110,28 @@ const dependencies = {
           startTime: row.startTime,
         })),
   },
-  './launchContext': { assertContextProcesses: () => {} },
+  './launchContext': {
+    assertContextProcesses: () => {},
+    filterContextProcesses: (_context, processes) => processes,
+  },
   './processErrors': processErrors,
   '@/shared/errors/error-guards': loadProductionModule('src/shared/errors/error-guards.ts'),
   './runtimePlatform': { usesWindowsRuntime: () => true },
   './stopNativeProcessTree': { stopNativeProcessTree: () => assert.fail('Unexpected Linux path') },
   './windowsNormalClose': nativeClose,
-  '@/shared/platform/nativeProcessQuery': nativeQuery,
+  '@/shared/platform/nativeProcessQuery': {
+    readNativeProcessSnapshot: async (timeout) =>
+      (await nativeQuery.readNativeProcessSnapshot(timeout)).map((row) =>
+        hideDescendantPath && row.parentPid === child.pid ? { ...row, exe: undefined } : row,
+      ),
+  },
   '@/shared/platform/antigravityProcessIdentity': loadProductionModule(
     'src/shared/platform/antigravityProcessIdentity.ts',
   ),
   './windowsInterop': { readWslWindowsProcesses: () => assert.fail('Unexpected WSL path') },
 };
+dependencies['@/modules/antigravity-runtime/processObserver'] = dependencies['./processObserver'];
+dependencies['@/modules/antigravity-runtime/launchContext'] = dependencies['./launchContext'];
 dependencies['./stopWindowsClientForSwitch'] = loadProductionModule(
   'src/modules/antigravity-runtime/stopWindowsClientForSwitch.ts',
   dependencies,
@@ -120,9 +145,11 @@ try {
   for (const [mode, hidden] of [
     ['accept', false],
     ['accept', true],
+    ['pending-path', false],
     ['refuse', false],
   ]) {
     const marker = path.join(root, `${mode}-${hidden ? 'hidden' : 'visible'}`);
+    hideDescendantPath = mode === 'pending-path';
     exited = false;
     child = spawn(exe, [marker, mode], { stdio: 'ignore', windowsHide: hidden });
     child.once('exit', () => {
@@ -137,13 +164,30 @@ try {
       await delay(100);
     }
     assert(fs.existsSync(marker + '.ready'), 'Fixture window must be ready');
+    if (mode === 'pending-path') {
+      const descendantPid = Number(fs.readFileSync(marker + '.child', 'utf8'));
+      descendant = (await nativeQuery.readNativeProcessSnapshot(3000)).find(
+        (row) => row.pid === descendantPid,
+      );
+      assert(descendant, 'Fixture child must be running before close');
+      descendantStopMarker = marker + '.child-stop';
+    }
     if (mode === 'refuse') {
       assert(fs.existsSync(marker + '.dialog-ready'), 'Owned confirmation must be ready');
     }
-    if (mode === 'accept') {
-      await exported.stopFromContext(context, 7000);
+    if (mode === 'accept' || mode === 'pending-path') {
+      const captured = await dependencies['./processObserver'].observeProcesses('ide', 3000);
+      const capturedContext = { ...context, processes: captured };
+      await exported.stopFromContext(capturedContext, 7000, {
+        forceAfterTimeout: mode === 'pending-path',
+      });
       assert(exited);
       assert.equal(fs.readFileSync(marker + '.saved', 'utf8'), 'in-memory conversation flushed');
+      if (mode === 'pending-path') {
+        const descendantPid = Number(fs.readFileSync(marker + '.child', 'utf8'));
+        const rows = await nativeQuery.readNativeProcessSnapshot(3000);
+        assert(!rows.some((row) => row.pid === descendantPid), 'Unreadable child must exit');
+      }
     } else {
       await assert.rejects(exported.stopFromContext(context, 2500), {
         messageKey: 'process-runtime.exit-unconfirmed',
@@ -180,12 +224,28 @@ try {
     console.log(JSON.stringify({ mode, hidden, result: 'passed' }));
   }
 } finally {
+  if (descendantStopMarker) {
+    fs.writeFileSync(descendantStopMarker, 'cleanup');
+  }
   if (child && !exited) {
     child.kill();
     const cleanupDeadline = Date.now() + 5000;
     while (!exited && Date.now() < cleanupDeadline) {
       await delay(50);
     }
+  }
+  if (descendant) {
+    const deadline = Date.now() + 5000;
+    let running;
+    do {
+      running = (await nativeQuery.readNativeProcessSnapshot(3000)).some(
+        (row) => row.pid === descendant.pid && row.startTime === descendant.startTime,
+      );
+      if (running) {
+        await delay(50);
+      }
+    } while (running && Date.now() < deadline);
+    assert.equal(running, false, 'Fixture child cleanup must complete');
   }
   assert(path.resolve(root).startsWith(path.resolve(os.tmpdir()) + path.sep));
   fs.rmSync(root, { recursive: true, force: true });

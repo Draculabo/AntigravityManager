@@ -6,7 +6,7 @@ import { logger } from '@/shared/logging/logger';
 import { isAntigravityWindowsInstaller } from '@/shared/platform/antigravityProcessIdentity';
 import { assertContextProcesses, filterContextProcesses } from './launchContext';
 import { getProcessProbeTimeout, observeProcesses, toWslPath } from './processObserver';
-import { processError } from './processErrors';
+import { AntigravityProcessError, processError } from './processErrors';
 import type { LaunchContext, RuntimeProcess } from './types';
 import { readWslWindowsProcesses } from './windowsInterop';
 import { requestWindowsProcessClose } from './windowsNormalClose';
@@ -49,7 +49,15 @@ export async function stopWindowsClientForSwitch(
       throw processError('exit-unconfirmed');
     }
     if (process.platform === 'win32') {
-      const rows = await readNativeProcessSnapshot(remaining);
+      let rows: Awaited<ReturnType<typeof readNativeProcessSnapshot>>;
+      try {
+        rows = await readNativeProcessSnapshot(remaining);
+      } catch (error) {
+        if (error instanceof AntigravityProcessError) {
+          throw error;
+        }
+        throw processError(Date.now() >= deadline ? 'exit-unconfirmed' : 'probe-failed', error);
+      }
       if (Date.now() >= deadline) {
         throw processError('exit-unconfirmed');
       }
@@ -60,12 +68,20 @@ export async function stopWindowsClientForSwitch(
         startTime: row.startTime,
       }));
     }
-    const rows = await readWslWindowsProcesses(
-      context.executablePath,
-      AbortSignal.timeout(remaining),
-      remaining,
-      true,
-    );
+    let rows: Awaited<ReturnType<typeof readWslWindowsProcesses>>;
+    try {
+      rows = await readWslWindowsProcesses(
+        context.executablePath,
+        AbortSignal.timeout(remaining),
+        remaining,
+        true,
+      );
+    } catch (error) {
+      if (error instanceof AntigravityProcessError) {
+        throw error;
+      }
+      throw processError(Date.now() >= deadline ? 'exit-unconfirmed' : 'probe-failed', error);
+    }
     if (Date.now() >= deadline) {
       throw processError('exit-unconfirmed');
     }
@@ -109,14 +125,30 @@ export async function stopWindowsClientForSwitch(
     const current = new Map(
       rows.flatMap((row) => {
         const previous = tracked.get(row.pid);
-        if (
-          previous &&
-          (row.startTime === undefined ||
-            (row.startTime === previous.startTime && !row.executablePath))
-        ) {
-          throw new UnreadableTreeMetadata(row.pid, row.parentPid);
+        if (previous) {
+          if (row.startTime === undefined) {
+            throw new UnreadableTreeMetadata(row.pid, row.parentPid);
+          }
+          if (row.startTime !== previous.startTime) {
+            return [];
+          }
+          if (
+            previous.executablePath &&
+            row.executablePath &&
+            previous.executablePath !== row.executablePath
+          ) {
+            throw processError('exit-unconfirmed');
+          }
+          if (row.executablePath) {
+            if (isAntigravityWindowsInstaller(path.win32.basename(row.executablePath))) {
+              throw processError('update-in-progress');
+            }
+            tracked.set(row.pid, row);
+            return [[row.pid, row] as const];
+          }
+          return [[row.pid, row] as const];
         }
-        return previous && sameProcess(previous, row) ? [[row.pid, row] as const] : [];
+        return [];
       }),
     );
     let added: boolean;
@@ -128,11 +160,7 @@ export async function stopWindowsClientForSwitch(
           if (row.pid === process.pid) {
             throw processError('probe-failed');
           }
-          if (
-            !row.executablePath ||
-            row.startTime === undefined ||
-            parent.startTime === undefined
-          ) {
+          if (row.startTime === undefined || parent.startTime === undefined) {
             throw new UnreadableTreeMetadata(row.pid, row.parentPid);
           }
           if (row.startTime < parent.startTime) {
@@ -143,7 +171,10 @@ export async function stopWindowsClientForSwitch(
             });
             throw processError('probe-failed');
           }
-          if (isAntigravityWindowsInstaller(path.win32.basename(row.executablePath))) {
+          if (
+            row.executablePath &&
+            isAntigravityWindowsInstaller(path.win32.basename(row.executablePath))
+          ) {
             throw processError('update-in-progress');
           }
           tracked.set(row.pid, row);
@@ -154,12 +185,20 @@ export async function stopWindowsClientForSwitch(
     } while (added);
     return [...current.values()];
   };
-  const capture = async (rows?: TreeProcess[]): Promise<TreeProcess[]> => {
+  const capture = async (
+    rows?: TreeProcess[],
+    allowUnreadablePaths = false,
+  ): Promise<TreeProcess[]> => {
     let snapshot = rows ?? (await read());
     let warned = false;
     while (true) {
       try {
-        return collect(snapshot);
+        const current = collect(snapshot);
+        const unreadable = current.find((row) => !row.executablePath);
+        if (unreadable && !allowUnreadablePaths) {
+          throw new UnreadableTreeMetadata(unreadable.pid, unreadable.parentPid);
+        }
+        return current;
       } catch (error) {
         if (!(error instanceof UnreadableTreeMetadata)) {
           throw error;
@@ -184,7 +223,8 @@ export async function stopWindowsClientForSwitch(
       snapshot = await read();
     }
   };
-  let current = await capture(initial);
+  // A creation identity retains descendants across normal close, even if their path is pending.
+  let current = await capture(initial, true);
   const systemRoot = process.env.SystemRoot;
   if (process.platform === 'win32' && (!systemRoot || !path.win32.isAbsolute(systemRoot))) {
     throw processError('system-directory-unavailable');
@@ -229,6 +269,9 @@ export async function stopWindowsClientForSwitch(
         setTimeout(resolve, Math.min(100, Math.max(0, deadline - Date.now()))),
       );
     }
+  }
+  if (current.some((row) => row.executablePath === undefined)) {
+    throw processError('probe-failed');
   }
   if (current.length) {
     // Force has its own bounded budget; an expired or failed probe never authorizes a kill.

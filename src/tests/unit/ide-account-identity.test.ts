@@ -133,6 +133,23 @@ describe('IDE Agent identity confirmation', () => {
       ).rejects.toMatchObject({ messageKey: 'process-runtime.switched-identity-unconfirmed' });
     },
   );
+  it('waits for the Windows IDE Agent when it starts well after the desktop', async () => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    const now = Date.now.bind(Date);
+    let elapsed = 0;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => now() + elapsed);
+    mocks.read.mockResolvedValueOnce([root, host]).mockImplementation(async () => {
+      elapsed = 90_000;
+      return [root, host, hub()];
+    });
+
+    try {
+      await confirmIdeAccountIdentity(context, root.pid, 'target@example.org');
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it('does not query a standalone CLI or a different IDE profile', async () => {
     mocks.read.mockResolvedValue([
       root,

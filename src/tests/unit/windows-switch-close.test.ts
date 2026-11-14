@@ -112,7 +112,7 @@ it('does not force an accepting client whose complete tree exits normally', asyn
   expect(commands).toEqual([]);
 });
 
-it('waits for a readable descendant snapshot before requesting normal close', async () => {
+it('normally closes a verified root while a descendant path is unreadable', async () => {
   mocks.read.mockResolvedValueOnce([main, { ...child, exe: undefined }]);
   mocks.close.mockImplementation(async () => {
     rows = [];
@@ -123,12 +123,12 @@ it('waits for a readable descendant snapshot before requesting normal close', as
   );
   await vi.advanceTimersByTimeAsync(100);
   expect(await pending).toEqual({ ok: true });
-  expect(mocks.read).toHaveBeenCalledTimes(3);
+  expect(mocks.read).toHaveBeenCalledTimes(2);
   expect(mocks.close).toHaveBeenCalledExactlyOnceWith(421);
   expect(commands).toEqual([]);
 });
 
-it('does not close a replacement root appearing while descendant metadata is retried', async () => {
+it('does not force a replacement root appearing after normal close', async () => {
   mocks.read
     .mockResolvedValueOnce([main, { ...child, exe: undefined }])
     .mockImplementationOnce(async () => {
@@ -140,7 +140,7 @@ it('does not close a replacement root appearing while descendant metadata is ret
   });
   await vi.advanceTimersByTimeAsync(100);
   await pending;
-  expect(mocks.close).not.toHaveBeenCalled();
+  expect(mocks.close).toHaveBeenCalledExactlyOnceWith(421);
   expect(commands).toEqual([]);
 });
 
@@ -165,8 +165,8 @@ it.each([{ exe: undefined }, { startTime: undefined }])(
   },
 );
 
-it('aborts without controlling a persistently unreadable descendant', async () => {
-  mocks.read.mockResolvedValue([main, { ...child, exe: undefined }]);
+it('aborts without controlling a descendant whose creation identity is unavailable', async () => {
+  mocks.read.mockResolvedValue([main, { ...child, startTime: undefined }]);
   const pending = expect(stopWindowsClientForSwitch(context, [root], 500)).rejects.toMatchObject({
     messageKey: 'process-runtime.probe-failed',
   });
@@ -176,6 +176,83 @@ it('aborts without controlling a persistently unreadable descendant', async () =
   expect(commands).toEqual([]);
   expect(vi.getTimerCount()).toBe(0);
 });
+
+it('retains an unreadable descendant after normal close orphans it', async () => {
+  mocks.read.mockResolvedValue([main, { ...child, exe: undefined }]);
+  mocks.close.mockImplementation(async () => {
+    mocks.read.mockResolvedValue([{ ...child, parentPid: 1, exe: undefined }]);
+  });
+  const pending = expect(stopWindowsClientForSwitch(context, [root], 500)).rejects.toMatchObject({
+    messageKey: 'process-runtime.probe-failed',
+  });
+  await vi.advanceTimersByTimeAsync(500);
+  await pending;
+  expect(mocks.close).toHaveBeenCalledExactlyOnceWith(421);
+  expect(commands).toEqual([]);
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it('cleans up an initially unreadable orphan after its captured identity becomes readable', async () => {
+  mocks.read.mockResolvedValueOnce([main, { ...child, exe: undefined }]);
+  mocks.close.mockImplementation(async () => {
+    rows = [{ ...child, parentPid: 1 }];
+  });
+  const pending = expect(stopWindowsClientForSwitch(context, [root], 500)).resolves.toBeUndefined();
+  await vi.advanceTimersByTimeAsync(500);
+  await pending;
+  expect(commands).toEqual([['/F', '/T', '/PID', '422']]);
+});
+
+it('tracks readable descendants in other branches while one path is unreadable', async () => {
+  const service = { ...child, pid: 423, startTime: 12n };
+  mocks.read.mockResolvedValueOnce([main, { ...child, exe: undefined }, service]);
+  mocks.close.mockImplementation(async () => {
+    rows = [{ ...service, parentPid: 1 }];
+  });
+  const pending = expect(stopWindowsClientForSwitch(context, [root], 500)).resolves.toBeUndefined();
+  await vi.advanceTimersByTimeAsync(500);
+  await pending;
+  expect(commands).toEqual([['/F', '/T', '/PID', '423']]);
+});
+
+it('rejects an installer revealed when an unreadable orphan resolves', async () => {
+  mocks.read.mockResolvedValueOnce([main, { ...child, exe: undefined }]);
+  mocks.close.mockImplementation(async () => {
+    rows = [{ ...child, parentPid: 1, exe: 'C:\\Updates\\Antigravity-x64.exe' }];
+  });
+  await expect(stopWindowsClientForSwitch(context, [root], 500)).rejects.toMatchObject({
+    messageKey: 'process-runtime.update-in-progress',
+  });
+  expect(commands).toEqual([]);
+});
+
+it('does not force a PID reused after an initially unreadable descendant exits', async () => {
+  mocks.read.mockResolvedValueOnce([main, { ...child, exe: undefined }]);
+  mocks.close.mockImplementation(async () => {
+    rows = [{ ...child, parentPid: 1, startTime: 20n }];
+  });
+  await stopWindowsClientForSwitch(context, [root], 500);
+  expect(commands).toEqual([]);
+});
+
+it.each([false, true])(
+  'classifies native query failure and preserves its cause (expired=%s)',
+  async (expired) => {
+    const cause = new Error('Process query deadline exceeded');
+    mocks.read.mockImplementationOnce(async () => {
+      if (expired) {
+        vi.setSystemTime(Date.now() + 500);
+      }
+      throw cause;
+    });
+    await expect(stopWindowsClientForSwitch(context, [root], 500)).rejects.toMatchObject({
+      messageKey: `process-runtime.${expired ? 'exit-unconfirmed' : 'probe-failed'}`,
+      cause,
+    });
+    expect(mocks.close).not.toHaveBeenCalled();
+    expect(commands).toEqual([]);
+  },
+);
 
 it('cleans up a captured service reparented after the main window exits', async () => {
   mocks.close.mockImplementation(async () => {
