@@ -33,12 +33,15 @@ module.exports = {
     icon: 'images/icon.ico',
   },
   nsis: {
-    oneClick: true,
+    oneClick: false,
     perMachine: false,
     // The installer checks the ZIP extractor's result before replacing the old directory.
     useZip: true,
     differentialPackage: false,
     include: 'resources/windows/nsis-install.nsh',
+    createDesktopShortcut: 'always',
+    createStartMenuShortcut: true,
+    installerLanguages: ['en_US', 'zh_CN', 'ru_RU', 'vi_VN', 'fr_FR', 'pt_BR'],
     artifactName: `Antigravity.Manager-${'${version}'}-windows-${arch}-nsis.exe`,
   },
   publish: [

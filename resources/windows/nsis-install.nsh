@@ -1,5 +1,9 @@
+!include "${__FILEDIR__}\nsis-shortcuts.nsh"
+
 !macro customHeader
   !ifndef BUILD_UNINSTALLER
+    !insertmacro agmShortcutHeader
+
     Function agmRemoveOwnedTree
       Exch $0
       Push $1

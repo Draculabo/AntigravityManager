@@ -4,7 +4,6 @@ import { isDesktopEmbeddedCloudAccountOwner } from '@/modules/cloud-account/ipc/
 import { localAccountImportCoordinator } from '@/modules/cloud-account/local-import/local-account-import-coordinator.service';
 import { localAccountPostImportService } from '@/modules/cloud-account/local-import/local-account-post-import.service';
 import { app, BrowserWindow, dialog, shell } from 'electron';
-import type { MessageBoxOptions } from 'electron';
 import path from 'path';
 import { getStandaloneRuntimePaths } from '@/shared/packaging/standalone-runtime-layout';
 import fs from 'fs';
@@ -18,12 +17,6 @@ import { logger } from './shared/logging/logger';
 import { shutdownDiagnosticStores } from '@/modules/proxy-gateway/diagnostics/shutdown';
 import { ipcAuditRecorder } from '@/modules/proxy-gateway/audit/ipc-audit-recorder';
 import { AppError } from '@/shared/errors/appError';
-import {
-  getExpectedInstallRoot,
-  getInstallNoticeText,
-  isRunningFromExpectedInstallDir as isRunningFromExpectedInstallDirUtil,
-  resolveInstallNoticeLanguage,
-} from './modules/app-shell/utils/installNotice';
 import { applyStartupGpuSwitches } from '@/modules/app-shell/utils/startupGpuSwitches';
 import { initializeDesktopAccountSecurity } from '@/modules/app-shell/services/account-security-startup';
 import {
@@ -188,66 +181,10 @@ const desktopProfileLease = new ProfileLease('desktop');
 let desktopOwner: Awaited<ReturnType<typeof bootstrapDesktopOwner>> | undefined;
 let ownerMode: 'desktop-embedded' | 'standalone-core' = 'desktop-embedded';
 let shouldStartHidden = false;
-let hasShownInstallNotice = false;
 let pendingManualUpdate: ManualUpdateInfo | null = null;
 let isManualUpdateRendererReady = false;
 let updateInstallRequested = false;
 const notifiedManualUpdateVersions = new Set<string>();
-
-function isRunningFromExpectedInstallDir() {
-  return isRunningFromExpectedInstallDirUtil({
-    platform: process.platform,
-    isPackaged: app.isPackaged,
-    localAppData: process.env.LOCALAPPDATA,
-    appName: app.getName(),
-    execPath: process.execPath,
-  });
-}
-
-function showWindowsInstallNoticeIfNeeded() {
-  if (hasShownInstallNotice) {
-    return;
-  }
-
-  if (isRunningFromExpectedInstallDir()) {
-    return;
-  }
-
-  const expectedRoot = getExpectedInstallRoot({
-    platform: process.platform,
-    localAppData: process.env.LOCALAPPDATA,
-    appName: app.getName(),
-  });
-  if (!expectedRoot) {
-    return;
-  }
-
-  hasShownInstallNotice = true;
-  const language = resolveInstallNoticeLanguage({
-    configLanguage: startupConfig?.language,
-    locale: app.getLocale(),
-  });
-  const text = getInstallNoticeText(language);
-
-  const options: MessageBoxOptions = {
-    type: 'info',
-    title: text.title,
-    message: text.message,
-    detail: `${text.detailPrefix}${expectedRoot}`,
-    buttons: [...text.buttons],
-    defaultId: 1,
-  };
-
-  const showPromise = globalMainWindow
-    ? dialog.showMessageBox(globalMainWindow, options)
-    : dialog.showMessageBox(options);
-
-  showPromise.then(({ response }) => {
-    if (response === 0) {
-      shell.openPath(expectedRoot);
-    }
-  });
-}
 
 function emitManualUpdateNotification(update: ManualUpdateInfo, { force = false } = {}) {
   if (!force && notifiedManualUpdateVersions.has(update.version)) {
@@ -534,7 +471,6 @@ function createWindow({ startHidden }: { startHidden: boolean }) {
   }
 
   logger.info('Window created');
-  showWindowsInstallNoticeIfNeeded();
 
   mainWindow.on('close', (event) => {
     if (!isQuitting) {
