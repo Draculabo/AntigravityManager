@@ -2,6 +2,68 @@
 
 # Changelog
 
+# 🚀 Antigravity Manager Release v0.31.0
+
+**Release Date:** 2026-11-14
+**Since v0.30.0:** 8 commits · 4 merged PRs · 4 verified contributors
+
+> This release includes updates in Desktop & User Experience, Tooling & Maintenance, Accounts & Core.
+
+---
+
+## ✨ Highlights
+
+- **Feature** — add Japanese (ja) translation ([#412](https://github.com/Draculabo/AntigravityManager/pull/412))
+- **Fix** — allow the Report to GitHub new-issue URL ([#410](https://github.com/Draculabo/AntigravityManager/pull/410))
+- **Fix** — harden anti-fraud circuit breaker, quarantine controls, and durable OAuth recovery ([#411](https://github.com/Draculabo/AntigravityManager/pull/411))
+- **Fix** — stage NSIS upgrades before replacing the old version ([4c1b24a](https://github.com/Draculabo/AntigravityManager/commit/4c1b24a023cf3b0ce646d41925510e95334ddb5c))
+- **Fix** — exclude Classic sidecars from process discovery ([2c00177](https://github.com/Draculabo/AntigravityManager/commit/2c00177509a0330899dd254336678808574933ee))
+
+---
+
+## 🖥️ Desktop & User Experience
+
+- **Maintenance** — update package metadata to v0.30.0 ([#407](https://github.com/Draculabo/AntigravityManager/pull/407))
+- **Fix** — exclude Classic sidecars from process discovery ([2c00177](https://github.com/Draculabo/AntigravityManager/commit/2c00177509a0330899dd254336678808574933ee))
+
+---
+
+## 🔧 Tooling & Maintenance
+
+- **Fix** — allow the Report to GitHub new-issue URL ([#410](https://github.com/Draculabo/AntigravityManager/pull/410))
+- **Feature** — add Japanese (ja) translation ([#412](https://github.com/Draculabo/AntigravityManager/pull/412))
+- **Fix** — stage NSIS upgrades before replacing the old version ([4c1b24a](https://github.com/Draculabo/AntigravityManager/commit/4c1b24a023cf3b0ce646d41925510e95334ddb5c))
+- **Fix** — add missing Japanese language labels ([bd57f57](https://github.com/Draculabo/AntigravityManager/commit/bd57f57924947606ef52d2dd19dd0fdb1b0034eb))
+
+---
+
+## 🏗️ Accounts & Core
+
+- **Fix** — harden anti-fraud circuit breaker, quarantine controls, and durable OAuth recovery ([#411](https://github.com/Draculabo/AntigravityManager/pull/411))
+- **Fix** — harden account switching across clients ([331a577](https://github.com/Draculabo/AntigravityManager/commit/331a577823f01bdd214228998472c92f92675948))
+
+---
+
+## 👥 Contributors
+
+Thanks to everyone who contributed to this release.
+
+@Draculabo · @mvanhorn · @Realmagnum · @tattsun15
+
+<details>
+<summary>Merged pull requests and authors</summary>
+
+- chore(linux): update package metadata to v0.30.0 by @Draculabo ([#407](https://github.com/Draculabo/AntigravityManager/pull/407))
+- fix(utils): allow the Report to GitHub new-issue URL by @mvanhorn ([#410](https://github.com/Draculabo/AntigravityManager/pull/410))
+- fix(cloud-account): harden anti-fraud circuit breaker, quarantine controls, and durable OAuth recovery (\#408) by @Realmagnum ([#411](https://github.com/Draculabo/AntigravityManager/pull/411))
+- feat(i18n): add Japanese (ja) translation by @tattsun15 ([#412](https://github.com/Draculabo/AntigravityManager/pull/412))
+
+</details>
+
+---
+
+**Full Changelog:** https://github.com/Draculabo/AntigravityManager/compare/v0.30.0...v0.31.0
+
 # 🚀 Antigravity Manager Release v0.30.0
 
 **Release Date:** 2026-11-04
