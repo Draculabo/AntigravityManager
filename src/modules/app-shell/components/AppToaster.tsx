@@ -19,6 +19,7 @@ import { DiagnosticLogAttachment } from './DiagnosticLogAttachment';
 interface ErrorNotification {
   id: string;
   details: string;
+  reportable?: boolean;
 }
 type ReportState = 'preparing' | 'copied' | 'copy-failed' | 'open-failed';
 
@@ -89,7 +90,7 @@ export function AppToaster() {
         renderErrorActions={(notification) => (
           <div className="mt-2 space-y-2">
             <div className="flex flex-wrap gap-2">
-              {reportButton(notification)}
+              {notification.reportable !== false ? reportButton(notification) : null}
               <Button
                 type="button"
                 variant="outline"
@@ -131,7 +132,7 @@ export function AppToaster() {
           {selected ? reportStatus(selected) : null}
           {selected ? <DiagnosticLogAttachment key={selected.id} /> : null}
           <DialogFooter>
-            {selected ? reportButton(selected) : null}
+            {selected && selected.reportable !== false ? reportButton(selected) : null}
             <DialogClose asChild>
               <Button type="button" variant="outline">
                 {t('common.close')}

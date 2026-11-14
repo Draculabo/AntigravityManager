@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Toast, type ToastActionElement, type ToastProps } from '@/components/ui/toast';
 import { getErrorDetailsText } from '@/shared/utils/errorMessages';
 import { redactDiagnosticText } from '@/shared/observability/sentryPrivacy';
+import { readFinalizedOperationDiagnostic } from '@/shared/observability/operationDiagnostic';
 
 const TOAST_LIMIT = 1;
 const TOAST_REMOVE_DELAY = 1000000;
@@ -12,14 +13,8 @@ type ToasterToast = ToastProps & {
   description?: React.ReactNode;
   action?: ToastActionElement;
   errorDetails?: string;
+  reportable?: boolean;
 };
-
-const actionTypes = {
-  ADD_TOAST: 'ADD_TOAST',
-  UPDATE_TOAST: 'UPDATE_TOAST',
-  DISMISS_TOAST: 'DISMISS_TOAST',
-  REMOVE_TOAST: 'REMOVE_TOAST',
-} as const;
 
 let count = 0;
 
@@ -28,23 +23,21 @@ function genId() {
   return count.toString();
 }
 
-type ActionType = typeof actionTypes;
-
 type Action =
   | {
-      type: ActionType['ADD_TOAST'];
+      type: 'ADD_TOAST';
       toast: ToasterToast;
     }
   | {
-      type: ActionType['UPDATE_TOAST'];
+      type: 'UPDATE_TOAST';
       toast: Partial<ToasterToast>;
     }
   | {
-      type: ActionType['DISMISS_TOAST'];
+      type: 'DISMISS_TOAST';
       toastId?: ToasterToast['id'];
     }
   | {
-      type: ActionType['REMOVE_TOAST'];
+      type: 'REMOVE_TOAST';
       toastId?: ToasterToast['id'];
     };
 
@@ -138,12 +131,14 @@ type Toast = Omit<ToasterToast, 'id' | 'errorDetails'> & { error?: unknown };
 
 /** Store a redacted snapshot, never the original exception or its provider/account properties. */
 function notificationProps({ error, ...props }: Toast) {
+  const diagnostic = error === undefined ? null : readFinalizedOperationDiagnostic(error);
   const details =
     error !== undefined
       ? getErrorDetailsText(error)
       : [props.title, props.description].filter((value) => typeof value === 'string').join('\n\n');
   return {
     ...props,
+    ...(diagnostic ? { reportable: diagnostic.reporting.state !== 'not-reported' } : {}),
     ...(props.variant === 'destructive' || error !== undefined
       ? { errorDetails: redactDiagnosticText(details) }
       : {}),

@@ -19,7 +19,11 @@ const FEEDBACK = {
 };
 
 interface ToasterProps {
-  renderErrorActions?: (notification: { id: string; details: string }) => ReactNode;
+  renderErrorActions?: (notification: {
+    id: string;
+    details: string;
+    reportable?: boolean;
+  }) => ReactNode;
 }
 
 export function Toaster({ renderErrorActions }: ToasterProps = {}) {
@@ -28,7 +32,15 @@ export function Toaster({ renderErrorActions }: ToasterProps = {}) {
 
   return (
     <ToastProvider label={t('settings.notifications.title')}>
-      {toasts.map(function ({ id, title, description, action, errorDetails, ...props }) {
+      {toasts.map(function ({
+        id,
+        title,
+        description,
+        action,
+        errorDetails,
+        reportable,
+        ...props
+      }) {
         const feedback = FEEDBACK[props.variant ?? 'default'];
         const Icon = feedback.icon;
         return (
@@ -47,7 +59,7 @@ export function Toaster({ renderErrorActions }: ToasterProps = {}) {
               {description ? <ToastDescription>{description}</ToastDescription> : null}
               {action ? <div className="mt-2">{action}</div> : null}
               {props.variant === 'destructive'
-                ? renderErrorActions?.({ id, details: errorDetails ?? '' })
+                ? renderErrorActions?.({ id, details: errorDetails ?? '', reportable })
                 : null}
             </div>
             <ToastClose />

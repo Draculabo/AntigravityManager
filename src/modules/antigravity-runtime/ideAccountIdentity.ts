@@ -10,6 +10,7 @@ import type { LaunchContext } from './types';
 const AuthSchema = z.object({ authResult: z.object({ hasValidAuth: z.boolean() }) });
 const UserSchema = z.object({ userStatus: z.object({ email: z.email() }) });
 const SERVICE = '/exa.language_server_pb.LanguageServerService/';
+const WINDOWS_AGENT_STARTUP_TIMEOUT_MS = 120_000;
 
 /** Loopback only: no proxy, redirects, response logging or unbounded provider bodies. */
 async function readHubStatus(
@@ -96,7 +97,7 @@ export async function confirmIdeAccountIdentity(
   context: LaunchContext,
   pid: number,
   email: string,
-  timeoutMs = 30000,
+  timeoutMs = process.platform === 'win32' ? WINDOWS_AGENT_STARTUP_TIMEOUT_MS : 30_000,
 ): Promise<void> {
   const expected = email.trim().toLowerCase();
   if (!expected) {

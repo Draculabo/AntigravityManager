@@ -106,6 +106,19 @@ describe('error notification diagnostics', () => {
       buildErrorBugReport(environment, details),
     );
   });
+  it('hides GitHub reporting for finalized diagnostics that were not reportable', () => {
+    notify({
+      data: {
+        diagnostic: {
+          ...loginDiagnostic('login-failed'),
+          reporting: { state: 'not-reported', reason: 'expected-outcome' },
+        },
+      },
+    });
+
+    expect(screen.queryByRole('button', { name: 'error.toast.report-issue' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'action.details' })).toBeTruthy();
+  });
   it('stores only a redacted snapshot and shows the backend stack rather than the transport stack', async () => {
     const source = {
       ...failure,

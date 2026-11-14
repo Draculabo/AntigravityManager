@@ -51,6 +51,10 @@ on Windows. It runs production stop logic against temporary WinForms windows and
 normal close flushes an in-memory buffer for visible and hidden windows, while ordinary stop
 leaves a cancelled close alive. It then invokes the switch-only policy against that refusing
 window and confirms forced exit without claiming the unsaved buffer was flushed.
+The fixture also starts a real child and hides only its executable path in process observations.
+The verified main process must still receive normal close, flush its buffer and exit with that
+child. `windows-switch-close.test.ts` additionally covers unreadable orphans, resolved identities,
+PID reuse, update installers and classified query deadlines.
 Native Windows uses PID-scoped `WM_CLOSE` requests for unowned
 top-level windows; owned save/confirmation dialogs remain under the client's control.
 The focused `runtime-stop.test.ts` cases also cover slow initial native Windows observations

@@ -76,9 +76,13 @@ const environment = {
   ...process.env,
   HOME: home,
   USERPROFILE: home,
-  APPDATA: path.join(home, 'AppData/Roaming'),
-  LOCALAPPDATA: path.join(home, 'AppData/Local'),
 };
+if (process.platform === 'win32') {
+  Object.assign(environment, {
+    APPDATA: path.join(home, 'AppData/Roaming'),
+    LOCALAPPDATA: path.join(home, 'AppData/Local'),
+  });
+}
 delete environment.ELECTRON_RUN_AS_NODE;
 delete environment.NODE_PATH;
 delete environment.NODE_OPTIONS;
@@ -143,28 +147,32 @@ let credentialRecovery;
 let stage = 'startup';
 
 const command = createCommand(environment);
+const ideSwitchTimeout = process.platform === 'win32' ? 180_000 : undefined;
 
 async function connect(port) {
   return connectBrowser(port, () => (port === desktopPort ? desktopError : undefined));
 }
 
-async function invoke(name, input) {
-  return withAcceptanceDeadline(() =>
-    page.evaluate(
-      async ({ name, input }) => {
-        const parts = name.split('.');
-        let operation = window.accountAcceptance;
-        for (const part of parts) {
-          operation = operation[part];
-        }
-        return operation(input);
-      },
-      { name, input },
-    ),
+async function invoke(name, input, timeout) {
+  return withAcceptanceDeadline(
+    () =>
+      page.evaluate(
+        async ({ name, input }) => {
+          const parts = name.split('.');
+          let operation = window.accountAcceptance;
+          for (const part of parts) {
+            operation = operation[part];
+          }
+          return operation(input);
+        },
+        { name, input },
+      ),
+    timeout,
   );
 }
 
 async function switchAccount(id, target, source = 'cloud') {
+  const timeout = target === 'ide' ? ideSwitchTimeout : undefined;
   const before =
     options.keepClientRunning && target !== 'agy'
       ? await library.prepareLaunchContext(target)
@@ -173,12 +181,17 @@ async function switchAccount(id, target, source = 'cloud') {
     await closeTarget(target);
   }
   if (options.owner === 'cli') {
-    await command(node, [cli, 'account', 'switch', id, '--target', target, '--source', source]);
+    await command(
+      node,
+      [cli, 'account', 'switch', id, '--target', target, '--source', source],
+      timeout,
+    );
   } else {
-    await invoke(source === 'cloud' ? 'cloud.switchCloudAccount' : 'account.switchAccount', {
-      accountId: id,
-      appTarget: target,
-    });
+    await invoke(
+      source === 'cloud' ? 'cloud.switchCloudAccount' : 'account.switchAccount',
+      { accountId: id, appTarget: target },
+      timeout,
+    );
   }
   if (before) {
     const after = await library.prepareLaunchContext(target);
