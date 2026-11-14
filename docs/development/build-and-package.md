@@ -29,6 +29,16 @@ Linux AppImage packaging runs the maker's downloaded `appimagetool` with
 access. Running the installed AppImage still requires a supported AppImage runtime
 environment. Remove the patch when the maker includes these behaviors and
 `pnpm run test:appimage-download` passes on Linux for both architectures.
+
+Windows NSIS uses an assisted installer in English, Simplified Chinese, Russian, Vietnamese,
+French, and Brazilian Portuguese. Interactive installation offers a checked-by-default
+**Create a desktop shortcut** option. Users can clear it before installation or select it during
+reinstallation to restore a missing shortcut. Start menu shortcuts remain enabled.
+Clearing the option during reinstallation preserves an existing desktop shortcut.
+Automatic updates skip this page and preserve a missing desktop shortcut. The
+`--no-desktop-shortcut` command-line option also suppresses desktop shortcut creation.
+Application startup does not display an installation-path warning.
+
 See [installer verification](../testing.md) for build and native update checks.
 
 ### Windows NSIS upgrades
