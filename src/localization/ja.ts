@@ -29,15 +29,13 @@ const ja = {
     'workspace-profile-name-is-required': 'ワークスペースプロファイル名は必須です。',
     'workspace-profile-name-cannot-exceed-100-characters':
       'ワークスペースプロファイル名は 100 文字以内で入力してください。',
-    'a-bound-google-account-must-be-selected':
-      '紐づける Google アカウントを選択してください。',
+    'a-bound-google-account-must-be-selected': '紐づける Google アカウントを選択してください。',
     'project-directory-path-is-required': 'プロジェクトディレクトリのパスは必須です。',
     'failed-to-save-workspace-profile': 'ワークスペースプロファイルの保存に失敗しました',
     'edit-workspace-profile': 'ワークスペースプロファイルを編集',
     'create-new-workspace': '新しいワークスペースを作成',
     'profile-name': 'プロファイル名',
-    'e-g-acme-client-portal-personal-research':
-      '例: Acme クライアントポータル、個人リサーチ',
+    'e-g-acme-client-portal-personal-research': '例: Acme クライアントポータル、個人リサーチ',
     'select-google-account': 'Google アカウントを選択',
     'project-directory': 'プロジェクトディレクトリ',
     'path-to-project-folder': '/path/to/project/folder',
@@ -59,8 +57,7 @@ const ja = {
     'workspace-stopped': 'ワークスペースを停止しました',
     'ide-process-terminated-cleanly': 'IDE プロセスの終了を確認しました。',
     'stop-failed': '停止に失敗しました',
-    'could-not-terminate-workspace-process':
-      'ワークスペースプロセスを終了できませんでした',
+    'could-not-terminate-workspace-process': 'ワークスペースプロセスを終了できませんでした',
     'workspace-updated': 'ワークスペースを更新しました',
     'workspace-created': 'ワークスペースを作成しました',
     'workspace-deleted': 'ワークスペースを削除しました',
@@ -69,8 +66,7 @@ const ja = {
     'refresh-workspaces': 'ワークスペースを再読み込み',
     refresh: '再読み込み',
     'new-workspace': '新しいワークスペース',
-    'search-workspaces-by-name-path-account':
-      '名前、パス、アカウントでワークスペースを検索...',
+    'search-workspaces-by-name-path-account': '名前、パス、アカウントでワークスペースを検索...',
     'loading-workspace-profiles': 'ワークスペースプロファイルを読み込み中...',
     'failed-to-load-workspaces': 'ワークスペースの読み込みに失敗しました',
     'unknown-error-occurred': '不明なエラーが発生しました',
@@ -93,8 +89,7 @@ const ja = {
       '異なる Google アカウントとプロジェクトにまたがる、並列かつ分離された Antigravity IDE セッションを管理します。',
     'empty-description':
       '専用の Google 認証情報とプロジェクトフォルダを持つ、並列の Antigravity IDE インスタンスを起動するため、分離ワークスペースプロファイルを作成します。',
-    'remove-profile-data':
-      'このワークスペースのログインとセッションデータを完全に削除する',
+    'remove-profile-data': 'このワークスペースのログインとセッションデータを完全に削除する',
     'delete-confirm': 'ワークスペース「{{name}}」を削除しますか?',
     'no-results': '「{{query}}」に一致するワークスペースはありません。',
   },
@@ -114,8 +109,7 @@ const ja = {
   },
   'agent-tools': {
     title: 'コーディングツールを接続する',
-    description:
-      'ツールを選択し、Antigravity Manager 経由で利用可能なモデルを使用します。',
+    description: 'ツールを選択し、Antigravity Manager 経由で利用可能なモデルを使用します。',
     loading: '設定を読み込み中…',
     installed: 'インストール済み',
     'not-installed': 'インストールが検出されません',
@@ -149,8 +143,7 @@ const ja = {
     'remove-description':
       '関連のない設定とバックアップを保持したまま、以前の接続設定を復元します。',
     'preview-title': '{{name}} の設定',
-    'preview-description':
-      'Manager への接続に必要な設定のみ表示されます。接続キーは隠されます。',
+    'preview-description': 'Manager への接続に必要な設定のみ表示されます。接続キーは隠されます。',
     confirm: '確認',
     advanced: 'アドレスと設定ファイル',
     'reset-address': '現在の Manager アドレスを使用',
@@ -172,8 +165,7 @@ const ja = {
         '設定ファイルが無効または大きすぎます。ツールを構成する前に修正してください。',
       'read-failed': '設定ファイルを読み込めませんでした。アクセスを確認して再試行してください。',
       'write-failed': '設定を保存できませんでした。復元用バックアップは保持されています。',
-      'backup-failed':
-        'バックアップを作成できませんでした。ツール設定は変更されていません。',
+      'backup-failed': 'バックアップを作成できませんでした。ツール設定は変更されていません。',
       'backup-missing': '復元用バックアップはありません。',
       'configuration-changed':
         'この操作中に設定が変更されました。再度読み込んで再試行してください。',
@@ -192,8 +184,7 @@ const ja = {
   'process-runtime': {
     'switched-identity-unconfirmed':
       '認証情報は更新されましたが、再起動された IDE Agent が選択されたアカウントを確認していません。再試行する前に IDE のアカウントを確認してください。復旧には、すべての Antigravity クライアントを閉じる必要があります。',
-    'update-in-progress':
-      'Antigravity を更新中です。更新を完了してから再試行してください。',
+    'update-in-progress': 'Antigravity を更新中です。更新を完了してから再試行してください。',
     'close-failed':
       'Antigravity を閉じられませんでした。チャットとファイルを保存し、アプリを手動で閉じてから再試行してください。',
     'exit-unconfirmed':
@@ -305,10 +296,8 @@ const ja = {
       generate: 'サニタイズ済みログ添付を生成',
       save: '確認済み添付を保存',
       summary: '{{kib}} KiB · 内容が削除されたレコード {{removed}} 件 · 最大 1 MiB',
-      missing:
-        '欠落または読み取り不可のログソース: {{sources}}。この添付は不完全です。',
-      truncated:
-        '読み取りまたは添付の制限によりログが切り詰められました。この添付は不完全です。',
+      missing: '欠落または読み取り不可のログソース: {{sources}}。この添付は不完全です。',
+      truncated: '読み取りまたは添付の制限によりログが切り詰められました。この添付は不完全です。',
       generating: 'サニタイズ済みログを準備中…',
       saving: '保存場所を選択…',
       saved: '添付を保存しました。手動で GitHub の Issue にファイルを追加してください。',
@@ -319,8 +308,7 @@ const ja = {
     },
     toast: {
       'report-issue': 'GitHub に報告',
-      'no-details':
-        'エラースタックは利用できません。利用可能な場合は通知テキストが表示されます。',
+      'no-details': 'エラースタックは利用できません。利用可能な場合は通知テキストが表示されます。',
       copied:
         'エラー情報をコピーしました。GitHub レポートに貼り付け、作業内容を記述してから送信してください。',
       'copy-failed':
@@ -334,8 +322,7 @@ const ja = {
       'これらの詳細は問題解決に役立ちますが、プライベートなファイルの場所を含む場合があります。共有前に確認してください。',
     keychainUnavailable: '保存されたサインイン情報に現在アクセスできません。',
     keychainHint: {
-      translocation:
-        'アプリをアプリケーションフォルダに移動してから、再度開いてください。',
+      translocation: 'アプリをアプリケーションフォルダに移動してから、再度開いてください。',
       keychainDenied:
         'macOS が保存されたサインイン情報へのアクセスをブロックしました。アプリのインストール手順を確認してから再試行してください。',
       signNotarize:
@@ -371,13 +358,11 @@ const ja = {
   },
   playground: {
     title: 'モデルプレイグラウンド',
-    description:
-      'アカウントまたはストラテジープール全体で、モデルと補完を対話的にテストします。',
+    description: 'アカウントまたはストラテジープール全体で、モデルと補完を対話的にテストします。',
     'gateway-online': 'ゲートウェイオンライン',
     'gateway-offline': 'ゲートウェイオフライン',
     'gateway-offline-title': 'API プロキシは停止しています。',
-    'gateway-offline-desc':
-      '補完とモデル応答をテストするためゲートウェイを起動してください。',
+    'gateway-offline-desc': '補完とモデル応答をテストするためゲートウェイを起動してください。',
     'start-gateway': 'ゲートウェイを起動',
     'starting-gateway': '起動中...',
     'gateway-started': 'API プロキシが正常に起動しました。',
@@ -402,24 +387,20 @@ const ja = {
       code: 'TypeScript',
     },
     'preset-prompts': {
-      hello:
-        '挨拶をし、モデル名を述べ、目的を短く 1 文で要約してください。',
+      hello: '挨拶をし、モデル名を述べ、目的を短く 1 文で要約してください。',
       reasoning:
         'テーブルに 3 つのリンゴがあります。あなたは 2 つを取りました。あなたは何個のリンゴを持っていますか? 段階的に考えてください。',
       identity: 'あなたの正確なモデルバージョン、知識カットオフ日、プロバイダは何ですか?',
-      code:
-        '適切なジェネリクスと clearTimeout を使用した TypeScript の debounce 関数を書いてください。',
+      code: '適切なジェネリクスと clearTimeout を使用した TypeScript の debounce 関数を書いてください。',
     },
-    'default-prompt':
-      '挨拶をし、正確なモデル名を述べ、短いジョークを教えてください。',
+    'default-prompt': '挨拶をし、正確なモデル名を述べ、短いジョークを教えてください。',
     'dual-default-prompt':
       '楽観的ロックと悲観的ロックの違いを、簡潔な現実世界のアナロジーで説明してください。',
     'benchmark-default-prompt':
       'コーディングに関する 2 行の押韻スローガンを書き、AI の重要な利点を 1 つ述べてください。',
     'advanced-settings': '高度なパラメータ',
     'system-prompt': 'システムプロンプト',
-    'system-prompt-placeholder':
-      'オプションのシステム命令 (例: あなたは有能なアシスタントです)...',
+    'system-prompt-placeholder': 'オプションのシステム命令 (例: あなたは有能なアシスタントです)...',
     temperature: 'Temperature',
     'max-tokens': '最大出力トークン',
     prompt: 'プロンプト',
@@ -441,21 +422,18 @@ const ja = {
     'first-byte': '初バイト',
     'first-text': '初テキスト',
     'first-reasoning': '初推論',
-    'tooltip-first-byte':
-      'リクエスト開始から上流プロバイダからの最初のバイト受信までの時間。',
+    'tooltip-first-byte': 'リクエスト開始から上流プロバイダからの最初のバイト受信までの時間。',
     'tooltip-first-text':
       'リクエスト開始から最初の可視テキストデルタまでの時間。推論のみの出力はカウントされません。',
     'tokens-total': 'トークン',
     'http-error': 'エラー {{status}}',
     'compare-title': 'アカウントを比較',
-    'compare-desc':
-      '同じプロンプトを複数のアカウントに並列送信し、レイテンシと出力を比較します。',
+    'compare-desc': '同じプロンプトを複数のアカウントに並列送信し、レイテンシと出力を比較します。',
     'select-accounts-compare': '比較するアカウントを選択',
     'select-all': 'すべて選択',
     'clear-all': 'すべてクリア',
     'selected-count': '{{count}} 個のアカウントを選択中',
-    'compare-limit':
-      '比較あたり最大 {{count}} アカウントまで。それ以上の選択は無効化されます。',
+    'compare-limit': '比較あたり最大 {{count}} アカウントまで。それ以上の選択は無効化されます。',
     'only-visible-models': '表示中のモデルのみ',
     'run-comparison': '選択アカウントで実行',
     'comparison-results': '比較結果',
@@ -489,8 +467,7 @@ const ja = {
     'fastest-gen': '最速生成',
     'fastest-ttft': '最速 TTFT',
     'benchmark-results-title': 'ベンチマーク結果',
-    'benchmark-results-desc':
-      'レイテンシ、生成速度、E2E スループット、TTFT のパフォーマンス内訳。',
+    'benchmark-results-desc': 'レイテンシ、生成速度、E2E スループット、TTFT のパフォーマンス内訳。',
     'copy-markdown': 'Markdown レポートをコピー',
     'report-copied': 'レポートをクリップボードにコピーしました',
     'report-title': '{{account}} のベンチマーク結果',
@@ -517,8 +494,7 @@ const ja = {
     'reasoning-medium': '中',
     'reasoning-high': '高',
     'tooltip-ttft': '最初の生成トークンまでの時間',
-    'tooltip-e2e-speed':
-      '出力トークンを完全なリクエスト時間で割った値。',
+    'tooltip-e2e-speed': '出力トークンを完全なリクエスト時間で割った値。',
     'tooltip-gen-speed':
       '最初と最後の生成デルタ間の出力速度。いずれかのデルタが観測されなかった場合は未計測。',
     'tooltip-quota': 'アカウントのモデル残クォータ',
@@ -533,17 +509,14 @@ const ja = {
     'run-dual': 'デュアル比較を実行',
     'running-dual': '両モデル実行中...',
     'dual-stopped': 'デュアル比較を停止しました。',
-    'dual-awaiting':
-      'モデル A とモデル B を設定し、実行をクリックして比較してください。',
+    'dual-awaiting': 'モデル A とモデル B を設定し、実行をクリックして比較してください。',
     'comparison-summary': '比較サマリー',
     'dual-speed-diff': '{{winner}} の生成が {{diff}} tok/s 速い',
     'dual-ttft-diff': '{{winner}} の応答が {{diff}} 秒早い (TTFT)',
   },
   traffic: {
-    'detail-load-failed':
-      'このリクエストを読み込めませんでした。もう一度お試しください。',
-    'detail-not-found':
-      'このレコードは利用できなくなりました。消去された可能性があります。',
+    'detail-load-failed': 'このリクエストを読み込めませんでした。もう一度お試しください。',
+    'detail-not-found': 'このレコードは利用できなくなりました。消去された可能性があります。',
     fields: {
       category: 'カテゴリ',
       method: 'リクエストメソッド',
@@ -570,8 +543,7 @@ const ja = {
       partial: '部分的結果',
     },
     title: 'トラフィックモニター',
-    description:
-      'モデルリクエストとアプリアクティビティを確認して問題を素早く発見します。',
+    description: 'モデルリクエストとアプリアクティビティを確認して問題を素早く発見します。',
     records: '{{count}} 件のレコード',
     'on-disk': 'ディスク上 {{size}}',
     dropped: '{{count}} 件ドロップ',
@@ -605,8 +577,7 @@ const ja = {
     'exact-status': '正確なコード',
     unfinished: '未完了',
     'no-status': 'ステータスなし',
-    'include-current-credential':
-      'コピーする cURL に現在のプロキシキーを含める',
+    'include-current-credential': 'コピーする cURL に現在のプロキシキーを含める',
     'credential-warning':
       'コピーされたコマンドは、現在のプロキシキーをクリップボードおよび貼り付け先に露出します。フィルタ変更時やページを離れると設定はリセットされます。',
     'current-credential': '現在のキー',
@@ -626,10 +597,8 @@ const ja = {
     'recovered-badge': '復旧 ({{count}} 回試行)',
     'recovered-hint': '{{count}} 回試行後に復旧',
     'fallback-diagnostics': 'フォールバック診断',
-    'fallback-attempt-failed':
-      '試行 {{index}} {{operation}}失敗{{status}}{{error}}',
-    'fallback-attempt-recovered':
-      '試行 {{index}} で復旧 {{operation}}{{status}}',
+    'fallback-attempt-failed': '試行 {{index}} {{operation}}失敗{{status}}{{error}}',
+    'fallback-attempt-recovered': '試行 {{index}} で復旧 {{operation}}{{status}}',
     'loading-detail': 'トラフィック詳細を読み込み中…',
     'system-operation': 'システム操作',
     metadata: 'リクエスト詳細',
@@ -650,8 +619,7 @@ const ja = {
     concise: '簡潔',
     full: '完全',
     'view-mode-help': '表示モードについて',
-    'concise-help':
-      '主要なリクエスト詳細を表示。展開セクションは引き続き完全な内容を表示します。',
+    'concise-help': '主要なリクエスト詳細を表示。展開セクションは引き続き完全な内容を表示します。',
     'full-help':
       '読み込まれたすべての詳細を表示。内容を整理できない、または不完全な場合、両表示は同じに見えることがあります。',
     'search-body': 'このボディ内を検索',
@@ -665,8 +633,7 @@ const ja = {
     'parse-error': '位置 {{offset}} でこの内容を読み取れませんでした。',
     partial: '部分',
     'session-key': 'セッション ID',
-    'select-session':
-      '保存された推論を表示するセッションを選択してください。',
+    'select-session': '保存された推論を表示するセッションを選択してください。',
     'no-sessions': '保存された推論はまだありません。',
     'delete-session': 'セッション履歴を削除',
     turns: '{{count}} ターン',
@@ -685,15 +652,13 @@ const ja = {
     'repair-databases': '保存レコードを修復',
     'open-monitor': 'トラフィックモニターを開く',
 
-    'loading-description':
-      'リクエストレコードが準備できるとここに表示されます。',
+    'loading-description': 'リクエストレコードが準備できるとここに表示されます。',
     'empty-description':
       'プロキシ経由で送信されたリクエストがここに表示されます。フィルタを調整することもできます。',
     'empty-category-description':
       'このカテゴリのレコードがここに表示されます。別のカテゴリを試すか、フィルタを調整してください。',
     'load-failed': 'リクエストレコードを読み込めませんでした',
-    'load-failed-description':
-      'もう一度お試しください。レコードが削除されたわけではありません。',
+    'load-failed-description': 'もう一度お試しください。レコードが削除されたわけではありません。',
     'refresh-failed':
       'レコードを更新できませんでした。以前に読み込まれたレコードは引き続き表示されます。',
   },
@@ -728,8 +693,7 @@ const ja = {
     description: 'Antigravity の Google Gemini アカウントを管理します。',
     noBackups: {
       title: 'バックアップが見つかりません',
-      description:
-        '現在の Antigravity アカウントのバックアップを作成して開始してください。',
+      description: '現在の Antigravity アカウントのバックアップを作成して開始してください。',
       action: '現在のアカウントをバックアップ',
     },
   },
@@ -764,8 +728,7 @@ const ja = {
     models: 'モデル',
     appearance: {
       title: '外観',
-      description:
-        'Antigravity Manager のデバイス上での見た目をカスタマイズします。',
+      description: 'Antigravity Manager のデバイス上での見た目をカスタマイズします。',
     },
     darkMode: 'ダークモード',
     darkModeDescription: '夜間の視認性向上のためダークモードを有効化します。',
@@ -791,25 +754,21 @@ const ja = {
         '既知の Antigravity および Antigravity IDE のキャッシュディレクトリをクリアして、ログインやバージョン検証の問題を解決します。',
       clear: 'Antigravity キャッシュをクリア',
       dialogTitle: 'Antigravity キャッシュをクリアしますか?',
-      dialogDescription:
-        '以下の既存キャッシュディレクトリが削除されます。',
+      dialogDescription: '以下の既存キャッシュディレクトリが削除されます。',
       pathsLabel: 'キャッシュディレクトリ',
-      noPaths:
-        '既知の Antigravity キャッシュディレクトリは見つかりませんでした。',
+      noPaths: '既知の Antigravity キャッシュディレクトリは見つかりませんでした。',
       warning:
         'ロックまたはファイル再作成を避けるため、キャッシュクリア前に Antigravity を閉じてください。',
       cancel: 'キャンセル',
       confirm: 'キャッシュをクリア',
       clearing: 'クリア中...',
       clearedTitle: 'キャッシュをクリアしました',
-      clearedDescription:
-        'Antigravity キャッシュディレクトリから {{size}} MB を削除しました。',
+      clearedDescription: 'Antigravity キャッシュディレクトリから {{size}} MB を削除しました。',
       failedTitle: 'キャッシュクリアに失敗しました',
       notFoundTitle: 'Antigravity キャッシュが見つかりません',
 
       'paths-failed': 'キャッシュの場所を見つけられませんでした',
-      'paths-retry-description':
-        'キャッシュクリアの前に再試行してください。',
+      'paths-retry-description': 'キャッシュクリアの前に再試行してください。',
       'partial-title': '一部のキャッシュをクリアできませんでした',
       'partial-description':
         '{{size}} MB を解放しました。{{count}} 箇所をクリアできませんでした。Antigravity を閉じて再試行してください。',
@@ -836,20 +795,17 @@ const ja = {
       title: 'アカウント設定',
       description: '自動アカウント更新と同期を設定します。',
       auto_refresh: 'クォータ自動更新',
-      auto_refresh_desc:
-        'すべてのアカウントのクォータ情報を定期的に更新します',
+      auto_refresh_desc: 'すべてのアカウントのクォータ情報を定期的に更新します',
       auto_sync: '現在のアカウントを自動同期',
       auto_sync_desc: 'アクティブなアカウント情報を定期的に同期します',
       antigravity_executable: 'Antigravity 実行ファイル',
       antigravity_executable_desc:
         'ポータブルモードデータの検索と Antigravity の起動に使用されるオプションのパス。',
-      antigravity_executable_placeholder:
-        '例: C:\\Program Files\\Antigravity\\Antigravity.exe',
+      antigravity_executable_placeholder: '例: C:\\Program Files\\Antigravity\\Antigravity.exe',
       antigravity_cli_executable: 'Antigravity CLI 実行ファイル',
       antigravity_cli_executable_desc:
         'agy CLI 実行ファイルへのパス。適格性パッチはこのファイルのみに限定されます。',
-      antigravity_cli_executable_placeholder:
-        '例: C:\\Program Files\\Antigravity\\agy.exe',
+      antigravity_cli_executable_placeholder: '例: C:\\Program Files\\Antigravity\\agy.exe',
       detect_antigravity_cli: '検出',
       agy_cli_detected: 'Antigravity CLI を検出しました',
       agy_cli_detect_failed: 'Antigravity CLI が見つかりません',
@@ -868,33 +824,27 @@ const ja = {
       antigravity_ide_executable_placeholder:
         '例: C:\\Program Files\\Antigravity IDE\\Antigravity IDE.exe',
       antigravity_args: 'Antigravity 起動引数',
-      antigravity_args_desc:
-        'Antigravity 起動時に渡すオプションの引数 (--user-data-dir など)。',
-      antigravity_args_placeholder:
-        '例: --user-data-dir D:\\AntigravityProfile',
+      antigravity_args_desc: 'Antigravity 起動時に渡すオプションの引数 (--user-data-dir など)。',
+      antigravity_args_placeholder: '例: --user-data-dir D:\\AntigravityProfile',
       antigravity_ide_args: 'Antigravity IDE 起動引数',
       antigravity_ide_args_desc:
         'Antigravity IDE 起動時に渡すオプションの引数 (--user-data-dir など)。',
-      antigravity_ide_args_placeholder:
-        '例: --user-data-dir D:\\AntigravityIdeProfile',
+      antigravity_ide_args_placeholder: '例: --user-data-dir D:\\AntigravityIdeProfile',
       detect_antigravity_args: '検出',
     },
     startup: {
       title: 'スタートアップ',
       description: 'システム起動時のアプリケーション起動動作を制御します。',
       auto_startup: 'システムと共に起動',
-      auto_startup_desc:
-        'サインイン時に起動し、アプリをシステムトレイに常駐させます',
+      auto_startup_desc: 'サインイン時に起動し、アプリをシステムトレイに常駐させます',
       start_in_tray: 'トレイで起動',
-      start_in_tray_desc:
-        'アプリケーションをシステムトレイに最小化した状態で起動します',
+      start_in_tray_desc: 'アプリケーションをシステムトレイに最小化した状態で起動します',
       macos_hint:
         'macOS ではログイン項目の動作に署名済みアプリが必要です。自動起動が失敗する場合は、アプリに署名するか、システム設定で手動で有効化してください。',
     },
     privacy: {
       title: 'プライバシー',
-      description:
-        'アプリケーション改善のためのデータ使用方法を制御します。',
+      description: 'アプリケーション改善のためのデータ使用方法を制御します。',
       error_reporting: 'エラーレポート',
       error_reporting_desc:
         'アプリ改善のため匿名のエラーレポートを送信します。個人データは収集されません。',
@@ -904,34 +854,27 @@ const ja = {
       clarity: 'Microsoft Clarity',
       clarity_desc:
         'アプリ改善のため匿名のインタラクション診断、ヒートマップ、セッション再生を共有します。',
-      clarity_unavailable:
-        'このビルドでは Microsoft Clarity は構成されていません。',
-      restart_note:
-        '一部のログおよび診断設定はアプリ再起動後に反映されます。',
+      clarity_unavailable: 'このビルドでは Microsoft Clarity は構成されていません。',
+      restart_note: '一部のログおよび診断設定はアプリ再起動後に反映されます。',
     },
     notifications: {
       title: '通知',
       description: 'アカウントイベントのデスクトップ通知を設定します。',
       quotaAlert: '低クォータ通知',
-      quotaAlertDesc:
-        'モデルクォータが設定したしきい値を下回ったときに通知されます',
+      quotaAlertDesc: 'モデルクォータが設定したしきい値を下回ったときに通知されます',
       quotaThreshold: '通知しきい値',
       quotaThresholdDesc: '通知をトリガーする下限パーセンテージ',
       saveFailed: '通知設定の保存に失敗しました',
       thresholdSaveFailed: 'しきい値設定の保存に失敗しました',
       aiCreditsAlert: 'AI クレジット低下通知',
-      aiCreditsAlertDesc:
-        'AI クレジット残高が設定した金額以下になったときに通知されます',
+      aiCreditsAlertDesc: 'AI クレジット残高が設定した金額以下になったときに通知されます',
       aiCreditsThreshold: 'AI クレジット通知しきい値',
-      aiCreditsThresholdDesc:
-        '通知をトリガーするクレジット残高の下限',
-      aiCreditsThresholdSaveFailed:
-        'AI クレジットしきい値設定の保存に失敗しました',
+      aiCreditsThresholdDesc: '通知をトリガーするクレジット残高の下限',
+      aiCreditsThresholdSaveFailed: 'AI クレジットしきい値設定の保存に失敗しました',
     },
     proxy: {
       title: '上流プロキシ',
-      description:
-        'Google/Gemini API への送信リクエスト用プロキシを設定します。',
+      description: 'Google/Gemini API への送信リクエスト用プロキシを設定します。',
       enable: '上流プロキシを有効化',
       url: 'プロキシ URL',
       'configure-before-enabling':
@@ -1039,11 +982,9 @@ const ja = {
         cancel: 'キャンセル',
         confirm: '再生成',
       },
-      key_warning:
-        'API キーを安全に保管してください。共有しないでください。',
+      key_warning: 'API キーを安全に保管してください。共有しないでください。',
       auto_start: 'アプリと共に自動起動',
-      auto_start_desc:
-        'アプリケーション起動時にプロキシサービスを開始します',
+      auto_start_desc: 'アプリケーション起動時にプロキシサービスを開始します',
     },
     proxy_tab: 'プロキシ',
     save: '設定を保存',
@@ -1103,8 +1044,7 @@ const ja = {
     'auto-switch-description':
       'Antigravity、IDE、CLI のアカウントを切り替えます。API リクエストが使用するアカウントは API プロキシページで選択してください。',
     'minimal-mode': 'ミニマルモード',
-    'minimal-mode-description':
-      '主要な Gemini クォータとリセット時刻のみ表示',
+    'minimal-mode-description': '主要な Gemini クォータとリセット時刻のみ表示',
     'quota-display': {
       title: 'クォータ表示',
       description:
@@ -1123,15 +1063,12 @@ const ja = {
       'compact-weekly-short': '週',
       'both-short': '両方',
       'no-weekly-quota': '週次クォータデータなし',
-      'weekly-summary-unavailable':
-        'モデルサービスは週次使用量情報を提供しませんでした。',
-      'weekly-bucket-unavailable':
-        '返された情報から週次使用量を見つけられませんでした。',
+      'weekly-summary-unavailable': 'モデルサービスは週次使用量情報を提供しませんでした。',
+      'weekly-bucket-unavailable': '返された情報から週次使用量を見つけられませんでした。',
     },
     recommendation: {
       badge: '次のおすすめ',
-      description:
-        '最新取得の {{context}} クォータから自動選択されました。',
+      description: '最新取得の {{context}} クォータから自動選択されました。',
       context: {
         overall: '全体',
         claude: 'Claude',
@@ -1170,15 +1107,13 @@ const ja = {
       noAccounts: '検証済みローカルアカウントは見つかりませんでした。',
       issues: 'インポートされない項目',
       project: 'プロジェクト',
-      emailCollision:
-        '{{email}} には {{count}} 種類の保存済みサインインがあります。',
+      emailCollision: '{{email}} には {{count}} 種類の保存済みサインインがあります。',
       rescan: '再スキャン',
       cancel: 'キャンセル',
       close: '閉じる',
       confirm: '{{count}} アカウントをインポート',
       resultTitle: 'ローカルアカウントのインポート完了',
-      resultDescription:
-        'アカウント一覧が確認済みの結果で更新されました。',
+      resultDescription: 'アカウント一覧が確認済みの結果で更新されました。',
       imported: 'インポート済み {{count}}',
       skipped: 'スキップ {{count}}',
       failed: '失敗 {{count}}',
@@ -1193,15 +1128,13 @@ const ja = {
           'これらのサインイン詳細は利用できなくなりました。Antigravity に再度サインインして、再スキャンしてください。',
         'authentication-failed':
           'Google はこのサインインを受け入れませんでした。Antigravity に再度サインインして、再スキャンしてください。',
-        'network-failed':
-          'ネットワークエラーのためアカウントを検証できませんでした。',
+        'network-failed': 'ネットワークエラーのためアカウントを検証できませんでした。',
         'timed-out': 'アカウント検証がタイムアウトしました。',
         'unverified-email': 'Google アカウントのメールが検証されていません。',
         'invalid-profile': 'Google は無効なアカウントプロファイルを返しました。',
       },
       discoveryErrors: {
-        missing:
-          'ここには保存されたサインイン詳細が見つかりませんでした。',
+        missing: 'ここには保存されたサインイン詳細が見つかりませんでした。',
         'permission-denied':
           '保存されたサインイン詳細へのアクセスが拒否されました。アクセス権限を確認して再試行してください。',
         locked:
@@ -1210,8 +1143,7 @@ const ja = {
           '保存されたサインイン詳細を読み取れませんでした。Antigravity に再度サインインして、再スキャンしてください。',
         'timed-out':
           '保存されたサインイン詳細の読み取りに時間がかかりすぎました。再スキャンしてください。',
-        'read-failed':
-          '保存されたサインイン詳細を読み取れませんでした。再スキャンしてください。',
+        'read-failed': '保存されたサインイン詳細を読み取れませんでした。再スキャンしてください。',
       },
       importErrors: {
         'credential-unavailable':
@@ -1222,18 +1154,14 @@ const ja = {
         'persistence-failed': 'アカウントを保存できませんでした。',
       },
       errors: {
-        'preview-failed':
-          'ローカルアカウントプレビューを準備できませんでした。',
+        'preview-failed': 'ローカルアカウントプレビューを準備できませんでした。',
         'session-not-found':
           'これらのスキャン結果は利用できなくなりました。再度スキャンしてください。',
-        'session-expired':
-          'これらのスキャン結果は期限切れです。再度スキャンしてください。',
+        'session-expired': 'これらのスキャン結果は期限切れです。再度スキャンしてください。',
         'session-consumed':
           'これらのスキャン結果はすでに使用されています。さらにアカウントをインポートするには再度スキャンしてください。',
-        'confirmation-failed':
-          'ローカルアカウントのインポートを完了できませんでした。',
-        'internal-error':
-          'ローカルアカウントのインポートリクエストに失敗しました。',
+        'confirmation-failed': 'ローカルアカウントのインポートを完了できませんでした。',
+        'internal-error': 'ローカルアカウントのインポートリクエストに失敗しました。',
       },
     },
     card: {
@@ -1278,8 +1206,7 @@ const ja = {
       liveLimitRemaining: '残り {{duration}}',
       liveLimitDetectedAgo: '{{duration}} 前に検出',
       liveLimitActiveTitle: 'モデルサービスは一時的に利用できません。',
-      liveLimitRecentTitle:
-        'モデルサービスは最近エラーを報告しました。',
+      liveLimitRecentTitle: 'モデルサービスは最近エラーを報告しました。',
       liveLimitQuotaSnapshot:
         '最後のクォータ確認では依然として {{percentage}}% と表示される場合があります。',
       liveLimitMessage: 'メッセージ: {{message}}',
@@ -1309,10 +1236,8 @@ const ja = {
     identity: {
       'profile-errors': {
         'account-not-found': 'このアカウントは利用できなくなりました。',
-        'baseline-unavailable':
-          '復元する元のアイデンティティプロファイルがありません。',
-        'revision-not-found':
-          '選択されたアイデンティティプロファイルが見つかりませんでした。',
+        'baseline-unavailable': '復元する元のアイデンティティプロファイルがありません。',
+        'revision-not-found': '選択されたアイデンティティプロファイルが見つかりませんでした。',
         'profile-invalid':
           'このアイデンティティプロファイルは使用できません。別のものを選択してください。',
         'profile-write-failed':
@@ -1337,19 +1262,16 @@ const ja = {
       current: 'アクティブ',
       restore: '復元',
       generateSuccess: 'アイデンティティを作成して紐づけました',
-      captureSuccess:
-        '現在のアイデンティティをキャプチャして紐づけました',
+      captureSuccess: '現在のアイデンティティをキャプチャして紐づけました',
       restoreOriginalSuccess: 'ベースラインアイデンティティを復元しました',
       restoreVersionSuccess: '履歴アイデンティティを復元しました',
       deleteVersionSuccess: '履歴アイデンティティを削除しました',
       openFolderSuccess: 'アイデンティティストレージを開きました',
       baseline: '元のデバイス情報',
 
-      description:
-        'アカウント切り替え時に使用するため、このアカウントのデバイス情報を保存します。',
+      description: 'アカウント切り替え時に使用するため、このアカウントのデバイス情報を保存します。',
       'load-failed': 'デバイス情報を読み取れませんでした',
-      'retry-description':
-        '再試行してください。保存されたデバイス情報は変更されていません。',
+      'retry-description': '再試行してください。保存されたデバイス情報は変更されていません。',
       'refresh-failed':
         '更新できませんでした。以前に読み込まれたデバイス情報が引き続き表示されます。',
       updating: 'デバイス情報を更新中…',
@@ -1361,16 +1283,14 @@ const ja = {
     },
     list: {
       noAccounts: 'まだクラウドアカウントが追加されていません。',
-      noFilteredAccounts:
-        '選択したティアに一致するアカウントはありません。',
+      noFilteredAccounts: '選択したティアに一致するアカウントはありません。',
     },
     error: {
       loadFailed: 'クラウドアカウントの読み込みに失敗しました。',
       'report-issue': 'この問題を報告',
       'report-preparing': 'エラー情報を準備中…',
       'report-copied': 'エラー情報をコピーしました',
-      'report-paste-guide':
-        'GitHub レポートに貼り付け、作業内容を記述してから送信してください。',
+      'report-paste-guide': 'GitHub レポートに貼り付け、作業内容を記述してから送信してください。',
       'report-copy-failed': 'エラー情報をコピーできませんでした',
       'report-retry':
         'もう一度お試しください。詳細を開いて手動でエラーをコピーすることもできます。',
@@ -1396,12 +1316,9 @@ const ja = {
       validationLinkFailed: {
         title: 'Google 検証ページを開けませんでした',
         codes: {
-          'account-not-found':
-            'このアカウントは利用できなくなりました。',
-          'no-trusted-link':
-            'このアカウントで利用可能な Google 検証ページはありません。',
-          'validation-link-failed':
-            'Google 検証ページを開けませんでした。再試行してください。',
+          'account-not-found': 'このアカウントは利用できなくなりました。',
+          'no-trusted-link': 'このアカウントで利用可能な Google 検証ページはありません。',
+          'validation-link-failed': 'Google 検証ページを開けませんでした。再試行してください。',
         },
       },
       addSuccess: 'アカウントを正常に追加しました!',
@@ -1412,22 +1329,18 @@ const ja = {
             'Google 認可が拒否されました。アカウントを追加するには再試行してください。',
           'login-active': 'Google サインインがすでに進行中です。',
           'login-cancelled': 'サインインがキャンセルされました。',
-          'login-timeout':
-            'サインインがタイムアウトしました。準備ができたら再度開始してください。',
-          'duplicate-account':
-            'この Google アカウントはすでに追加されています。',
+          'login-timeout': 'サインインがタイムアウトしました。準備ができたら再度開始してください。',
+          'duplicate-account': 'この Google アカウントはすでに追加されています。',
           'browser-open-failed':
             'ブラウザを開けませんでした。デフォルトブラウザを確認して再試行してください。',
-          'login-failed':
-            'アカウントを追加できませんでした。再試行してください。',
+          'login-failed': 'アカウントを追加できませんでした。再試行してください。',
           'proxy-configuration-invalid':
             '有効な上流プロキシアドレスを保存するか、設定で上流プロキシを無効化してから、再度サインインしてください。',
         },
       },
       quotaRefreshed: 'クォータを更新しました',
       refreshFailed: 'クォータの更新に失敗しました',
-      pollFailed:
-        'すべてのアカウントのクォータのポーリングに失敗しました',
+      pollFailed: 'すべてのアカウントのクォータのポーリングに失敗しました',
       switched: {
         title: 'アカウントを切り替えました!',
         description: 'Antigravity を再起動中...',
@@ -1435,18 +1348,15 @@ const ja = {
       switchFailed: 'アカウント切り替えに失敗しました',
       switchFailureCodes: {
         'account-not-found': 'このアカウントは利用できなくなりました。',
-        'reauth-required':
-          '切り替え前にこのアカウントに再度サインインしてください。',
-        'identity-profile-required':
-          '切り替え前にアイデンティティプロファイルを設定してください。',
+        'reauth-required': '切り替え前にこのアカウントに再度サインインしてください。',
+        'identity-profile-required': '切り替え前にアイデンティティプロファイルを設定してください。',
         'process-close-failed':
           'Antigravity の終了を確認できませんでした。作業を保存し、確認ダイアログを解決し、Antigravity を閉じてから再度切り替えてください。',
         'process-control-failed':
           'Antigravity を閉じるまたは再起動できませんでした。再試行してください。',
         'target-write-failed':
           'Antigravity で選択されたアカウントを使用できませんでした。再試行してください。',
-        'switch-failed':
-          'アカウントを切り替えできませんでした。再試行してください。',
+        'switch-failed': 'アカウントを切り替えできませんでした。再試行してください。',
       },
       deleted: 'アカウントを削除しました',
       deleteFailed: 'アカウント削除に失敗しました',
@@ -1457,8 +1367,7 @@ const ja = {
       actionFailed: 'アクションが失敗しました',
       startAuthFailed: 'サインインフローの開始に失敗しました',
       refreshCreditsAvailable: 'AI クレジット: {{amount}}',
-      refreshCreditsUnavailable:
-        'この更新では AI クレジットは利用できません。',
+      refreshCreditsUnavailable: 'この更新では AI クレジットは利用できません。',
       batchRefreshSuccess: '{{count}} アカウントを正常に更新しました。',
       batchRefreshPartial: {
         title: '更新は問題を伴って完了しました',
@@ -1479,8 +1388,7 @@ const ja = {
       refresh: '選択を更新',
       selectAll: 'すべて選択',
       clear: '選択をクリア',
-      confirmDelete:
-        '{{count}} アカウントを削除してもよろしいですか?',
+      confirmDelete: '{{count}} アカウントを削除してもよろしいですか?',
     },
     tierFilter: {
       all: 'すべてのティア',
@@ -1505,8 +1413,7 @@ const ja = {
           '選択されたファイルを開けませんでした。まだ元の場所にあるか確認してください。',
         'write-failed':
           'アカウントバックアップを保存できませんでした。保存場所を確認して再試行してください。',
-        'import-failed':
-          'アカウントをインポートできませんでした。もう一度お試しください。',
+        'import-failed': 'アカウントをインポートできませんでした。もう一度お試しください。',
         'tokens-missing':
           'このアカウントバックアップにはサインイン詳細がありません。それらを含むバックアップをエクスポートしてください。',
         'account-write-failed': 'このアカウントを保存できません。',
@@ -1525,8 +1432,7 @@ const ja = {
       strategyMerge: 'マージ - 既存を更新、新規を追加',
       strategyOverwrite: '上書き - 既存データをすべて置換',
       strategySkip: 'スキップ - 新規アカウントのみ追加',
-      importSuccess:
-        'インポート {{imported}}、更新 {{updated}}、スキップ {{skipped}}',
+      importSuccess: 'インポート {{imported}}、更新 {{updated}}、スキップ {{skipped}}',
       importErrors: 'インポートは {{count}} 件のエラーで完了しました',
       selectFile: 'ファイルを選択',
       importing: 'インポート中...',
@@ -1537,8 +1443,7 @@ const ja = {
 
     feedback: {
       'loading-title': 'アカウントを読み込み中',
-      'loading-description':
-        'アカウント詳細が準備できるとここに表示されます。',
+      'loading-description': 'アカウント詳細が準備できるとここに表示されます。',
       'empty-description':
         'アカウントを追加を選択してサインインするか、既存のアカウントファイルをインポートしてください。',
       'filtered-description':
@@ -1547,8 +1452,7 @@ const ja = {
   },
   proxy: {
     'advanced-options': 'サービス設定の詳細',
-    'advanced-description':
-      'アカウント選択、共有指示、ツール互換性。',
+    'advanced-description': 'アカウント選択、共有指示、ツール互換性。',
     tabs: {
       tools: 'ツール',
       models: 'モデル',
@@ -1556,8 +1460,7 @@ const ja = {
       examples: '例',
     },
     'account-strategy': {
-      'save-failed':
-        '選択を保存できませんでした。再試行するには再度選択してください。',
+      'save-failed': '選択を保存できませんでした。再試行するには再度選択してください。',
       title: 'API リクエストに使用するアカウント',
       balanced: '利用可能なアカウント間でローテート',
       'account-first': '同じアカウントを優先',
@@ -1585,8 +1488,7 @@ const ja = {
       title: 'プロキシを起動する前にリスクを確認',
       description:
         '2 月以降、Google は取り締まりを強化しています。このソフトウェアで単にアカウントを切り替えるだけであれば、Google アカウントに影響することはありません。\n\nただし、リバースプロキシとして使用したり同様の目的で使用することは Google の利用規約違反であり、アカウント停止につながる可能性があります。',
-      'account-advice':
-        '失ってもよいアカウントのみを使用してください。',
+      'account-advice': '失ってもよいアカウントのみを使用してください。',
       cancel: 'キャンセル',
       confirm: 'リスクを理解しました。プロキシを起動',
     },
@@ -1607,20 +1509,17 @@ const ja = {
       timeout: 'リクエストタイムアウト',
       api_key: 'API キー',
       auto_start: 'アプリと共に自動起動',
-      auto_start_desc:
-        'アプリケーション起動時にプロキシサービスを開始します',
+      auto_start_desc: 'アプリケーション起動時にプロキシサービスを開始します',
       cloud_code_meta: 'Cloud Code 互換性',
       cloud_code_meta_desc:
         '古い Cloud Code クライアントに必要な追加応答情報を付加します。他のクライアントが受け入れない可能性があるため、必要な場合のみ有効化してください。',
       'allow-local-video-paths': 'ローカル動画パスを許可',
       'allow-local-video-paths-desc':
         '接続されたツールが、あなたのユーザアカウントでアクセス可能なこのコンピュータ上の動画ファイルを読めるようにします。信頼できるツールのみで有効化してください。',
-      'context-cache-enabled':
-        'Gemini コンテキストキャッシング (有料、Vertex AI)',
+      'context-cache-enabled': 'Gemini コンテキストキャッシング (有料、Vertex AI)',
       'context-cache-enabled-desc':
         '課金が有効な商用プロジェクトで、Google Cloud Vertex AI 経由でシステム命令とツール (>8192 文字) を明示的に有料キャッシュします。',
-      'global-system-prompt-title':
-        'すべての AI リクエスト用の命令',
+      'global-system-prompt-title': 'すべての AI リクエスト用の命令',
       'global-system-prompt-description':
         'Manager 経由で送信されるすべてのリクエストで、接続された各ツールの命令の前にこれらの命令を自動的に追加します。',
       'global-system-prompt-placeholder':
@@ -1630,26 +1529,22 @@ const ja = {
         '2,000 文字を超えると会話履歴の余地が減ります。これらの命令を短くすることを検討してください。',
       local_access: 'ローカルネットワークアクセス:',
       select_ip: 'IP を選択',
-      no_token_warning:
-        '⚠️ API キーが設定されていません。全員にアクセス可能です!',
+      no_token_warning: '⚠️ API キーが設定されていません。全員にアクセス可能です!',
       show_key: '表示',
       hide_key: '非表示',
     },
     mapping: {
       title: 'モデルマッピング',
-      description:
-        '各 Claude モデルリクエストを処理する Gemini モデルを選択します。',
+      description: '各 Claude モデルリクエストを処理する Gemini モデルを選択します。',
       maps_to: 'マッピング先',
       restore: 'デフォルトに戻す',
-      'only-raw-quota-models':
-        'アカウントで見つかったモデルのみリスト',
+      'only-raw-quota-models': 'アカウントで見つかったモデルのみリスト',
       'only-raw-quota-models-desc':
         '接続されたツールは最新のアカウントクォータ確認からのモデル名のみ参照します。追加のモデルエイリアスは表示されません。',
     },
     'open-code': {
       title: 'OpenCode 同期',
-      description:
-        '他の設定、コメント、書式を保持したまま OpenCode を Manager に接続します。',
+      description: '他の設定、コメント、書式を保持したまま OpenCode を Manager に接続します。',
       synced: '同期済み',
       'synced-custom-url': 'カスタム URL で同期',
       'not-synced': '未同期',
@@ -1681,8 +1576,7 @@ const ja = {
       'select-all': 'すべて選択',
       'deselect-all': 'すべて選択解除',
       'confirm-sync': '同期を確認',
-      'auth-plugin-warning-title':
-        '別のサインインプラグインが見つかりました',
+      'auth-plugin-warning-title': '別のサインインプラグインが見つかりました',
       'auth-plugin-warning-description':
         'opencode-antigravity-auth は別の接続を使用する可能性があります。これらの設定を使用する前に、OpenCode で Manager が選択されているか確認してください。',
       'view-config': '設定を表示',
@@ -1696,10 +1590,8 @@ const ja = {
       'confirm-clear': 'クリアを確認',
       'config-viewer-title': 'OpenCode 設定',
       'config-viewer-description': '読み取り専用の設定プレビュー',
-      'config-redacted-notice':
-        'このプレビューではプライベート値が隠されています。',
-      'config-copied':
-        'プライベート値を隠した状態で設定をコピーしました',
+      'config-redacted-notice': 'このプレビューではプライベート値が隠されています。',
+      'config-copied': 'プライベート値を隠した状態で設定をコピーしました',
       'config-copy-failed': '設定のコピーに失敗しました',
       'config-load-failed': '設定の読み込みに失敗しました',
       'copy-config': '設定をコピー (プライベート値は隠されます)',
@@ -1707,10 +1599,8 @@ const ja = {
       'error-title': 'OpenCode 更新に失敗しました',
       'unknown-error': '不明な OpenCode 設定エラー',
 
-      'choose-model-hint':
-        '続行するには少なくとも 1 つのモデルを選択してください。',
-      'config-retry-description':
-        '再試行してください。保存された設定は変更されていません。',
+      'choose-model-hint': '続行するには少なくとも 1 つのモデルを選択してください。',
+      'config-retry-description': '再試行してください。保存された設定は変更されていません。',
     },
     examples: {
       title: '使用例',
@@ -1718,8 +1608,7 @@ const ja = {
     },
     persistence: {
       title: 'リクエスト履歴と推論',
-      description:
-        '問題診断のためリクエストと会話履歴をこのデバイスに保持します。',
+      description: '問題診断のためリクエストと会話履歴をこのデバイスに保持します。',
       'audit-title': 'リクエスト履歴',
       'audit-description':
         'リクエスト、応答、モデルサービスへの到達試行を機微な詳細を隠してこのコンピュータに保存します。',
@@ -1732,12 +1621,9 @@ const ja = {
       'summary-days': 'サマリー保持 (日)',
       'max-rows': '最大行数',
       'no-audit': 'まだトラフィックレコードはありません。',
-      'audit-metadata':
-        'リクエスト詳細とモデルサービスの試行',
-      'audit-body-missing':
-        '完全なリクエストまたは応答内容は保存されていません。',
-      'audit-body-expired':
-        '完全な内容は期限切れですが、リクエスト詳細は引き続き利用可能です。',
+      'audit-metadata': 'リクエスト詳細とモデルサービスの試行',
+      'audit-body-missing': '完全なリクエストまたは応答内容は保存されていません。',
+      'audit-body-expired': '完全な内容は期限切れですが、リクエスト詳細は引き続き利用可能です。',
       partial: '部分',
       'logical-size': '内容サイズ',
       'parse-error-offset': '読み取れなかった位置',
@@ -1750,15 +1636,12 @@ const ja = {
       'clear-audit': 'リクエスト履歴をクリア',
       'repair-audit': 'リクエスト履歴を修復',
       'thought-title': '会話推論履歴',
-      'thought-description':
-        '後のターンで会話を継続できるよう推論を保存します。',
+      'thought-description': '後のターンで会話を継続できるよう推論を保存します。',
       sessions: '{{count}} セッション',
-      'hard-limit':
-        '各会話は最大 200 ターンおよび 64 MiB の内容を保存できます。',
+      'hard-limit': '各会話は最大 200 ターンおよび 64 MiB の内容を保存できます。',
       'retention-days': '保持 (日)',
       'max-sessions': '最大セッション数',
-      oversized:
-        '内容が 64 MiB を超えたため、完全に保存されませんでした。',
+      oversized: '内容が 64 MiB を超えたため、完全に保存されませんでした。',
       'no-thought-body': '保存された推論内容はありません。',
       signature: '署名',
       'copy-signature': '署名をコピー',
