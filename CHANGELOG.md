@@ -2,6 +2,53 @@
 
 # Changelog
 
+# 🚀 Antigravity Manager Release v0.31.1
+
+**Release Date:** 2026-11-14
+**Since v0.31.0:** 3 commits · 1 merged PR · 1 verified contributor
+
+> This release includes updates in Desktop & User Experience, Tooling & Maintenance.
+
+---
+
+## ✨ Highlights
+
+- **Fix** — make NSIS desktop shortcuts optional ([1a6714d](https://github.com/Draculabo/AntigravityManager/commit/1a6714d7f7b2d95c520c12a4a262db90254e7014))
+- **Style** — format Japanese translations ([e580a88](https://github.com/Draculabo/AntigravityManager/commit/e580a88e411c51fff6b035acfd2226f2923b15ba))
+- **Maintenance** — update package metadata to v0.31.0 ([#415](https://github.com/Draculabo/AntigravityManager/pull/415))
+
+---
+
+## 🖥️ Desktop & User Experience
+
+- **Fix** — make NSIS desktop shortcuts optional ([1a6714d](https://github.com/Draculabo/AntigravityManager/commit/1a6714d7f7b2d95c520c12a4a262db90254e7014))
+- **Maintenance** — update package metadata to v0.31.0 ([#415](https://github.com/Draculabo/AntigravityManager/pull/415))
+
+---
+
+## 🔧 Tooling & Maintenance
+
+- **Style** — format Japanese translations ([e580a88](https://github.com/Draculabo/AntigravityManager/commit/e580a88e411c51fff6b035acfd2226f2923b15ba))
+
+---
+
+## 👥 Contributors
+
+Thanks to everyone who contributed to this release.
+
+@Draculabo
+
+<details>
+<summary>Merged pull requests and authors</summary>
+
+- chore(linux): update package metadata to v0.31.0 by @Draculabo ([#415](https://github.com/Draculabo/AntigravityManager/pull/415))
+
+</details>
+
+---
+
+**Full Changelog:** https://github.com/Draculabo/AntigravityManager/compare/v0.31.0...v0.31.1
+
 # 🚀 Antigravity Manager Release v0.31.0
 
 **Release Date:** 2026-11-14
