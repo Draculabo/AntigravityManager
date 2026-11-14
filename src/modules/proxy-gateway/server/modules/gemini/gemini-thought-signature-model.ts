@@ -93,9 +93,22 @@ export class GeminiModelSwitchHistory {
       if (content.role !== 'model') {
         return [content];
       }
-      const parts = content.parts.flatMap((part) => {
+      const signedParts = content.parts.map((part) => {
         const signature = part.thoughtSignature ?? part.thought_signature;
         const family = signature ? classifyThoughtSignatureFamily(signature) : 'unknown';
+        return { part, signature, family };
+      });
+      const hasGeminiSignature = signedParts.some(({ family }) => family === 'gemini');
+      const parts = signedParts.flatMap(({ part, signature, family }) => {
+        if (
+          hasGeminiSignature &&
+          !signature &&
+          part.thought === true &&
+          Object.keys(part).every((key) => key === 'thought' || key === 'text')
+        ) {
+          changed = true;
+          return [];
+        }
         if (family !== 'gemini' && family !== 'placeholder') {
           return [part];
         }

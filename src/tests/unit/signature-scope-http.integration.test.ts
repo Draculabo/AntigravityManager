@@ -334,6 +334,7 @@ describe('HTTP continuation after switching from Gemini to Claude', () => {
         role: 'model',
         parts: [
           { thought: true, text: 'Private Gemini reasoning', thoughtSignature: geminiSignature },
+          { thought: true, text: 'Unsigned Gemini reasoning' },
           { text: 'I checked the workspace.', thoughtSignature: geminiSignature },
           {
             functionCall: readCall,

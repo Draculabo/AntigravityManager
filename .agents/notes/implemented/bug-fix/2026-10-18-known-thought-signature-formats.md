@@ -79,8 +79,12 @@ Claude selection and the routed Claude target follow a successful Gemini generat
 the same credential and anchored session. The bounded in-memory observation lasts ten
 minutes and is discarded on gateway restart. The projection omits recognized Gemini
 signatures and placeholders from model parts and drops the private thought-only parts that
-carry them. It retains visible content and tool exchanges. Unproven switches still use the
-position-only target gate. A shared API key by itself cannot authorize the projection.
+carry them. A recognized Gemini signature also scopes the removal of unsigned private
+thought-only parts to the same model turn. Real Gemini replies can sign the tool call and
+leave the preceding thought unsigned. Claude rejected that mixed history even after
+signature removal. The projection retains visible content and tool exchanges.
+Unproven switches still use the position-only target gate. A shared API key by itself
+cannot authorize the projection.
 
 ## Alternatives considered
 
@@ -99,7 +103,7 @@ Code rollback remains possible with the same stored format, but older exact-only
 may fail to associate the equivalent forms. Missing or previously corrupted signature
 material cannot be reconstructed. No new retry or tool execution is added.
 Raw diagnostic passthrough and countTokens are outside internal generation conversion.
-Provider acceptance and installed-client behavior remain deferred.
+Installed-client behavior remains open.
 
 ## Verification
 
@@ -118,4 +122,6 @@ records failing controller/transport baselines, safe rejection and equivalent-pa
 The response guard report (local artifact `D04-response-alias-implementation.md` in the 2026-10-11 review collection)
 records fragmented-event isolation, safe terminal errors, parser bounds and protocol evidence.
 The model switch checks exercise unary and streaming continuations over loopback HTTP, including
-the original 400 when projection is disabled. Installed-client and provider acceptance remain open.
+the original 400 when projection is disabled. A real Gemini-to-Claude replay through the
+standalone Core confirms that mixed signed tool history and unsigned thought can continue
+with the expected tool result. The installed Antigravity client flow remains open.
