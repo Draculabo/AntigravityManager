@@ -39,6 +39,20 @@ Automatic updates skip this page and preserve a missing desktop shortcut. The
 `--no-desktop-shortcut` command-line option also suppresses desktop shortcut creation.
 Application startup does not display an installation-path warning.
 
+During interactive installation, the native progress page names the current operation and offers
+**Show details**. Details list installation steps without exposing individual file paths. A failed
+upgrade reports whether setup kept the old version, restored it, or retained a backup for manual
+recovery. A failure to create a requested shortcut or remove the staging directory is reported
+separately from the result of installing the program.
+
+Each NSIS attempt can write an `installer-*.log` file alongside the desktop and core logs in
+`%USERPROFILE%\.antigravity-agent`. The installer writes its own file with the version,
+architecture, install mode, stages, timestamps, and outcomes. A recovery location is recorded
+only when automatic restoration is blocked. The installer keeps the latest five files during
+normal operation and limits each log to 64 KiB. An unavailable log location does not stop
+installation. The files stay local. If setup reports a failure and names a log, the user can
+retrieve that file directly.
+
 See [installer verification](../testing.md) for build and native update checks.
 
 ### Windows NSIS upgrades

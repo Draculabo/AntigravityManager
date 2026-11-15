@@ -97,6 +97,12 @@ installation; CI-only dependency setup skips lifecycle scripts in credentialed t
 ## Unified acceptance entry
 
 Release artifact verification uses `pnpm run test:acceptance release artifacts --source <directory>`.
+
+The NSIS artifact inventory uses `pnpm run test:acceptance installers nsis-inventory <packaged-app>
+<installer.exe> <report.json>`. All paths must be under `out/`, and the report path must be new and
+outside the inspected application directory. It records installer size and SHA-256, payload file
+counts and sizes, ASAR entry count, and byte-identical files. It does not extract or install the
+installer.
 It reads merged build outputs and optionally GitHub artifact inventory pages, without GitHub writes
 or installer execution. The [release workflow procedure](../docs/development/build-and-package.md#release-workflow-verification)
 owns prerequisites, inventory capture, dry-run behavior and evidence limits. Its synthetic negative

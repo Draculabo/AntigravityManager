@@ -104,6 +104,30 @@ restores its shortcuts and login settings. Run it only from a disposable Windows
 installer's automatic relaunch uses that account's default app profile, even when the previous
 process had a temporary profile argument. The check refuses an existing default NSIS installation
 or app profile.
+After successful cleanup, the NSIS runner writes a JSON report in a fresh
+`out/nsis-acceptance-*` directory. It records separate silent fresh-install samples for the
+candidate and the previous version,
+the time from selecting restart to the old process exiting and to observing its replacement window, and
+the candidate's stage durations. The runner derives stage durations from whole-second diagnostic
+timestamps. A zero can mean the step finished within the same recorded second. The new process
+sample requires a responsive Windows main window and does not exercise a control in the renderer.
+
+Run `pnpm run test:acceptance installers nsis-inventory <packaged-app> <installer.exe> <report.json>`
+to record the installer's size and SHA-256, the unpacked Forge file count and size by group, the
+ASAR entry count, and byte-identical on-disk files. Supply the Forge directory and NSIS installer
+from the same build. All three paths belong under `out/`. Use an unused report path outside the
+inspected app tree. The inventory does not extract the installer or prove that an identical file
+can be removed.
+
+For an installation performance comparison, use unmodified candidate installers and record the
+build revision, artifact hashes, machine and cache conditions. Compare changes to the installer
+with the same Forge payload. Measure fresh install, manual upgrade and in-app update separately.
+Start interactive timing after the last confirmation and stop at the finish page. Stop silent
+timing when the process exits. For user-visible restart time, stop when the new window is
+interactive. Alternate baseline and candidate runs at least five times per side and compare the
+median and range of successful runs. Save the samples and any CPU or disk traces under `out/`.
+These tools, reports and failure fixtures are for repository acceptance.
+
 The packaged Squirrel in-app updater check (`pnpm run test:acceptance installers squirrel-updater`) also
 requires a disposable Windows account with no existing app profile because its installer
 relaunch may drop the temporary user-data argument.
@@ -120,6 +144,14 @@ application files, then exercises the normal updater with the complete installer
 coverage, open the complete installer directly and cancel at the confirmation. Verify the
 previous installation remains usable. The updater check also places a directory junction in the
 previous installation and verifies that replacing it preserves the linked external file.
+
+For feedback acceptance, expand the progress details while a full payload is extracting. Observe
+that Windows continues to respond and that the stage shown matches the work. Check success and
+shortcut warnings on an interactive run and an incomplete-payload failure on a registered
+installation. Verify that a silent run creates its own local diagnostic file without showing a
+wizard. In the disposable profile, put an ordinary file at the expected log directory and verify
+that the same installer still runs. Keep each run's observable result separate from any failure
+fixture or timed sample.
 
 ### Linux AppImage updates
 
