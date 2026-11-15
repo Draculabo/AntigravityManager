@@ -21,6 +21,14 @@ does not establish installer, native keyring or live-provider behavior.
 - Packaging prepares standalone runtime dependencies in an isolated directory. Its `pnpm install --prod --frozen-lockfile --ignore-scripts` uses the same lockfile, pnpm settings and native-build allowlist as development. Native dependencies are rebuilt only in that isolated tree with its bundled Node version; desktop dependencies remain untouched.
 - Runtime installation and dependency tracing use separate staging directories. Native-module and command checks run against the traced output before publication. On Windows, publication copies the validated tree after backing up any existing generated runtime, avoiding populated-directory rename failures. A failed copy restores the backup; failed recovery retains its staging directory and reports the recovery path. Forge consumes the output only after publication completes. Other platforms publish by directory rename.
 
+Core, CLI and worker builds embed the JavaScript dependencies listed in
+[`standalone-bundled-dependencies.json`](../../scripts/build/standalone-bundled-dependencies.json).
+Tracing retains dependencies still required by external packages, including Fastify's `semver`
+dependency. Native modules keep their external loaders and binaries. The standalone tree includes
+`THIRD-PARTY-NOTICES.txt` with the embedded dependency versions and license texts. Drizzle's published
+package omits its license text, so packaging uses the checked-in copy from its
+[0.45.2 source tag](https://github.com/drizzle-team/drizzle-orm/blob/0.45.2/LICENSE).
+
 pnpm applies the [AppImage maker patch](../../patches/@pengx17__electron-forge-maker-appimage@1.2.1.patch)
 through `patchedDependencies`, including installations with lifecycle scripts disabled. The patch
 preserves the requested x64 or arm64 architecture and paths containing spaces.

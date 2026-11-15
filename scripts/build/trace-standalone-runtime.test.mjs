@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { traceRuntime } from './trace-standalone-runtime.mjs';
+import bundledDependencies from './standalone-bundled-dependencies.json' with { type: 'json' };
 
 test('runtime tracing excludes host assets while retaining all explicit native entries', async () => {
   await mkdir(path.resolve('dist/.runtime'), { recursive: true });
@@ -96,6 +97,16 @@ test('runtime tracing excludes host assets while retaining all explicit native e
     await file('assets/fixture', 'Asset resource');
     await file('pnpm-lock.yaml', 'lockfileVersion: 9.0\n');
     await file('LICENSE', 'Runtime license');
+    for (const name of bundledDependencies) {
+      await file(
+        `node_modules/${name}/package.json`,
+        JSON.stringify({ name, version: '1.0.0', main: 'index.js' }),
+      );
+      await file(`node_modules/${name}/index.js`, 'module.exports = {};');
+      if (name !== 'drizzle-orm') {
+        await file(`node_modules/${name}/LICENSE`, `${name} fixture license`);
+      }
+    }
     const output = path.join(outside, 'materialized');
     const moduleUrl = pathToFileURL(
       path.resolve('scripts/build/trace-standalone-runtime.mjs'),
@@ -115,6 +126,24 @@ test('runtime tracing excludes host assets while retaining all explicit native e
     );
     assert.ifError(child.error);
     assert.equal(child.status, 0, child.stderr);
+    const expectedNotices = await Promise.all(
+      bundledDependencies.map(async (name) => {
+        const license =
+          name === 'drizzle-orm'
+            ? await readFile(new URL('./licenses/drizzle-orm.LICENSE', import.meta.url), 'utf8')
+            : `${name} fixture license`;
+        return `${name}@1.0.0\n\n${license.trimEnd()}`;
+      }),
+    );
+    assert.equal(
+      await readFile(path.join(output, 'THIRD-PARTY-NOTICES.txt'), 'utf8'),
+      `${expectedNotices.join('\n\n')}\n`,
+    );
+    for (const name of bundledDependencies) {
+      await assert.rejects(readFile(path.join(output, 'node_modules', name, 'index.js')), {
+        code: 'ENOENT',
+      });
+    }
     for (let i = 0; i < 80; i++) {
       const name = 'linked-fixture-' + String(i).padStart(3, '0');
       assert.equal(

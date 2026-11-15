@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { defineConfig } from 'vite';
+import bundledDependencies from './scripts/build/standalone-bundled-dependencies.json';
 
 export default defineConfig({
   plugins: [
@@ -14,6 +15,9 @@ export default defineConfig({
     },
   ],
   resolve: { alias: { '@': path.resolve(process.cwd(), 'src') } },
+  ssr: {
+    noExternal: bundledDependencies,
+  },
   build: {
     target: 'node22',
     ssr: 'src/cli/main.ts',

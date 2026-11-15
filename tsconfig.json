@@ -28,6 +28,7 @@
     "src/**/*",
     "types/**/*.d.ts",
     "./package.json",
+    "scripts/build/standalone-bundled-dependencies.json",
     "./forge.config.ts",
     "*.mts",
     "vite.renderer.config.mts",

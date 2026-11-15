@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { defineConfig } from 'vite';
+import bundledDependencies from './scripts/build/standalone-bundled-dependencies.json';
 
 const root = process.cwd();
 
@@ -29,6 +30,9 @@ export default defineConfig({
       '@nestjs/microservices': path.resolve(root, 'src/mocks/nestjs-microservices'),
       '@nestjs/websockets': path.resolve(root, 'src/mocks/nestjs-websockets'),
     },
+  },
+  ssr: {
+    noExternal: bundledDependencies,
   },
   build: {
     target: 'node22',

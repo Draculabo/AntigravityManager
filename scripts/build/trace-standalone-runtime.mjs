@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { nodeFileTrace } from '@vercel/nft';
 import { c as archiveTar, x as extractTar } from 'tar';
 import { pipeline } from 'node:stream/promises';
+import bundledDependencies from './standalone-bundled-dependencies.json' with { type: 'json' };
 
 const entries = [
   'core/main.cjs',
@@ -190,6 +191,21 @@ export async function materializeRuntime(root, output) {
   for (const resource of ['node', 'assets', 'package.json', 'pnpm-lock.yaml', 'LICENSE']) {
     await cp(path.join(root, resource), path.join(output, resource), { recursive: true });
   }
+  const notices = [];
+  for (const name of bundledDependencies) {
+    const packageRoot = path.join(root, 'node_modules', name);
+    const metadata = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8'));
+    assert.equal(metadata.name, name, 'Bundled dependency metadata must match its package');
+    assert.equal(typeof metadata.version, 'string');
+    const license = await readFile(path.join(packageRoot, 'LICENSE'), 'utf8').catch((error) => {
+      if (error.code !== 'ENOENT') {
+        throw error;
+      }
+      return readFile(new URL(`licenses/${name}.LICENSE`, import.meta.url), 'utf8');
+    });
+    notices.push(`${name}@${metadata.version}\n\n${license.trimEnd()}`);
+  }
+  await writeFile(path.join(output, 'THIRD-PARTY-NOTICES.txt'), `${notices.join('\n\n')}\n`);
   await writeFile(
     path.join(output, 'runtime-trace.json'),
     `${JSON.stringify({ version: 1, tracer: '@vercel/nft@1.11.0', ...trace }, null, 2)}\n`,

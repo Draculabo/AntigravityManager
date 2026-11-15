@@ -162,7 +162,7 @@ try {
     logLevel: 'error',
     // Presentation-only JS belongs to this harness, not the standalone production graph.
     ssr: {
-      noExternal: [/^@orpc\//],
+      noExternal: [...loaded.config.ssr.noExternal, /^@orpc\//],
       external: [...loaded.config.build.rollupOptions.external, 'electron', 'electron/main'],
     },
     build: {
