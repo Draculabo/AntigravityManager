@@ -278,6 +278,9 @@ export async function stopWindowsClientForSwitch(
     deadline = Date.now() + 15000;
     logger.warn('Forcing the captured client tree to exit for account switching');
     for (const captured of [...tracked.values()]) {
+      if (!current.some((row) => sameProcess(captured, row))) {
+        continue;
+      }
       current = await capture();
       if (!current.length) {
         break;
