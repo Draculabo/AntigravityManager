@@ -19,7 +19,7 @@ patchedDependencies:
     hash: d1cde02313b43473177b8be7cd7a4a16f06639694e006880ca108609f106b13d
     path: patches/@pengx17__electron-forge-maker-appimage@1.2.1.patch
   app-builder-lib@26.15.3:
-    hash: a440edb5c54ea57d0d73b5e5eb8e58bab25bf49817a14819348131cb7c2fb152
+    hash: ba1482c4782646ba3bf8f27b5b06ea106dbe867e82327dc71c4420f89bb4e6e6
     path: patches/app-builder-lib@26.15.3.patch
 
 importers:
@@ -15859,7 +15859,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  app-builder-lib@26.15.3(patch_hash=a440edb5c54ea57d0d73b5e5eb8e58bab25bf49817a14819348131cb7c2fb152)(dmg-builder@26.15.3(electron-builder-squirrel-windows@24.13.3))(electron-builder-squirrel-windows@24.13.3):
+  app-builder-lib@26.15.3(patch_hash=ba1482c4782646ba3bf8f27b5b06ea106dbe867e82327dc71c4420f89bb4e6e6)(dmg-builder@26.15.3(electron-builder-squirrel-windows@24.13.3))(electron-builder-squirrel-windows@24.13.3):
     dependencies:
       '@electron/asar': 3.4.1
       '@electron/fuses': 1.8.0
@@ -16894,7 +16894,7 @@ snapshots:
 
   dmg-builder@26.15.3(electron-builder-squirrel-windows@24.13.3):
     dependencies:
-      app-builder-lib: 26.15.3(patch_hash=a440edb5c54ea57d0d73b5e5eb8e58bab25bf49817a14819348131cb7c2fb152)(dmg-builder@26.15.3(electron-builder-squirrel-windows@24.13.3))(electron-builder-squirrel-windows@24.13.3)
+      app-builder-lib: 26.15.3(patch_hash=ba1482c4782646ba3bf8f27b5b06ea106dbe867e82327dc71c4420f89bb4e6e6)(dmg-builder@26.15.3(electron-builder-squirrel-windows@24.13.3))(electron-builder-squirrel-windows@24.13.3)
       builder-util: 26.15.3
       fs-extra: 10.1.0
       js-yaml: 4.1.1
@@ -16984,7 +16984,7 @@ snapshots:
 
   electron-builder@26.15.3(electron-builder-squirrel-windows@24.13.3):
     dependencies:
-      app-builder-lib: 26.15.3(patch_hash=a440edb5c54ea57d0d73b5e5eb8e58bab25bf49817a14819348131cb7c2fb152)(dmg-builder@26.15.3(electron-builder-squirrel-windows@24.13.3))(electron-builder-squirrel-windows@24.13.3)
+      app-builder-lib: 26.15.3(patch_hash=ba1482c4782646ba3bf8f27b5b06ea106dbe867e82327dc71c4420f89bb4e6e6)(dmg-builder@26.15.3(electron-builder-squirrel-windows@24.13.3))(electron-builder-squirrel-windows@24.13.3)
       builder-util: 26.15.3
       builder-util-runtime: 9.7.0
       chalk: 4.1.2
