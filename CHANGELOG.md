@@ -2,6 +2,58 @@
 
 # Changelog
 
+# 🚀 Antigravity Manager Release v0.32.0
+
+**Release Date:** 2026-11-15
+**Since v0.31.1:** 4 commits · 2 merged PRs · 1 verified contributor
+
+> This release includes updates in Desktop & User Experience, Tooling & Maintenance.
+
+---
+
+## ✨ Highlights
+
+- **Feature** — show NSIS installation progress ([10229a3](https://github.com/Draculabo/AntigravityManager/commit/10229a3fac2022f9ffede8f71bc9e427d3b59256))
+- **Fix** — preserve force-close budget for survivors ([ef565ea](https://github.com/Draculabo/AntigravityManager/commit/ef565ea7396cf1d4d7902ed323eefe8346b5b9ea))
+- **Maintenance** — update package metadata to v0.31.1 ([#421](https://github.com/Draculabo/AntigravityManager/pull/421))
+- **Build** — bump react and @types/react ([#417](https://github.com/Draculabo/AntigravityManager/pull/417))
+
+---
+
+## 🖥️ Desktop & User Experience
+
+- **Maintenance** — update package metadata to v0.31.1 ([#421](https://github.com/Draculabo/AntigravityManager/pull/421))
+- **Fix** — preserve force-close budget for survivors ([ef565ea](https://github.com/Draculabo/AntigravityManager/commit/ef565ea7396cf1d4d7902ed323eefe8346b5b9ea))
+
+---
+
+## 🔧 Tooling & Maintenance
+
+- **Feature** — show NSIS installation progress ([10229a3](https://github.com/Draculabo/AntigravityManager/commit/10229a3fac2022f9ffede8f71bc9e427d3b59256))
+- **Build** — bump react and @types/react ([#417](https://github.com/Draculabo/AntigravityManager/pull/417))
+
+---
+
+## 👥 Contributors
+
+Thanks to everyone who contributed to this release.
+
+@Draculabo
+
+Maintenance: @dependabot[bot].
+
+<details>
+<summary>Merged pull requests and authors</summary>
+
+- build(deps): bump react and @types/react by @dependabot[bot] ([#417](https://github.com/Draculabo/AntigravityManager/pull/417))
+- chore(linux): update package metadata to v0.31.1 by @Draculabo ([#421](https://github.com/Draculabo/AntigravityManager/pull/421))
+
+</details>
+
+---
+
+**Full Changelog:** https://github.com/Draculabo/AntigravityManager/compare/v0.31.1...v0.32.0
+
 # 🚀 Antigravity Manager Release v0.31.1
 
 **Release Date:** 2026-11-14
