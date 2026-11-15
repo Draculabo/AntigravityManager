@@ -1,48 +1,92 @@
+diff --git a/templates/nsis/include/allowOnlyOneInstallerInstance.nsh b/templates/nsis/include/allowOnlyOneInstallerInstance.nsh
+--- a/templates/nsis/include/allowOnlyOneInstallerInstance.nsh
++++ b/templates/nsis/include/allowOnlyOneInstallerInstance.nsh
+@@ -120,0 +121,4 @@
++      !ifmacrodef agmCancelEnvironmentCheck
++        !insertmacro agmCancelEnvironmentCheck
++        SetErrorLevel 2
++      !endif
+@@ -156,0 +161,3 @@
++          !ifmacrodef agmAppStillRunning
++            !insertmacro agmAppStillRunning
++          !endif
+diff --git a/templates/nsis/include/installUtil.nsh b/templates/nsis/include/installUtil.nsh
+--- a/templates/nsis/include/installUtil.nsh
++++ b/templates/nsis/include/installUtil.nsh
+@@ -18,0 +19 @@
++!ifmacrondef agmInstallApplication
+@@ -82,0 +84 @@ FunctionEnd
++!endif
+@@ -95,0 +98 @@ Var /GLOBAL isTryToKeepShortcuts
++!ifmacrondef agmInstallApplication
+@@ -248,0 +252 @@ FunctionEnd
++!endif
+diff --git a/templates/nsis/include/installer.nsh b/templates/nsis/include/installer.nsh
+--- a/templates/nsis/include/installer.nsh
++++ b/templates/nsis/include/installer.nsh
+@@ -196,0 +197,3 @@
++      !ifmacrodef agmObserveShortcut
++        ClearErrors
++      !endif
+@@ -197,0 +201,3 @@
++      !ifmacrodef agmObserveShortcut
++        !insertmacro agmObserveShortcut start-menu "$newStartMenuLink" $agmMenuShortcutAttempted "$(agmMenuWarning)"
++      !endif
+@@ -206,0 +213,3 @@
++      !ifmacrodef agmObserveShortcut
++        ClearErrors
++      !endif
+@@ -207,0 +217,3 @@
++      !ifmacrodef agmObserveShortcut
++        !insertmacro agmObserveShortcut start-menu "$newStartMenuLink" $agmMenuShortcutAttempted "$(agmMenuWarning)"
++      !endif
+@@ -222,0 +235,3 @@
++        !ifmacrodef agmObserveShortcut
++          ClearErrors
++        !endif
+@@ -223,0 +239,3 @@
++        !ifmacrodef agmObserveShortcut
++          !insertmacro agmObserveShortcut desktop "$newDesktopLink" $agmDesktopShortcutAttempted "$(agmDesktopWarning)"
++        !endif
+@@ -229,0 +248,3 @@
++        !ifmacrodef agmObserveShortcut
++          ClearErrors
++        !endif
+@@ -230,0 +252,3 @@
++        !ifmacrodef agmObserveShortcut
++          !insertmacro agmObserveShortcut desktop "$newDesktopLink" $agmDesktopShortcutAttempted "$(agmDesktopWarning)"
++        !endif
+@@ -237,0 +262,3 @@
++          !ifmacrodef agmObserveShortcut
++            ClearErrors
++          !endif
+@@ -238,0 +266,3 @@
++          !ifmacrodef agmObserveShortcut
++            !insertmacro agmObserveShortcut desktop "$newDesktopLink" $agmDesktopShortcutAttempted "$(agmDesktopWarning)"
++          !endif
 diff --git a/templates/nsis/installSection.nsh b/templates/nsis/installSection.nsh
 --- a/templates/nsis/installSection.nsh
 +++ b/templates/nsis/installSection.nsh
-@@ -14,3 +14,7 @@
+@@ -13,0 +14,4 @@ StrCpy $appExe "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
 +!ifmacrodef agmConfirmUpgrade
 +  !insertmacro agmConfirmUpgrade
 +!endif
 +
- !ifdef ONE_CLICK
-   !ifdef HEADER_ICO
-     File /oname=$PLUGINSDIR\installerHeaderico.ico "${HEADER_ICO}"
-@@ -52,2 +56,5 @@
+@@ -51,0 +56,7 @@ ${endif}
++!ifmacrodef agmBeforeInstallFiles
++  !insertmacro agmBeforeInstallFiles
++!endif
++
 +!ifmacrodef agmInstallApplication
 +  !insertmacro agmInstallApplication
 +!else
- !insertmacro uninstallOldVersion SHELL_CONTEXT
- !insertmacro handleUninstallResult SHELL_CONTEXT
-@@ -66,4 +73,5 @@
- !insertmacro installApplicationFiles
+@@ -66,0 +78 @@ SetOutPath $INSTDIR
 +!endif
- !insertmacro registryAddInstallInfo
- !insertmacro addStartMenuLink $keepShortcuts
- !insertmacro addDesktopLink $keepShortcuts
-diff --git a/templates/nsis/include/installUtil.nsh b/templates/nsis/include/installUtil.nsh
---- a/templates/nsis/include/installUtil.nsh
-+++ b/templates/nsis/include/installUtil.nsh
-@@ -19,3 +19,4 @@
-+!ifmacrondef agmInstallApplication
- Function GetInQuotes
-   Exch $R0
-   Push $R1
-@@ -81,4 +82,5 @@
-     Exch $R0
- FunctionEnd
--
+@@ -67,0 +80,3 @@ SetOutPath $INSTDIR
++!ifmacrodef agmCheckRegistration
++  !insertmacro agmCheckRegistration
 +!endif
-+
- Var /GLOBAL isTryToKeepShortcuts
-@@ -96,3 +98,4 @@
-+!ifmacrondef agmInstallApplication
- !macro readReg VAR ROOT_KEY SUB_KEY NAME
-   ${if} "${ROOT_KEY}" == "SHELL_CONTEXT"
-     ReadRegStr "${VAR}" SHELL_CONTEXT "${SUB_KEY}" "${NAME}"
-@@ -246,3 +249,4 @@
-   Push "${ROOT_KEY}"
-   Call uninstallOldVersion
- !macroend
+@@ -69,0 +85,3 @@ SetOutPath $INSTDIR
++!ifmacrodef agmCheckShortcuts
++  !insertmacro agmCheckShortcuts
 +!endif

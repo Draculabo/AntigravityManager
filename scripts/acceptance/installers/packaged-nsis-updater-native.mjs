@@ -17,11 +17,22 @@ import {
 import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { chromium } from 'playwright';
 import { extractFile, uncache } from '@electron/asar';
 import YAML from 'yaml';
 import { loginSettings } from '../helpers/windows-login-settings.mjs';
 import { squirrelRegistration } from '../helpers/windows-squirrel-registration.mjs';
+import { listNsisAttemptLogs, readNsisAttempt } from './nsis-attempt-log.mjs';
+
+const preparationStages = ['check-environment', 'prepare-files', 'extract-files', 'verify-files'];
+const installationStages = [
+  ...preparationStages,
+  'activate-version',
+  'cache-installer',
+  'register-installation',
+  'clean-up',
+];
 
 assert.equal(process.platform, 'win32');
 assert.equal(process.arch, 'x64');
@@ -47,6 +58,7 @@ if (incompleteInstaller) {
 const metadata = YAML.parse(await readFile(metadataFile, 'utf8'));
 assert.equal(metadata.files?.[0]?.url, path.basename(currentInstaller));
 const currentVersion = metadata.version;
+const diagnosticDirectory = path.join(os.homedir(), '.antigravity-agent');
 const defaultUserData = path.join(process.env.APPDATA, 'Antigravity Manager');
 assert(
   !existsSync(defaultUserData),
@@ -78,6 +90,7 @@ const profileDefaultInstall = path.join(
   'Programs',
   'antigravity-manager',
 );
+const installRoots = [requestedInstall, profileDefaultInstall, defaultInstall];
 delete environment.NODE_OPTIONS;
 delete environment.NODE_PATH;
 delete environment.ELECTRON_RUN_AS_NODE;
@@ -95,6 +108,7 @@ async function until(check, timeout = 60_000) {
 }
 
 function runInstaller(file, args, expectedExit = 0) {
+  const start = performance.now();
   const result = spawnSync(file, args, {
     cwd: path.dirname(file),
     env: environment,
@@ -104,6 +118,7 @@ function runInstaller(file, args, expectedExit = 0) {
   });
   assert.ifError(result.error);
   assert.equal(result.status, expectedExit, `${path.basename(file)} exited with ${result.status}`);
+  return Math.round(performance.now() - start);
 }
 
 function fixtureProcesses(command, installRoot) {
@@ -119,10 +134,10 @@ function fixtureProcesses(command, installRoot) {
   return result.stdout.trim();
 }
 
-function installedAppIsRunning(installRoot) {
+function installedAppWindowReady(installRoot) {
   return (
     fixtureProcesses(
-      '$root=[IO.Path]::GetFullPath($env:AGM_TEST_INSTALL_ROOT); Get-CimInstance Win32_Process -Filter "Name = \'antigravity-manager.exe\'" | Where-Object { $_.ExecutablePath -and [IO.Path]::GetFullPath($_.ExecutablePath).StartsWith($root,[StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1 -ExpandProperty ProcessId',
+      '$exe=Join-Path $env:AGM_TEST_INSTALL_ROOT "antigravity-manager.exe"; Get-Process -Name antigravity-manager -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe -and $_.MainWindowHandle -ne 0 -and $_.Responding } | Select-Object -First 1 -ExpandProperty Id',
       installRoot,
     ).length > 0
   );
@@ -184,6 +199,14 @@ const shortcuts = [
   ),
 ];
 const originalShortcuts = new Map();
+const report = {
+  architecture: process.arch,
+  windows: os.release(),
+  previousInstaller: path.basename(previousInstaller),
+  candidateInstaller: path.basename(currentInstaller),
+  candidateSha512: metadata.files[0].sha512,
+  currentVersion,
+};
 for (const file of shortcuts) {
   try {
     originalShortcuts.set(file, await readFile(file));
@@ -202,21 +225,51 @@ let browser;
 let succeeded = false;
 let acceptanceError;
 let recoveryError;
+function resolveInstalledRoot() {
+  const installed = installRoots.find((root) =>
+    existsSync(path.join(root, 'antigravity-manager.exe')),
+  );
+  assert(installed, 'NSIS installer did not install the app');
+  return installed;
+}
+
 try {
   await mkdir(userData, { recursive: true });
   await writeFile(marker, 'NSIS update retains external profile data.');
-  runInstaller(previousInstaller, ['/S', `/D=${requestedInstall}`]);
-  if (!existsSync(path.join(requestedInstall, 'antigravity-manager.exe'))) {
-    installRoot = existsSync(path.join(profileDefaultInstall, 'antigravity-manager.exe'))
-      ? profileDefaultInstall
-      : defaultInstall;
-  }
+
+  const logsBeforeFresh = await listNsisAttemptLogs(diagnosticDirectory);
+  report.candidateSilentInstallMs = runInstaller(currentInstaller, [
+    '/S',
+    `/D=${requestedInstall}`,
+  ]);
+  installRoot = resolveInstalledRoot();
+  const freshAsar = path.join(installRoot, 'resources', 'app.asar');
+  assert.equal(
+    JSON.parse(extractFile(freshAsar, 'package.json').toString()).version,
+    currentVersion,
+  );
+  report.freshInstallStages = await readNsisAttempt(diagnosticDirectory, logsBeforeFresh, {
+    version: currentVersion,
+    mode: 'silent',
+    outcome: 'ok',
+    stages: installationStages,
+  });
+  runInstaller(path.join(installRoot, 'Uninstall antigravity-manager.exe'), ['/S']);
+  assert(!existsSync(path.join(installRoot, 'antigravity-manager.exe')));
+  installRoot = requestedInstall;
+
+  report.previousSilentInstallMs = runInstaller(previousInstaller, [
+    '/S',
+    `/D=${requestedInstall}`,
+  ]);
+  installRoot = resolveInstalledRoot();
   const executable = path.join(installRoot, 'antigravity-manager.exe');
   const uninstaller = path.join(installRoot, 'Uninstall antigravity-manager.exe');
   assert((await stat(executable)).isFile(), 'Previous NSIS installer did not install the app');
   assert((await stat(uninstaller)).isFile());
   stopFixtureApps(installRoot);
   const asar = path.join(installRoot, 'resources', 'app.asar');
+  uncache(asar);
   assert.notEqual(JSON.parse(extractFile(asar, 'package.json').toString()).version, currentVersion);
 
   if (incompleteInstaller) {
@@ -232,9 +285,21 @@ try {
       return digests;
     };
     const before = await installationDigests();
+    const logsBeforeFailure = await listNsisAttemptLogs(diagnosticDirectory);
     runInstaller(incompleteInstaller, ['/S', '--updated'], 2);
     assert.deepEqual(await installationDigests(), before);
     assert.equal(await readFile(marker, 'utf8'), 'NSIS update retains external profile data.');
+    report.rejectedIncompleteStages = await readNsisAttempt(
+      diagnosticDirectory,
+      logsBeforeFailure,
+      {
+        version: currentVersion,
+        mode: 'update',
+        outcome: 'failed',
+        stages: preparationStages,
+        error: 'required-files-missing',
+      },
+    );
     console.log('An incomplete installer was rejected with the previous installation intact.');
   }
 
@@ -338,6 +403,8 @@ try {
   console.log('Installed NSIS app downloaded the current exe through electron-updater.');
 
   const exited = once(child, 'exit');
+  const logsBeforeUpdate = await listNsisAttemptLogs(diagnosticDirectory);
+  const updateStart = performance.now();
   await page.locator('div.fixed.top-4 button').last().click();
   let exitTimeout;
   try {
@@ -353,6 +420,7 @@ try {
   } finally {
     clearTimeout(exitTimeout);
   }
+  report.restartToPreviousExitMs = Math.round(performance.now() - updateStart);
   await browser.close();
   browser = null;
   await until(() => {
@@ -363,7 +431,14 @@ try {
       return false;
     }
   }, 900_000);
-  await until(() => installedAppIsRunning(installRoot), 240_000);
+  await until(() => installedAppWindowReady(installRoot), 240_000);
+  report.restartToResponsiveMainWindowMs = Math.round(performance.now() - updateStart);
+  report.updateStages = await readNsisAttempt(diagnosticDirectory, logsBeforeUpdate, {
+    version: currentVersion,
+    mode: 'update',
+    outcome: 'ok',
+    stages: installationStages,
+  });
   assert.equal(await readFile(marker, 'utf8'), 'NSIS update retains external profile data.');
   assert.equal(
     await readFile(externalMarker, 'utf8'),
@@ -389,9 +464,11 @@ try {
     await new Promise((resolve) => server.close(resolve));
   }
   stopFixtureApps(installRoot);
-  const uninstaller = path.join(installRoot, 'Uninstall antigravity-manager.exe');
-  if (existsSync(uninstaller)) {
-    runInstaller(uninstaller, ['/S']);
+  for (const root of installRoots) {
+    const uninstaller = path.join(root, 'Uninstall antigravity-manager.exe');
+    if (existsSync(uninstaller)) {
+      runInstaller(uninstaller, ['/S']);
+    }
   }
   const savedSquirrelRegistration = await readFile(squirrelRegistryBackup, 'utf8');
   if (
@@ -425,6 +502,9 @@ if (acceptanceError || recoveryError) {
     `Installed NSIS updater acceptance/recovery failed; diagnostics: ${directory}`,
   );
 }
+const reportDirectory = await mkdtemp(path.join(outRoot, 'nsis-acceptance-'));
+await writeFile(path.join(reportDirectory, 'result.json'), `${JSON.stringify(report, null, 2)}\n`);
+console.log(`NSIS acceptance report: ${reportDirectory}`);
 console.log(
   'Installed NSIS A-to-B updater acceptance passed; shortcuts and login settings restored.',
 );

@@ -1,8 +1,10 @@
 !include "${__FILEDIR__}\nsis-shortcuts.nsh"
+!include "${__FILEDIR__}\nsis-feedback.nsh"
 
 !macro customHeader
   !ifndef BUILD_UNINSTALLER
     !insertmacro agmShortcutHeader
+    !insertmacro agmFeedbackHeader
 
     Function agmRemoveOwnedTree
       Exch $0
@@ -45,6 +47,10 @@
   Var /GLOBAL agmWorkspace
   Var /GLOBAL agmFailure
   Var /GLOBAL agmPath
+  Var /GLOBAL agmRecovery
+
+  Call agmOpenInstallerLog
+  !insertmacro agmStartStage "check-environment" "$(agmCheck)"
 
   StrCpy $agmPrevious "0"
   ReadRegStr $agmPath SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" InstallLocation
@@ -52,7 +58,9 @@
     GetFullPathName $agmPath "$agmPath"
     GetFullPathName $0 "$INSTDIR"
     ${If} $agmPath != $0
-      MessageBox MB_OK|MB_ICONSTOP "Antigravity Manager is installed at $agmPath.$\r$\nRun setup for that location to upgrade it." /SD IDOK
+      !insertmacro agmFinishStage "failed" "$\terror=install-location-mismatch"
+      !insertmacro agmEndInstall "failed" "$\terror=install-location-mismatch"
+      !insertmacro agmShowFailure "Antigravity Manager is installed at $agmPath.$\r$\nRun setup for that location to upgrade it."
       SetErrorLevel 2
       Quit
     ${EndIf}
@@ -62,6 +70,7 @@
     ${IfNot} ${Silent}
     ${AndIfNot} ${isUpdated}
       MessageBox MB_OKCANCEL|MB_ICONQUESTION "Install the new version of Antigravity Manager? Your settings will be kept." /SD IDCANCEL IDOK agm_upgrade_confirmed
+      !insertmacro agmCancelEnvironmentCheck
       SetErrorLevel 2
       Quit
     ${EndIf}
@@ -69,8 +78,61 @@
   agm_upgrade_confirmed:
 !macroend
 
-!macro agmFailInstall MESSAGE
+!ifndef BUILD_UNINSTALLER
+  !macro agmCancelEnvironmentCheck
+    !insertmacro agmFinishStage "cancelled" ""
+    !insertmacro agmEndInstall "cancelled" ""
+  !macroend
+
+  !macro agmAppStillRunning
+    !insertmacro agmFinishStage "failed" "$\terror=app-still-running"
+    !insertmacro agmEndInstall "failed" "$\terror=app-still-running"
+    SetErrorLevel 2
+  !macroend
+!endif
+
+!macro agmBeforeInstallFiles
+  !insertmacro agmFinishStage "ok" ""
+!macroend
+
+!macro agmCheckRegistration
+  ClearErrors
+  ReadRegStr $0 SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" InstallLocation
+  ReadRegStr $1 SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" DisplayVersion
+  ReadRegStr $2 SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" UninstallString
+  ${If} ${Errors}
+  ${OrIf} $0 != $INSTDIR
+  ${OrIf} $1 != "${VERSION}"
+  ${OrIf} $2 == ""
+    !insertmacro agmLogEvent "registration" "warning" "$\terror=installation-registration-incomplete"
+    !insertmacro agmShowWarning "$(agmRegistrationWarning)"
+  ${EndIf}
+!macroend
+
+!macro agmCheckShortcuts
+  ${If} $agmMenuShortcutAttempted != "1"
+    !insertmacro agmLogEvent "start-menu-shortcut" "skipped" ""
+  ${EndIf}
+  ${If} $agmDesktopShortcutAttempted != "1"
+    !insertmacro agmLogEvent "desktop-shortcut" "skipped" ""
+  ${EndIf}
+!macroend
+
+!macro agmObserveShortcut TYPE DESTINATION ATTEMPTED WARNING
+  StrCpy ${ATTEMPTED} "1"
+  ${If} ${Errors}
+  ${OrIfNot} ${FileExists} "${DESTINATION}"
+    !insertmacro agmLogEvent "${TYPE}-shortcut" "warning" "$\terror=shortcut-write-failed"
+    !insertmacro agmShowWarning "${WARNING}"
+  ${Else}
+    !insertmacro agmLogEvent "${TYPE}-shortcut" "ok" ""
+  ${EndIf}
+!macroend
+
+!macro agmFailInstall CODE MESSAGE
+  StrCpy $agmFailureCode "${CODE}"
   StrCpy $agmFailure "${MESSAGE}"
+  !insertmacro agmFinishStage "failed" "$\terror=${CODE}"
   Goto agm_install_failed
 !macroend
 
@@ -79,12 +141,14 @@
     !error "The Antigravity Manager installer requires checked ZIP extraction"
   !endif
 
+  !insertmacro agmStartStage "prepare-files" "$(agmPrepare)"
+
   # Check the live root before using it as a rename target or cleanup source.
   System::Call 'kernel32::GetFileAttributesW(w "$INSTDIR") i .r0'
   ${If} $0 != -1
     IntOp $1 $0 & 0x400
     ${If} $1 != 0
-      !insertmacro agmFailInstall "Setup cannot replace a linked installation directory."
+      !insertmacro agmFailInstall "linked-install-location" "Setup cannot replace a linked installation directory."
     ${EndIf}
   ${EndIf}
 
@@ -94,18 +158,18 @@
   GetTempFileName $agmWorkspace "$agmPath"
   ${If} ${Errors}
     StrCpy $agmWorkspace ""
-    !insertmacro agmFailInstall "Setup cannot create a staging directory beside the installation. Check access and free disk space."
+    !insertmacro agmFailInstall "staging-directory-unavailable" "Setup cannot create a staging directory beside the installation. Check access and free disk space."
   ${EndIf}
   Delete "$agmWorkspace"
   System::Call 'kernel32::CreateDirectoryW(w "$agmWorkspace", p 0) i .r0'
   ${If} $0 == 0
     StrCpy $agmWorkspace ""
-    !insertmacro agmFailInstall "Setup cannot create a staging directory beside the installation. Check access and free disk space."
+    !insertmacro agmFailInstall "staging-directory-unavailable" "Setup cannot create a staging directory beside the installation. Check access and free disk space."
   ${EndIf}
   ClearErrors
   SetOutPath "$agmWorkspace\new"
   ${If} ${Errors}
-    !insertmacro agmFailInstall "Setup cannot write to the staging directory. Check access and free disk space."
+    !insertmacro agmFailInstall "staging-directory-unwritable" "Setup cannot write to the staging directory. Check access and free disk space."
   ${EndIf}
 
   !ifdef COMPRESS
@@ -113,15 +177,25 @@
   !endif
   Var /GLOBAL packageArch
   !insertmacro identify_package
+  ClearErrors
   !insertmacro compute_files_for_current_arch
   !ifdef COMPRESS
     SetCompress "${COMPRESS}"
   !endif
+  ${If} ${Errors}
+    !insertmacro agmFailInstall "embedded-archive-unavailable" "Setup could not prepare the application archive. Check access and free disk space."
+  ${EndIf}
+  !insertmacro agmFinishStage "ok" ""
+
+  !insertmacro agmStartStage "extract-files" "$(agmExtract)"
   nsisunz::Unzip "$PLUGINSDIR\app-$packageArch.zip" "$OUTDIR"
   Pop $0
   ${If} $0 != "success"
-    !insertmacro agmFailInstall "Setup could not extract or write the new application files. Check access and free disk space."
+    !insertmacro agmFailInstall "extraction-failed" "Setup could not extract or write the new application files. Check access and free disk space."
   ${EndIf}
+  !insertmacro agmFinishStage "ok" ""
+
+  !insertmacro agmStartStage "verify-files" "$(agmVerify)"
   ClearErrors
   !ifdef UNINSTALLER_ICON
     File /oname=uninstallerIcon.ico "${UNINSTALLER_ICON}"
@@ -132,15 +206,18 @@
   ${OrIfNot} ${FileExists} "$OUTDIR\resources\app.asar"
   ${OrIfNot} ${FileExists} "$OUTDIR\resources\app-update.yml"
   ${OrIfNot} ${FileExists} "$OUTDIR\${UNINSTALL_FILENAME}"
-    !insertmacro agmFailInstall "Setup could not prepare a complete set of application files."
+    !insertmacro agmFailInstall "required-files-missing" "Setup could not prepare a complete set of application files."
   ${EndIf}
+  !insertmacro agmFinishStage "ok" ""
+
+  !insertmacro agmStartStage "activate-version" "$(agmActivate)"
 
   SetOutPath "$PLUGINSDIR"
   ClearErrors
   ${If} $agmPrevious == "1"
     Rename "$INSTDIR" "$agmWorkspace\previous"
     ${If} ${Errors}
-      !insertmacro agmFailInstall "Setup cannot move the existing installation. Check for files in use and try again."
+      !insertmacro agmFailInstall "previous-directory-in-use" "Setup cannot move the existing installation. Check for files in use and try again."
     ${EndIf}
   ${Else}
     # .onInit creates the destination. Only an empty, unregistered directory can be replaced.
@@ -148,29 +225,46 @@
       RMDir "$INSTDIR"
     ${EndIf}
     ${If} ${Errors}
-      !insertmacro agmFailInstall "Setup cannot use this installation directory. Choose an empty directory."
+      !insertmacro agmFailInstall "destination-not-empty" "Setup cannot use this installation directory. Choose an empty directory."
     ${EndIf}
   ${EndIf}
 
   ClearErrors
   Rename "$agmWorkspace\new" "$INSTDIR"
   ${If} ${Errors}
+    !insertmacro agmFinishStage "failed" "$\terror=activation-failed"
     ${If} $agmPrevious == "1"
+      !insertmacro agmStartStage "restore-version" "$(agmRestore)"
       ClearErrors
       Rename "$agmWorkspace\previous" "$INSTDIR"
       ${If} ${Errors}
         # Recovery must not remove or overwrite the object that blocked activation.
-        DetailPrint "Previous installation saved at $agmWorkspace\previous"
-        MessageBox MB_OK|MB_ICONSTOP "Setup could not activate the new version or restore the previous installation. The previous version is still at:$\r$\n$agmWorkspace\previous" /SD IDOK
+        !insertmacro agmFinishStage "failed" "$\terror=restore-failed$\trecovery_path=$agmWorkspace\previous"
+        !insertmacro agmEndInstall "failed" "$\terror=activation-failed$\trecovery=blocked"
+        !insertmacro agmShowFailure "Setup could not activate the new version or restore the previous installation. The previous version is still at:$\r$\n$agmWorkspace\previous"
         SetErrorLevel 2
         Quit
       ${EndIf}
+      !insertmacro agmFinishStage "ok" ""
+      StrCpy $agmRecovery "restored"
     ${EndIf}
-    !insertmacro agmFailInstall "Setup could not activate the new application files. Check access and try again."
+    StrCpy $agmFailureCode "activation-failed"
+    StrCpy $agmFailure "Setup could not activate the new application files. Check access and try again."
+    Goto agm_install_failed
   ${EndIf}
+  !insertmacro agmFinishStage "ok" ""
 
+  !insertmacro agmStartStage "cache-installer" "$(agmCache)"
   SetOutPath "$INSTDIR"
   !insertmacro copyFile "$EXEPATH" "$LOCALAPPDATA\${APP_INSTALLER_STORE_FILE}"
+  ${If} ${Errors}
+    !insertmacro agmFinishStage "warning" "$\terror=cache-copy-failed"
+    !insertmacro agmShowWarning "$(agmCacheWarning)"
+  ${Else}
+    !insertmacro agmFinishStage "ok" ""
+  ${EndIf}
+  !insertmacro agmStartStage "register-installation" "$(agmRegister)"
+  StrCpy $agmWarningsBeforeRegistration $agmWarningText
   Goto agm_install_done
 
   agm_install_failed:
@@ -179,11 +273,17 @@
       Push "$agmWorkspace"
       Call agmRemoveOwnedTree
     ${EndIf}
-    ${If} $agmPrevious == "1"
-      StrCpy $agmFailure "$agmFailure$\r$\nThe previous installation was kept."
+    ${If} $agmRecovery == "restored"
+      StrCpy $agmFailure "$agmFailure$\r$\n$(agmPreviousRestored)"
+    ${ElseIf} $agmPrevious == "1"
+      StrCpy $agmRecovery "kept"
+      StrCpy $agmFailure "$agmFailure$\r$\n$(agmPreviousKept)"
+    ${Else}
+      StrCpy $agmRecovery "not-needed"
     ${EndIf}
-    DetailPrint "$agmFailure"
-    MessageBox MB_OK|MB_ICONSTOP "$agmFailure" /SD IDOK
+    !insertmacro agmEndInstall "failed" "$\terror=$agmFailureCode$\trecovery=$agmRecovery"
+    !insertmacro agmShowStatus "$agmFailure"
+    !insertmacro agmShowFailure "$agmFailure"
     SetErrorLevel 2
     Quit
 
@@ -191,9 +291,28 @@
 !macroend
 
 !macro customInstall
+  ${If} $agmWarningText == $agmWarningsBeforeRegistration
+    !insertmacro agmFinishStage "ok" ""
+  ${Else}
+    !insertmacro agmFinishStage "warning" ""
+  ${EndIf}
+  !insertmacro agmStartStage "clean-up" "$(agmCleanup)"
   Push "$agmWorkspace"
   Call agmRemoveOwnedTree
-  ${If} ${FileExists} "$agmWorkspace\*.*"
-    DetailPrint "Setup could not remove the staging directory: $agmWorkspace"
+  System::Call 'kernel32::GetFileAttributesW(w "$agmWorkspace") i .r0'
+  ${If} $0 != -1
+    !insertmacro agmFinishStage "warning" "$\terror=staging-cleanup-failed"
+    !insertmacro agmShowWarning "$(agmCleanupWarning)"
+  ${Else}
+    !insertmacro agmFinishStage "ok" ""
+  ${EndIf}
+  ${If} $agmWarningText == ""
+    StrCpy $agmFinishText "$(MUI_TEXT_FINISH_INFO_TEXT)"
+    !insertmacro agmShowStatus "$(agmComplete)"
+    !insertmacro agmEndInstall "ok" ""
+  ${Else}
+    StrCpy $agmFinishText "$(agmCompleteWarning)$agmWarningText"
+    !insertmacro agmShowStatus "$(agmCompleteWarning)"
+    !insertmacro agmEndInstall "warning" ""
   ${EndIf}
 !macroend

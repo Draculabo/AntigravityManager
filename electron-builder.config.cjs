@@ -15,9 +15,12 @@ const installSection = readFileSync(
   path.join(templateDirectory, 'templates', 'nsis', 'installSection.nsh'),
   'utf8',
 );
-if (!installSection.includes('!insertmacro agmInstallApplication')) {
+if (
+  !installSection.includes('!insertmacro agmInstallApplication') ||
+  !installSection.includes('!insertmacro agmCheckShortcuts')
+) {
   throw new Error(
-    'The app-builder-lib NSIS upgrade patch is required. Reinstall locked dependencies.',
+    'The app-builder-lib NSIS installer patch is required. Reinstall locked dependencies.',
   );
 }
 

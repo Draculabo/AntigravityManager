@@ -27,6 +27,20 @@ misclassified valid NSIS installations. Package detection continues to own updat
 The shortcut page is composed through the existing installer header. Checked ZIP extraction,
 staged directory replacement, and recovery remain owned by the installation hooks.
 
+Setup reports progress from the operations it executes in the native installer. It writes each
+attempt to its own bounded file in the desktop log directory so setup can report failures before
+the app can run. Setup and the app use separate files and retention. Installer diagnostics remain
+local, independent of the app's error-reporting preferences. The acceptance runner computes
+timings and checks outcomes without teaching release installers to simulate errors or collect
+performance data.
+
+On 2026-11-15, the x64 NSIS candidate compiled with the locked installer patch and generated
+matching update metadata. The focused log, inventory and dispatcher tests passed, as did the
+quality contracts and acceptance unit suite. The disposable x64 account verified silent
+installation, shortcut creation, registration and uninstall cleanup. The final log-path fix was
+compiled after the earlier native probe found no log file, so the final candidate's log readback
+still needs one more installed-account run.
+
 The publisher installs project dependencies from the root lockfile in its own runner job before
 running update-feed checks or writing release assets. Installation includes development dependencies
 for the acceptance tools and disables lifecycle scripts because the publisher consumes prebuilt
@@ -43,6 +57,8 @@ depending on another development tool to install it transitively.
   could drift in runtime resources and native modules.
 - Keeping a separate startup directory warning was rejected because installation location alone
   does not establish whether a shortcut exists or automatic updates are available.
+- Replacing the native progress page or estimating a completion percentage was rejected because
+  setup already has a details view and the ZIP extraction call does not expose byte progress.
 
 ## Consequences
 
