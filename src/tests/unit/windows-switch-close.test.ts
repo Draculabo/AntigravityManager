@@ -264,6 +264,37 @@ it('cleans up a captured service reparented after the main window exits', async 
   expect(commands).toEqual([['/F', '/T', '/PID', '422']]);
 });
 
+it('forces a surviving orphan before departed descendants exhaust the cleanup budget', async () => {
+  const departed = Array.from({ length: 20 }, (_, index) => ({
+    ...child,
+    pid: 500 + index,
+    startTime: BigInt(20 + index),
+  }));
+  const survivor = { ...child, pid: 900, startTime: 100n };
+  const graceDeadline = Date.now() + 5000;
+  rows = [main, ...departed, survivor];
+  mocks.read.mockImplementation(async () => {
+    if (Date.now() >= graceDeadline) {
+      vi.setSystemTime(Date.now() + 1000);
+    }
+    return rows;
+  });
+  mocks.close.mockImplementation(async () => {
+    rows = [{ ...survivor, parentPid: 1 }];
+  });
+
+  const result = stopWindowsClientForSwitch(context, [root], 5000).then(
+    () => ({ ok: true }),
+    (error: unknown) => ({ ok: false, error }),
+  );
+  await vi.runAllTimersAsync();
+  expect(await result).toEqual({ ok: true });
+
+  expect(commands).toEqual([['/F', '/T', '/PID', '900']]);
+  expect(rows).toEqual([]);
+  expect(vi.getTimerCount()).toBe(0);
+});
+
 it('does not kill a new main instance after the graceful deadline', async () => {
   mocks.close.mockImplementation(async () => {
     rows = [{ ...main, startTime: 20n }];

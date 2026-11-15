@@ -49,6 +49,10 @@ can therefore end in forced termination and loss of unsaved work. Credential wri
 failure are reconciled after full exit; the implementation does not pretend that the earlier
 write was rolled back.
 
+Forced cleanup skips captured identities already absent from the latest complete process snapshot.
+This preserves its bounded budget for surviving descendants, including reparented helpers. Every
+termination still requires a fresh snapshot and ownership check.
+
 Unresolved installation/profile ownership, a user-closed or replaced main instance, updater
 conflicts, unconfirmed full-tree exit, post-exit credential failure and uncertain dispatched
 startup remain terminal. An uncertain exit prevents further credentials from being written;
