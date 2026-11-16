@@ -1,8 +1,8 @@
-version: 0.32.0
+version: 0.32.1
 files:
-  - url: https://github.com/Draculabo/AntigravityManager/releases/download/v0.32.0/Antigravity.Manager-0.32.0-windows-arm64-nsis.exe
-    sha512: UiU7dXmGxmSILeCMDJCd7DOLiGCHoAtThyMXcCNWKxKa5Vfj+4Yb/r6b9nxRUANssO7q+3pUJe3GDUxGRfDKdQ==
-    size: 187510016
-path: https://github.com/Draculabo/AntigravityManager/releases/download/v0.32.0/Antigravity.Manager-0.32.0-windows-arm64-nsis.exe
-sha512: UiU7dXmGxmSILeCMDJCd7DOLiGCHoAtThyMXcCNWKxKa5Vfj+4Yb/r6b9nxRUANssO7q+3pUJe3GDUxGRfDKdQ==
-releaseDate: 2026-11-15T13:59:21.600Z
+  - url: https://github.com/Draculabo/AntigravityManager/releases/download/v0.32.1/Antigravity.Manager-0.32.1-windows-arm64-nsis.exe
+    sha512: NV7KPzRemQ5ba+LKQSdk12Za9Z1dZKjDWGKlZanCcWa7jIWFqAIG2yt4IUZXzms6cNfaAsjYi9r1NOHAvak3pQ==
+    size: 187508927
+path: https://github.com/Draculabo/AntigravityManager/releases/download/v0.32.1/Antigravity.Manager-0.32.1-windows-arm64-nsis.exe
+sha512: NV7KPzRemQ5ba+LKQSdk12Za9Z1dZKjDWGKlZanCcWa7jIWFqAIG2yt4IUZXzms6cNfaAsjYi9r1NOHAvak3pQ==
+releaseDate: 2026-11-16T04:49:45.110Z
