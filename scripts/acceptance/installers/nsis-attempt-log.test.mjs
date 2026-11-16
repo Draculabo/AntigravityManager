@@ -10,10 +10,7 @@ test('checks installer results and derives stage durations outside the installer
   try {
     await writeFile(path.join(directory, 'app-2026-11-15.log'), 'Application log');
     const before = await listNsisAttemptLogs(directory);
-    const file = path.join(
-      directory,
-      'installer-2026-11-15-000000-12345.log',
-    );
+    const file = path.join(directory, 'installer-2026-11-15-000000-12345.log');
     const lines = [
       'time=2026-11-15T00:00:00Z\tversion=0.31.0\tarch=x64\tmode=update',
       'time=2026-11-15T00:00:01Z\tstage=prepare-files\tresult=started',
