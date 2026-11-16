@@ -29,6 +29,12 @@ both workers, core owner bootstrap, representative remote adapters, gateway star
 unauthenticated rejection, external attachment, shutdown, persisted reopen, owned-process crash
 recovery and stale-epoch rejection. The whole-run timeout accommodates four cold starts and three
 terminal drains; individual production startup and shutdown deadlines remain unchanged.
+The installed CLI exercises top-level and subcommand help, invalid-argument exit status, a
+structured missing-backup error from Core, and a successful edit to an isolated JSONC settings
+file that preserves comments and unrelated settings.
+The gateway WebSocket check rejects an unauthenticated upgrade, receives the authenticated local
+prewarm event sequence and completes a normal close. A separate loopback socket pair verifies
+the bundled WebSocket implementation's compressed UTF-8 round trip and normal close.
 Credentials use a random test-only service name; a test preload maps core
 keytar and OpenCode native keyring calls to that name while using the actual native OS store. No production credentials are
 read or changed. The presentation composition executes under Node with fail-fast native sentinels,

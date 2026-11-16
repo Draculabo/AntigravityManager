@@ -5,7 +5,7 @@ import { OperationContext } from '@/shared/observability/operationContext';
 import { loginDiagnostic } from '../fixtures/oauth-diagnostic';
 
 const sdk = vi.hoisted(() => ({
-  init: vi.fn(),
+  initWithoutDefaultIntegrations: vi.fn(),
   captureMessage: vi.fn(),
   captureException: vi.fn(),
   flush: vi.fn(async () => true),
@@ -52,12 +52,12 @@ describe('standalone core error reporting adapter', () => {
     const { initializeCoreErrorReporting } = await import('@/core/error-reporting');
     initializeCoreErrorReporting();
     logger.diagnosticError('suppressed');
-    expect(sdk.init).not.toHaveBeenCalled();
+    expect(sdk.initWithoutDefaultIntegrations).not.toHaveBeenCalled();
     expect(sdk.captureMessage).not.toHaveBeenCalled();
     setErrorReportingEnabled(true);
     logger.diagnosticError('safe schema summary');
-    expect(sdk.init).toHaveBeenCalledTimes(1);
-    expect(sdk.init.mock.calls[0][0]).toMatchObject({
+    expect(sdk.initWithoutDefaultIntegrations).toHaveBeenCalledTimes(1);
+    expect(sdk.initWithoutDefaultIntegrations.mock.calls[0][0]).toMatchObject({
       defaultIntegrations: false,
       sendDefaultPii: false,
     });

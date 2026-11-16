@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { createServer } from 'node:net';
+import { parse } from 'jsonc-parser';
 import { DEFAULT_APP_CONFIG } from '../../../src/modules/config/types';
 import { getAgentDir } from '../../../src/shared/platform/paths';
 import { bootstrapDesktopOwner } from '../../../src/modules/app-shell/services/desktop-owner-bootstrap';
@@ -18,11 +19,70 @@ import { CoreRpcClient } from '../../../src/core/rpc/client';
 import { ManagementClient } from '../../../src/core/management/client';
 import { getManagementEndpoint } from '../../../src/core/management/endpoint';
 import type { CoreHandshake } from '../../../src/core/management/handshake';
+import { verifyInstalledWebSocket } from './installed-websocket';
 import {
   LARGE_THOUGHT_BYTES,
   LARGE_THOUGHT_SESSION,
   LARGE_THOUGHT_SIGNATURE,
 } from './fixtures/thought-capacity';
+
+async function verifyPackagedCli(entry: string, home: string): Promise<void> {
+  const run = (...args: string[]) => {
+    const result = spawnSync(process.execPath, [entry, ...args], {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 15_000,
+      maxBuffer: 8_000,
+    });
+    assert.ifError(result.error);
+    assert.equal(result.signal, null);
+    return result;
+  };
+  const help = run('--help');
+  assert.equal(help.status, 0);
+  assert.match(help.stdout, /Usage: antigravity-manager \[/);
+  const serviceHelp = run('service', '--help');
+  assert.equal(serviceHelp.status, 0);
+  assert.match(serviceHelp.stdout, /Usage: antigravity-manager service \[/);
+  const invalid = run('--invalid-acceptance-option');
+  assert.equal(invalid.status, 2);
+  assert.match(invalid.stderr, /unknown option '--invalid-acceptance-option'/);
+
+  const configDirectory = path.join(home, '.claude');
+  assert.equal(process.env.CLAUDE_CONFIG_DIR, configDirectory);
+  const settings = path.join(configDirectory, 'settings.json');
+  const original = '{\n  // Preserve this setting.\n  "unrelated": true,\n}\n';
+  await fs.mkdir(configDirectory);
+  await fs.writeFile(settings, original);
+
+  const noBackup = run('tools', 'restore', 'claude', '--yes');
+  assert.equal(noBackup.status, 1);
+  assert.equal(noBackup.stdout, '');
+  assert.equal(
+    noBackup.stderr,
+    'Tool settings could not be updated (backup-missing). No credentials were printed.\n',
+  );
+  assert.equal(await fs.readFile(settings, 'utf8'), original);
+
+  const baseUrl = 'http://127.0.0.1:8045';
+  const model = 'acceptance-model';
+  const configured = run('tools', 'configure', 'claude', '--base-url', baseUrl, '--model', model);
+  assert.equal(configured.status, 0, configured.stderr);
+  assert.equal(configured.stderr, '');
+  assert.equal(
+    configured.stdout,
+    'Configuration saved. Reopen the tool to use the new settings.\n',
+  );
+  const saved = await fs.readFile(settings, 'utf8');
+  assert.match(saved, /\/\/ Preserve this setting\./);
+  const config: unknown = parse(saved);
+  assert.partialDeepStrictEqual(config, {
+    unrelated: true,
+    model,
+    env: { ANTHROPIC_BASE_URL: baseUrl },
+  });
+  process.stdout.write('Packaged CLI parsing, Core RPC errors, and JSONC edits passed.\n');
+}
 
 /** Real core process and SQLite; presentation and keyring isolation belong to the launcher. */
 async function check(): Promise<void> {
@@ -34,6 +94,7 @@ async function check(): Promise<void> {
     'Presentation endpoint must use the isolated home',
   );
   const directory = path.dirname(process.argv[1]);
+  const apiKey = randomUUID();
   await fs.mkdir(getAgentDir(), { recursive: true });
   await fs.writeFile(
     path.join(getAgentDir(), 'gui_config.json'),
@@ -42,7 +103,7 @@ async function check(): Promise<void> {
       proxy: {
         ...DEFAULT_APP_CONFIG.proxy,
         auto_start: false,
-        api_key: randomUUID(),
+        api_key: apiKey,
         traffic_audit: { ...DEFAULT_APP_CONFIG.proxy.traffic_audit, enabled: true },
         thought_store: { ...DEFAULT_APP_CONFIG.proxy.thought_store, enabled: true },
       },
@@ -105,6 +166,10 @@ async function check(): Promise<void> {
     const handshake = await connection.management.handshake();
     assert.equal(handshake.pid, children[0].pid);
     assert.equal((await connection.probeProfileOwner())?.pid, handshake.pid);
+    const cli = process.argv[2];
+    if (cli) {
+      await verifyPackagedCli(cli, home);
+    }
     assert.deepEqual(await getCloudAccountAdapter().listViews(), []);
     process.stdout.write('Standalone-core account view passed.\n');
     assert.equal((await getConfigAdapter().read()).proxy.auto_start, false);
@@ -177,6 +242,7 @@ async function check(): Promise<void> {
     });
     assert.equal(rejected.status, 401);
     await rejected.text();
+    await verifyInstalledWebSocket(address.port, apiKey);
     await client.stopGateway();
     assert.equal((await client.gatewayStatus()).running, false);
     process.stdout.write('Remote gateway start, authenticated boundary and stop passed.\n');

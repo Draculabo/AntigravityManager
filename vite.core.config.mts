@@ -29,10 +29,11 @@ export default defineConfig({
       '@fastify/view': path.resolve(root, 'src/mocks/empty.ts'),
       '@nestjs/microservices': path.resolve(root, 'src/mocks/nestjs-microservices'),
       '@nestjs/websockets': path.resolve(root, 'src/mocks/nestjs-websockets'),
+      '@nestjs/platform-express': path.resolve(root, 'src/mocks/empty.ts'),
     },
   },
   ssr: {
-    noExternal: bundledDependencies,
+    noExternal: Object.keys(bundledDependencies),
   },
   build: {
     target: 'node22',

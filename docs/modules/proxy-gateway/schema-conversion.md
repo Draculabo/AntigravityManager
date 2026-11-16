@@ -100,10 +100,12 @@ retains bare mode. Tool search is disabled so declarations appear in actual requ
 and the built-in MCP startup wait are execution-allowlisted. The sampler retains aggregate
 counts, operation budgets and converted-schema hashes, never raw schemas or client context.
 
-`pnpm run test:schema:sentry` runs the real Node SDK from the prepared standalone runtime against
-a local envelope receiver. It checks one isolated event and excludes inherited synthetic private
-context. It sends no remote Sentry event. Live tests must separately verify provider tool calls
-and actual remote Sentry receipt. These acceptance commands never alter client-global settings.
+`pnpm run test:schema:sentry` runs the bundled Node SDK with the prepared standalone runtime's Node
+executable and retained dependencies. Pass a standalone resource directory to check a specific
+artifact. The local receiver checks one isolated event and excludes inherited synthetic private
+context. The fixture also checks that default integrations are disabled and an active OpenTelemetry
+span survives an async boundary and supplies the trace ID to its child. Live tests separately
+verify provider tool calls and remote Sentry receipt.
 
 The [live gateway workflow](#live-schema-acceptance) uses the prepared core,
 existing account policies and read-only controlled tools. It records final tool-result matches,

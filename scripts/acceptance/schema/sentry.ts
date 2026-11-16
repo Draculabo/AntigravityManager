@@ -1,6 +1,8 @@
+import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { context, isSpanContextValid, trace } from '@opentelemetry/api';
 import * as Sentry from '@sentry/node';
 import { z } from 'zod';
 import {
@@ -8,6 +10,31 @@ import {
   flushErrorReporting,
 } from '../../../src/core/error-reporting';
 import { logger } from '../../../src/shared/logging/logger';
+
+async function verifyTraceContext(): Promise<void> {
+  const tracer = trace.getTracer('standalone-diagnostic-acceptance');
+  await tracer.startActiveSpan('parent', async (parent) => {
+    try {
+      await Promise.resolve();
+      assert.equal(trace.getSpan(context.active()), parent);
+      assert(isSpanContextValid(parent.spanContext()));
+      tracer.startActiveSpan('child', (child) => {
+        try {
+          const childContext = child.spanContext();
+          assert(isSpanContextValid(childContext));
+          assert.equal(childContext.traceId, parent.spanContext().traceId);
+          assert.notEqual(childContext.spanId, parent.spanContext().spanId);
+        } finally {
+          child.end();
+        }
+      });
+      assert.equal(trace.getSpan(context.active()), parent);
+    } finally {
+      parent.end();
+    }
+  });
+  assert.equal(trace.getSpan(context.active()), undefined);
+}
 
 async function verifyTransport(): Promise<void> {
   const Event = z.object({
@@ -70,6 +97,8 @@ async function verifyTransport(): Promise<void> {
   process.env.ANTIGRAVITY_DESKTOP_PREFERENCES_PATH = preferencePath;
   try {
     initializeCoreErrorReporting();
+    assert.deepEqual(Sentry.getClient()?.getOptions().integrations, []);
+    await verifyTraceContext();
     Sentry.setUser({
       email: 'controlled-private@example.invalid',
       geo: { city: 'controlled-private' },
@@ -86,7 +115,7 @@ async function verifyTransport(): Promise<void> {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
   process.stdout.write(
-    `${JSON.stringify({ transport: 'real Node Sentry SDK to local receiver', eventsReceived: received, privacyPassed })}\n`,
+    `${JSON.stringify({ transport: 'real Node Sentry SDK to local receiver', eventsReceived: received, privacyPassed, traceContextPassed: true })}\n`,
   );
   if (received !== 1 || !privacyPassed) {
     process.exitCode = 1;

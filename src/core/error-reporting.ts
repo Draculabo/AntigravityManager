@@ -27,7 +27,7 @@ export function initializeCoreErrorReporting(): void {
     {
       // The core reports through the owned logger; automatic HTTP instrumentation can retain account data.
       initialize: () => {
-        Sentry.init({
+        Sentry.initWithoutDefaultIntegrations({
           dsn: process.env.SENTRY_DSN,
           release: process.env.SENTRY_RELEASE,
           defaultIntegrations: false,

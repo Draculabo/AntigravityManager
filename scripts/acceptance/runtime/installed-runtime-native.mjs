@@ -31,6 +31,7 @@ const environment = {
   HOME: home,
   APPDATA: path.join(home, 'AppData', 'Roaming'),
   LOCALAPPDATA: path.join(home, 'AppData', 'Local'),
+  CLAUDE_CONFIG_DIR: path.join(home, '.claude'),
   AGM_DIAGNOSTIC_TEST_HOME: home,
   AGM_DIAGNOSTIC_TEST_CRASH: '1',
 };
@@ -162,7 +163,7 @@ try {
     logLevel: 'error',
     // Presentation-only JS belongs to this harness, not the standalone production graph.
     ssr: {
-      noExternal: [...loaded.config.ssr.noExternal, /^@orpc\//],
+      noExternal: loaded.config.ssr.noExternal,
       external: [...loaded.config.build.rollupOptions.external, 'electron', 'electron/main'],
     },
     build: {
@@ -268,7 +269,15 @@ require('@napi-rs/keyring').Entry = class { constructor() { forbidden(); } };
   );
   // Four bounded cold starts and three terminal drains need a whole-run budget above 60 seconds.
   console.log(
-    run(['--require', presentationPreload, path.join(core, 'bootstrap.cjs')], 180_000).trim(),
+    run(
+      [
+        '--require',
+        presentationPreload,
+        path.join(core, 'bootstrap.cjs'),
+        path.join(root, 'cli', 'main.cjs'),
+      ],
+      180_000,
+    ).trim(),
   );
   run(['-e', credentialCheck, service, 'empty-core']);
   process.stdout.write(

@@ -15,7 +15,8 @@ synthetic or blocked. The adjacent OAuth, switch-owner, management/RPC, CLI, err
 attachment suites cover their existing side effects and error contracts.
 
 `pnpm run test:diagnostics:sentry` runs the actual Node and Electron SDK adapters against a
-bounded local receiver with isolated opted-in preferences. `--offline` returns HTTP 503 while
+bounded local receiver with isolated opted-in preferences. The Node fixture uses the standalone
+Core dependency bundle list. `--offline` returns HTTP 503 while
 checking local receipt semantics. `--packaged` additionally builds and runs an isolated Electron
 ASAR diagnostic executable, with profile path resolution redirected before loading the SDK.
 This harness contains no account/credential owner and does not verify a full product installer,

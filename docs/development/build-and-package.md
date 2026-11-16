@@ -23,11 +23,28 @@ does not establish installer, native keyring or live-provider behavior.
 
 Core, CLI and worker builds embed the JavaScript dependencies listed in
 [`standalone-bundled-dependencies.json`](../../scripts/build/standalone-bundled-dependencies.json).
+An empty importer chain selects the top-level package for license attribution. The OpenTelemetry
+SDK entries resolve their license metadata through the same Sentry dependency chain used by Core,
+which can resolve a different version from the desktop SDK.
 Tracing retains dependencies still required by external packages, including Fastify's `semver`
 dependency. Native modules keep their external loaders and binaries. The standalone tree includes
-`THIRD-PARTY-NOTICES.txt` with the embedded dependency versions and license texts. Drizzle's published
-package omits its license text, so packaging uses the checked-in copy from its
+`THIRD-PARTY-NOTICES.txt` with the embedded dependency versions and license texts from `LICENSE` or
+`LICENSE.md`. The published Drizzle package omits its license text, so packaging uses the
+checked-in copy from its
 [0.45.2 source tag](https://github.com/drizzle-team/drizzle-orm/blob/0.45.2/LICENSE).
+
+The gateway supplies its Fastify adapter explicitly. Bundling `@nestjs/core` lets the standalone
+build resolve unused transport branches through the existing aliases. The bundle also includes
+Fastify, its Nest adapter and selected routing, plugin and schema compiler dependencies.
+The Core build excludes Nest's default Express adapter branch through the same alias mechanism.
+UUID generation, the imported Radash helpers and WebSocket support are embedded in the
+standalone JavaScript bundles.
+`@nestjs/common`, RxJS and Pino resolve from the traced runtime dependency tree. Pino's transport
+resolves its worker entry from the installed package directory.
+
+Standalone Core uses the Sentry initializer without default integrations so the bundle can drop
+the automatic instrumentation catalog. The bundle embeds Sentry's OpenTelemetry implementation
+and shares the external `@opentelemetry/api` with Core code that creates spans.
 
 pnpm applies the [AppImage maker patch](../../patches/@pengx17__electron-forge-maker-appimage@1.2.1.patch)
 through `patchedDependencies`, including installations with lifecycle scripts disabled. The patch

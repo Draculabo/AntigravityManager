@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import dotenv from 'dotenv';
 import { createServer } from 'node:net';
+import bundledDependencies from '../../build/standalone-bundled-dependencies.json' with { type: 'json' };
 
 const live = process.argv.includes('--live');
 const offline = process.argv.includes('--offline');
@@ -62,7 +63,9 @@ for (const runtime of ['node', 'electron']) {
         '@': path.resolve('src'),
       },
     },
-    ...(packaged && runtime === 'electron' ? { ssr: { noExternal: true } } : {}),
+    ssr: {
+      noExternal: runtime === 'node' ? Object.keys(bundledDependencies) : packaged,
+    },
     build: {
       ssr: true,
       target: 'node22',
@@ -71,9 +74,7 @@ for (const runtime of ['node', 'electron']) {
       rollupOptions: {
         input: `scripts/acceptance/diagnostics/${runtime}-sentry.ts`,
         external:
-          packaged && runtime === 'electron'
-            ? ['electron']
-            : ['electron', '@sentry/node', '@sentry/electron/main'],
+          packaged && runtime === 'electron' ? ['electron'] : ['electron', '@sentry/electron/main'],
         output: {
           format: 'cjs',
           entryFileNames: `${runtime}.cjs`,

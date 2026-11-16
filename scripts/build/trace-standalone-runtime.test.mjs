@@ -97,14 +97,26 @@ test('runtime tracing excludes host assets while retaining all explicit native e
     await file('assets/fixture', 'Asset resource');
     await file('pnpm-lock.yaml', 'lockfileVersion: 9.0\n');
     await file('LICENSE', 'Runtime license');
-    for (const name of bundledDependencies) {
+    for (const [name, importers] of Object.entries(bundledDependencies)) {
+      const directory = [
+        'node_modules',
+        ...importers.flatMap((entry) => [entry, 'node_modules']),
+        name,
+      ].join('/');
       await file(
-        `node_modules/${name}/package.json`,
+        `${directory}/package.json`,
         JSON.stringify({ name, version: '1.0.0', main: 'index.js' }),
       );
-      await file(`node_modules/${name}/index.js`, 'module.exports = {};');
+      await file(`${directory}/index.js`, 'module.exports = {};');
       if (name !== 'drizzle-orm') {
-        await file(`node_modules/${name}/LICENSE`, `${name} fixture license`);
+        const licenseName = ['jsonc-parser', 'uuid', 'radash'].includes(name)
+          ? 'LICENSE.md'
+          : 'LICENSE';
+        await file(`${directory}/${licenseName}`, `${name} fixture license`);
+      }
+      if (importers.length > 0) {
+        await file(`node_modules/${name}/package.json`, JSON.stringify({ name, version: '0.9.0' }));
+        await file(`node_modules/${name}/LICENSE`, 'Incorrect top-level license');
       }
     }
     const output = path.join(outside, 'materialized');
@@ -127,7 +139,7 @@ test('runtime tracing excludes host assets while retaining all explicit native e
     assert.ifError(child.error);
     assert.equal(child.status, 0, child.stderr);
     const expectedNotices = await Promise.all(
-      bundledDependencies.map(async (name) => {
+      Object.keys(bundledDependencies).map(async (name) => {
         const license =
           name === 'drizzle-orm'
             ? await readFile(new URL('./licenses/drizzle-orm.LICENSE', import.meta.url), 'utf8')
@@ -139,7 +151,7 @@ test('runtime tracing excludes host assets while retaining all explicit native e
       await readFile(path.join(output, 'THIRD-PARTY-NOTICES.txt'), 'utf8'),
       `${expectedNotices.join('\n\n')}\n`,
     );
-    for (const name of bundledDependencies) {
+    for (const name of Object.keys(bundledDependencies)) {
       await assert.rejects(readFile(path.join(output, 'node_modules', name, 'index.js')), {
         code: 'ENOENT',
       });

@@ -184,6 +184,7 @@ export async function traceRuntime(root) {
 }
 
 export async function materializeRuntime(root, output) {
+  root = await realpath(root);
   const trace = await traceRuntime(root);
   await mkdir(output);
   // Serialize tar jobs: concurrent hardlink entries can leave the pack queue unsettled.
@@ -192,17 +193,33 @@ export async function materializeRuntime(root, output) {
     await cp(path.join(root, resource), path.join(output, resource), { recursive: true });
   }
   const notices = [];
-  for (const name of bundledDependencies) {
-    const packageRoot = path.join(root, 'node_modules', name);
-    const metadata = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8'));
+  for (const [name, importers] of Object.entries(bundledDependencies)) {
+    const metadataPath =
+      importers.length === 0
+        ? path.join(root, 'node_modules', name, 'package.json')
+        : [...importers, name].reduce(
+            (importerPath, dependency) =>
+              createRequire(importerPath).resolve(`${dependency}/package.json`),
+            path.join(root, 'package.json'),
+          );
+    assert(
+      (await realpath(metadataPath)).startsWith(`${root}${path.sep}`),
+      'Bundled dependency metadata escaped its runtime root',
+    );
+    const packageRoot = path.dirname(metadataPath);
+    const metadata = JSON.parse(await readFile(metadataPath, 'utf8'));
     assert.equal(metadata.name, name, 'Bundled dependency metadata must match its package');
     assert.equal(typeof metadata.version, 'string');
-    const license = await readFile(path.join(packageRoot, 'LICENSE'), 'utf8').catch((error) => {
-      if (error.code !== 'ENOENT') {
-        throw error;
-      }
-      return readFile(new URL(`licenses/${name}.LICENSE`, import.meta.url), 'utf8');
-    });
+    const filenames = await readdir(packageRoot);
+    const licenseName = ['LICENSE', 'LICENSE.md'].find((candidate) =>
+      filenames.includes(candidate),
+    );
+    const license = await readFile(
+      licenseName
+        ? path.join(packageRoot, licenseName)
+        : new URL(`licenses/${name}.LICENSE`, import.meta.url),
+      'utf8',
+    );
     notices.push(`${name}@${metadata.version}\n\n${license.trimEnd()}`);
   }
   await writeFile(path.join(output, 'THIRD-PARTY-NOTICES.txt'), `${notices.join('\n\n')}\n`);

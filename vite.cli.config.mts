@@ -16,7 +16,7 @@ export default defineConfig({
   ],
   resolve: { alias: { '@': path.resolve(process.cwd(), 'src') } },
   ssr: {
-    noExternal: bundledDependencies,
+    noExternal: Object.keys(bundledDependencies),
   },
   build: {
     target: 'node22',
