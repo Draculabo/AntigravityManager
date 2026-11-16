@@ -14,6 +14,7 @@
   "commander": [],
   "jsonc-parser": [],
   "@nestjs/core": [],
+  "@nestjs/common": [],
   "fastify": [],
   "@nestjs/platform-fastify": [],
   "@fastify/ajv-compiler": [],
@@ -28,6 +29,7 @@
   "@sentry/opentelemetry": [],
   "@opentelemetry/core": ["@sentry/node"],
   "@opentelemetry/resources": ["@sentry/node"],
+  "@opentelemetry/semantic-conventions": ["@sentry/node"],
   "@opentelemetry/sdk-trace-base": ["@sentry/node"],
   "@opentelemetry/sdk-trace": ["@sentry/node", "@opentelemetry/sdk-trace-base"]
 }

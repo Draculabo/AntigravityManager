@@ -105,7 +105,7 @@ test('runtime tracing excludes host assets while retaining all explicit native e
       ].join('/');
       await file(
         `${directory}/package.json`,
-        JSON.stringify({ name, version: '1.0.0', main: 'index.js' }),
+        JSON.stringify({ name, version: '1.0.0', exports: './index.js' }),
       );
       await file(`${directory}/index.js`, 'module.exports = {};');
       if (name !== 'drizzle-orm') {

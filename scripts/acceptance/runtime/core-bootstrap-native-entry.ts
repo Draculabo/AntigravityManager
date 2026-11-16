@@ -242,6 +242,27 @@ async function check(): Promise<void> {
     });
     assert.equal(rejected.status, 401);
     await rejected.text();
+    for (const [limit, status] of [
+      ['1', 200],
+      ['invalid', 400],
+    ] as const) {
+      const response = await fetch(
+        `http://127.0.0.1:${address.port}/internal/audit/requests?limit=${limit}`,
+        {
+          headers: { Authorization: `Bearer ${apiKey}` },
+          signal: AbortSignal.timeout(10_000),
+        },
+      );
+      assert.equal(response.status, status);
+      if (status === 400) {
+        assert.match(await response.text(), /"fieldErrors":\{"limit":/);
+      } else {
+        assert.match(await response.text(), /"items":\[/);
+      }
+    }
+    process.stdout.write(
+      'Installed gateway accepts valid query parameters and rejects invalid ones.\n',
+    );
     await verifyInstalledWebSocket(address.port, apiKey);
     await client.stopGateway();
     assert.equal((await client.gatewayStatus()).running, false);

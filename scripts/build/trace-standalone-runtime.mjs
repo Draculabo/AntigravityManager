@@ -9,9 +9,9 @@ import {
   stat,
   writeFile,
 } from 'node:fs/promises';
-import { createRequire } from 'node:module';
+import { createRequire, findPackageJSON } from 'node:module';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { nodeFileTrace } from '@vercel/nft';
 import { c as archiveTar, x as extractTar } from 'tar';
 import { pipeline } from 'node:stream/promises';
@@ -198,8 +198,11 @@ export async function materializeRuntime(root, output) {
       importers.length === 0
         ? path.join(root, 'node_modules', name, 'package.json')
         : [...importers, name].reduce(
-            (importerPath, dependency) =>
-              createRequire(importerPath).resolve(`${dependency}/package.json`),
+            (importerPath, dependency) => {
+              const resolved = findPackageJSON(dependency, pathToFileURL(importerPath));
+              assert(resolved, `Cannot locate bundled dependency metadata for ${dependency}`);
+              return resolved;
+            },
             path.join(root, 'package.json'),
           );
     assert(

@@ -39,8 +39,10 @@ Fastify, its Nest adapter and selected routing, plugin and schema compiler depen
 The Core build excludes Nest's default Express adapter branch through the same alias mechanism.
 UUID generation, the imported Radash helpers and WebSocket support are embedded in the
 standalone JavaScript bundles.
-`@nestjs/common`, RxJS and Pino resolve from the traced runtime dependency tree. Pino's transport
-resolves its worker entry from the installed package directory.
+Standalone Core bundles `@nestjs/common` and excludes Nest's class-based validation and
+serialization entry points. Gateway request validation uses Zod. RxJS and Pino resolve from the
+traced runtime dependency tree. Pino's transport resolves its worker entry from the installed
+package directory.
 
 Standalone Core uses the Sentry initializer without default integrations so the bundle can drop
 the automatic instrumentation catalog. The bundle embeds Sentry's OpenTelemetry implementation

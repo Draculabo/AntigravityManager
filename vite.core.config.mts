@@ -4,6 +4,21 @@ import bundledDependencies from './scripts/build/standalone-bundled-dependencies
 
 const root = process.cwd();
 
+const aliases = {
+  '@': path.resolve(root, 'src'),
+  kafkajs: path.resolve(root, 'src/mocks/empty.ts'),
+  mqtt: path.resolve(root, 'src/mocks/empty.ts'),
+  amqplib: path.resolve(root, 'src/mocks/empty.ts'),
+  'amqp-connection-manager': path.resolve(root, 'src/mocks/empty.ts'),
+  nats: path.resolve(root, 'src/mocks/empty.ts'),
+  ioredis: path.resolve(root, 'src/mocks/empty.ts'),
+  '@fastify/static': path.resolve(root, 'src/mocks/empty.ts'),
+  '@fastify/view': path.resolve(root, 'src/mocks/empty.ts'),
+  '@nestjs/microservices': path.resolve(root, 'src/mocks/nestjs-microservices'),
+  '@nestjs/websockets': path.resolve(root, 'src/mocks/nestjs-websockets'),
+  '@nestjs/platform-express': path.resolve(root, 'src/mocks/empty.ts'),
+};
+
 export default defineConfig({
   plugins: [
     {
@@ -17,20 +32,24 @@ export default defineConfig({
     },
   ],
   resolve: {
-    alias: {
-      '@': path.resolve(root, 'src'),
-      kafkajs: path.resolve(root, 'src/mocks/empty.ts'),
-      mqtt: path.resolve(root, 'src/mocks/empty.ts'),
-      amqplib: path.resolve(root, 'src/mocks/empty.ts'),
-      'amqp-connection-manager': path.resolve(root, 'src/mocks/empty.ts'),
-      nats: path.resolve(root, 'src/mocks/empty.ts'),
-      ioredis: path.resolve(root, 'src/mocks/empty.ts'),
-      '@fastify/static': path.resolve(root, 'src/mocks/empty.ts'),
-      '@fastify/view': path.resolve(root, 'src/mocks/empty.ts'),
-      '@nestjs/microservices': path.resolve(root, 'src/mocks/nestjs-microservices'),
-      '@nestjs/websockets': path.resolve(root, 'src/mocks/nestjs-websockets'),
-      '@nestjs/platform-express': path.resolve(root, 'src/mocks/empty.ts'),
-    },
+    alias: [
+      ...Object.entries(aliases).map(([find, replacement]) => ({ find, replacement })),
+      {
+        find: /^\.\/(?:validation\.pipe|class-serializer\.interceptor)(?:\.js)?$/,
+        replacement: '$&',
+        customResolver(source, importer, options) {
+          if (
+            importer &&
+            /\/node_modules\/@nestjs\/common\/(?:pipes|serializer)\//.test(
+              importer.replaceAll('\\', '/'),
+            )
+          ) {
+            return path.resolve(root, 'src/mocks/nestjs-class-validation.ts');
+          }
+          return this.resolve(source, importer, { ...options, skipSelf: true });
+        },
+      },
+    ],
   },
   ssr: {
     noExternal: Object.keys(bundledDependencies),

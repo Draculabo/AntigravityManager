@@ -35,6 +35,8 @@ file that preserves comments and unrelated settings.
 The gateway WebSocket check rejects an unauthenticated upgrade, receives the authenticated local
 prewarm event sequence and completes a normal close. A separate loopback socket pair verifies
 the bundled WebSocket implementation's compressed UTF-8 round trip and normal close.
+An authenticated audit request verifies query validation with both a valid limit and an invalid
+limit that returns a field error.
 Credentials use a random test-only service name; a test preload maps core
 keytar and OpenCode native keyring calls to that name while using the actual native OS store. No production credentials are
 read or changed. The presentation composition executes under Node with fail-fast native sentinels,
