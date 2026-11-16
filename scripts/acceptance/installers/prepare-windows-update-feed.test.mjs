@@ -11,26 +11,38 @@ import { prepareWindowsUpdateFeed } from '../../prepare-windows-update-feed.mjs'
 const releaseTag = 'v0.21.1';
 const repository = 'Draculabo/AntigravityManager';
 
-test('publish installs locked JavaScript dependencies before feed checks and release writes', () => {
-  const workflow = YAML.parse(
+test('release installs locked dependencies before verification and release writes', () => {
+  const releaseWorkflow = YAML.parse(
+    readFileSync(new URL('../../../.github/workflows/release.yml', import.meta.url), 'utf8'),
+  );
+  const publishWorkflow = YAML.parse(
     readFileSync(new URL('../../../.github/workflows/publish.yaml', import.meta.url), 'utf8'),
   );
-  const steps = workflow.jobs.publish.steps;
-  const installation = steps.findIndex((step) =>
+  const packageSteps = releaseWorkflow.jobs.publish.steps;
+  const verificationSteps = publishWorkflow.jobs['verify-artifacts'].steps;
+  const installation = packageSteps.findIndex((step) =>
     /^pnpm install --frozen-lockfile\b/.test(step.run?.trim() ?? ''),
   );
-  assert(installation >= 0, 'Publish must install project dependencies in its own job');
-  assert.match(steps[installation].run, /--prod=false\b/);
-  assert.match(steps[installation].run, /--ignore-scripts\b/);
-  for (const command of [
-    'pnpm run test:acceptance installers feed',
-    'node scripts/prepare-windows-update-feed.mjs',
-    'gh release create',
-    'gh release upload',
-  ]) {
-    const consumer = steps.findIndex((step) => step.run?.includes(command));
-    assert(consumer > installation, `${command} must follow dependency installation`);
-  }
+  assert(installation >= 0, 'Release must install project dependencies before release writes');
+  assert.match(packageSteps[installation].run, /--prod=false\b/);
+  assert.match(packageSteps[installation].run, /--ignore-scripts\b/);
+  const validation = packageSteps.findIndex((step) =>
+    step.run?.includes('test:acceptance release artifacts'),
+  );
+  const record = packageSteps.findIndex((step) => step.run?.includes('manage-release.mjs record'));
+  const publish = packageSteps.findIndex((step) =>
+    step.run?.includes('deliver-release-assets.mjs publish'),
+  );
+  assert(validation > installation, 'Release must verify artifacts after dependency installation');
+  assert(record > validation, 'Release metadata must be recorded after artifact verification');
+  assert(publish > record, 'Release publication must follow candidate recording');
+  assert(
+    verificationSteps.some((step) => step.run?.includes('test:acceptance release artifacts')),
+    'The reusable packaging workflow must verify the same downloaded artifacts',
+  );
+  assert.deepEqual(publishWorkflow.on.release.types, ['published']);
+  assert.equal(publishWorkflow.jobs['update-distribution'], undefined);
+  assert.deepEqual(releaseWorkflow.jobs['update-distribution'].needs, ['plan', 'publish']);
 });
 
 function makeFixture(root, corruptArch) {

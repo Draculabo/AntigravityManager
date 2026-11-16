@@ -92,18 +92,50 @@ with `gh api --paginate --slurp` for the run's artifacts endpoint. This check re
 files; it does not install packages or validate native execution. Synthetic negative fixtures
 are included in `pnpm run test:acceptance unit`.
 
-Publication requires both build and artifact verification to succeed and remains disabled for
-dry runs. The `release` environment retains its existing approval configuration. The publish
-job revalidates assets before creating a missing draft release; its existing protection against
-updating an already published release remains in effect. A dry run establishes build, artifact
-transport and local feed preparation evidence, but not installed application behavior, release
-uploads or automated PR creation. Those require their corresponding platform or release checks.
+### Publish a new version
 
-For runner or Action failures, inspect the failing step before changing another part of the
-pipeline. Revert only the affected workflow change to a verified, supported runner or Action
-commit; retired `macos-14` is not a continuing recovery option. A failed dry run leaves Actions
-artifacts but performs no release writes. After a real publication failure, inspect the release
-and generated PR state before retrying because writes may already have succeeded.
+Dispatch [Release](../../.github/workflows/release.yml) on `main` for a stable release or `beta`
+for a prerelease. The workflow previews Semantic Release and builds the candidate's exact
+source commit and version. Use `dry_run=true` to rehearse the candidate build and artifact
+verification. If there is no new candidate, the workflow ends after planning.
+
+After the build and verification succeed, the publish job enters the `release` environment.
+The job records the release commit and tag, creates a draft, and uploads the required assets.
+It verifies the uploaded names, sizes and SHA-256 digests before the draft becomes public.
+The final edit uses the Actions token so it does not start another packaging run. Stable
+distribution updates run after public release. The Windows feed and Linux metadata PR are
+updated only for the current stable release.
+
+### Rebuild or repair an existing version
+
+- Dispatch **Publish Release** with `dry_run=true` for installers in Actions Artifacts.
+- A Release published manually on GitHub still triggers **Publish Release**. It builds the
+  tagged commit and adds missing files. If an existing file has different content, the job fails
+  and reports that conflict. This path can leave the release public while attachments are pending.
+- To repair an existing release, dispatch **Publish Release** with `dry_run=false` and its
+  `release_tag`. Enable `allow_update_published_release` to change files on an already published
+  release. These paths write only attachments for the selected version.
+
+### Recover an interrupted official release
+
+- Re-run failed jobs while the original Actions artifacts are available. If the source branch
+  advances before the release commit is written, start a release from its new tip.
+- If a release commit or tag already exists and the original artifacts are unavailable, dispatch
+  **Release** on the original channel with `operation=resume` and the recorded `release_tag`.
+  It rebuilds the original source and version and continues the recorded candidate. A draft stays
+  private until the full remote asset inventory matches.
+- Resolve the current unpublished candidate before releasing another version on that channel.
+  To stop pursuing it, dispatch **Release** on the same channel with `operation=abandon` and the
+  candidate tag. Abandonment retains the tag and reserves its version. The next release notes
+  include changes since the last published, reachable release on that channel. A first beta can
+  use the last reachable stable release as its notes baseline.
+- Re-run a failed distribution job on its own. It checks that the tag is still the current
+  stable release before changing the shared Windows feed or opening a Linux packaging PR.
+
+Run `node --test scripts/release/release-delivery.test.mjs` for the local delivery and recovery
+fixtures. Use a six-target dry run to verify packaging and artifact transfer. An isolated
+repository exercise is needed to verify the live draft-to-public transition, attachment readback,
+and the manually published release trigger. Local fixtures cannot establish those results.
 
 ## Runtime preparation integrity
 

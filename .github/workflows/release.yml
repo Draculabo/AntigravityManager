@@ -2,23 +2,46 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      operation:
+        description: 'Start a release, rebuild a recorded candidate, or abandon a candidate'
+        type: choice
+        options: [release, resume, abandon]
+        default: release
+      release_tag:
+        description: 'Existing candidate tag for resume or abandon'
+        type: string
+        required: false
+      dry_run:
+        description: 'Build and verify the proposed version without writing Git or GitHub releases'
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-write
+  cancel-in-progress: false
 
 permissions:
-  contents: write
-  issues: write
-  pull-requests: write
+  contents: read
+  actions: read
 
 jobs:
-  release:
-    name: Semantic Release
+  plan:
+    if: inputs.operation != 'abandon'
     runs-on: ubuntu-24.04
+    outputs:
+      has_candidate: ${{ steps.candidate.outputs.has_candidate }}
+      source: ${{ steps.candidate.outputs.source }}
+      version: ${{ steps.candidate.outputs.version }}
+      tag: ${{ steps.candidate.outputs.tag }}
+    permissions:
+      contents: read
+      actions: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0 # Required for semantic-release to analyze commits
-          persist-credentials: false # We use a token in the next steps
-
+          fetch-depth: 0
+          persist-credentials: false
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           run_install: false
@@ -26,14 +49,239 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
+      - run: pnpm install --frozen-lockfile --prod=false --ignore-scripts
       - name: Check automatic release notes
         run: pnpm run test:acceptance release notes
-
-      - name: Release
+      - name: Select and freeze the release candidate
+        id: candidate
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }} # Use GH_TOKEN to trigger other workflows
-        run: pnpm exec semantic-release
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          RELEASE_OPERATION: ${{ inputs.operation }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: node scripts/release/manage-release.mjs plan "$RUNNER_TEMP/release-candidate.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.candidate.outputs.has_candidate == 'true'
+        with:
+          name: release-candidate
+          path: ${{ runner.temp }}/release-candidate.json
+          if-no-files-found: error
+          overwrite: true
+
+  package:
+    needs: plan
+    if: needs.plan.outputs.has_candidate == 'true'
+    uses: ./.github/workflows/publish.yaml
+    permissions:
+      contents: write
+      actions: read
+    with:
+      source_sha: ${{ needs.plan.outputs.source }}
+      version: ${{ needs.plan.outputs.version }}
+    secrets:
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${{ secrets.OTEL_EXPORTER_OTLP_ENDPOINT }}
+      OTEL_EXPORTER_OTLP_HEADERS: ${{ secrets.OTEL_EXPORTER_OTLP_HEADERS }}
+      OTEL_SERVICE_NAME: ${{ secrets.OTEL_SERVICE_NAME }}
+      OTEL_RESOURCE_ATTRIBUTES: ${{ secrets.OTEL_RESOURCE_ATTRIBUTES }}
+      CLARITY_PROJECT_ID: ${{ secrets.CLARITY_PROJECT_ID }}
+      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+      SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+
+  publish:
+    name: Record and Publish Verified Release
+    needs: [plan, package]
+    if: '!inputs.dry_run'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    environment: release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.source }}
+          fetch-depth: 0
+          token: ${{ secrets.GH_TOKEN }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-candidate
+          path: ${{ runner.temp }}
+          digest-mismatch: error
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: make-*
+          merge-multiple: true
+          path: release-assets
+          digest-mismatch: error
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          run_install: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile --prod=false --ignore-scripts
+      - name: Revalidate the downloaded assets before any release write
+        run: pnpm run test:acceptance release artifacts --source release-assets
+      - name: Record the verified candidate as a draft
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          git fetch --tags origin
+          node scripts/release/manage-release.mjs record \
+            "$RUNNER_TEMP/release-candidate.json" "$RUNNER_TEMP/release-notes.md"
+      - name: Upload, verify and publish the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/release/deliver-release-assets.mjs publish \
+            release-assets "$RUNNER_TEMP/release-candidate.json"
+
+  abandon:
+    name: Abandon Unpublished Candidate
+    if: inputs.operation == 'abandon' && !inputs.dry_run
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    environment: release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_TOKEN }}
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          run_install: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile --prod=false --ignore-scripts
+      - name: Mark the candidate as abandoned and retain its tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: node scripts/release/manage-release.mjs abandon "$RUNNER_TEMP/release-notes.md"
+
+  update-distribution:
+    name: Update Stable Distribution
+    needs: [plan, publish]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Check that the release is still current
+        id: current
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          latest="$(gh release view --json tagName --jq '.tagName')"
+          if [ "$latest" = "$RELEASE_TAG" ]; then
+            echo 'latest=true' >> "$GITHUB_OUTPUT"
+          else
+            echo "Skipping distribution update for $RELEASE_TAG because $latest is current."
+          fi
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: steps.current.outputs.latest == 'true'
+        with:
+          pattern: make-*
+          merge-multiple: true
+          path: release-assets
+          digest-mismatch: error
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          run_install: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile --prod=false --ignore-scripts
+      - name: Prepare Windows static update feed
+        if: steps.current.outputs.latest == 'true'
+        env:
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          node scripts/prepare-windows-update-feed.mjs \
+            --source release-assets --output windows-update-feed \
+            --release-tag "$RELEASE_TAG" --repository "$GITHUB_REPOSITORY"
+      - name: Publish Windows static update feed
+        if: steps.current.outputs.latest == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          branch_dir="$(mktemp -d)"
+          git init "$branch_dir"
+          git -C "$branch_dir" remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+          if git -C "$branch_dir" fetch --depth=1 origin release-updates; then
+            git -C "$branch_dir" checkout -B release-updates FETCH_HEAD
+          else
+            git -C "$branch_dir" checkout --orphan release-updates
+          fi
+
+          find "$branch_dir" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -R windows-update-feed/. "$branch_dir"/
+
+          git -C "$branch_dir" config user.name "github-actions[bot]"
+          git -C "$branch_dir" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$branch_dir" add -A
+
+          if git -C "$branch_dir" diff --cached --quiet; then
+            echo "Windows static update feed unchanged."
+            exit 0
+          fi
+
+          git -C "$branch_dir" commit -m "chore: update Windows update feed for ${RELEASE_TAG}"
+          git -C "$branch_dir" push origin HEAD:release-updates
+
+      - name: Update Linux package metadata from release checksums
+        if: steps.current.outputs.latest == 'true'
+        env:
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          amd64_checksums="$(find release-assets -type f -name 'sha256sums-linux-amd64.txt' | head -n 1)"
+          aarch64_checksums="$(find release-assets -type f -name 'sha256sums-linux-aarch64.txt' | head -n 1)"
+
+          if [ -z "$amd64_checksums" ] || [ -z "$aarch64_checksums" ]; then
+            echo "::error::Missing Linux checksum files required to update package metadata"
+            exit 1
+          fi
+
+          node scripts/update-flake-release.mjs \
+            --version "$version" \
+            --amd64-checksums "$amd64_checksums" \
+            --arm64-checksums "$aarch64_checksums"
+
+          node scripts/update-arch-release.mjs \
+            --version "$version" \
+            --amd64-checksums "$amd64_checksums" \
+            --pkgbuild packaging/arch/PKGBUILD
+
+      - name: Create Linux package metadata pull request
+        if: steps.current.outputs.latest == 'true'
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+          base: main
+          branch: chore/update-linux-packaging-${{ needs.plan.outputs.tag }}
+          add-paths: |
+            flake.nix
+            packaging/arch/PKGBUILD
+          delete-branch: true
+          title: 'chore(linux): update package metadata to ${{ needs.plan.outputs.tag }}'
+          commit-message: 'chore(linux): update package metadata to ${{ needs.plan.outputs.tag }}'
+          body: |
+            Update `flake.nix` and the Arch Linux `PKGBUILD` to match `${{ needs.plan.outputs.tag }}` release assets.
+
+            The hashes come from the Linux checksum files generated during the release build.

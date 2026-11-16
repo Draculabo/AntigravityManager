@@ -138,13 +138,30 @@ test('dry-run verification is read-only and gates publication before release wri
     verify.steps.some((step) => step.run?.includes('node scripts/prepare-windows-update-feed.mjs')),
   );
   assert(!verify.steps.some((step) => /gh release (create|upload)|git push/.test(step.run ?? '')));
-  const publish = workflow.jobs.publish;
-  assert(publish.needs.includes('verify-artifacts'));
-  assert.match(publish.if, /needs\.verify-artifacts\.result == 'success'/);
-  assert.match(publish.if, /github\.event\.inputs\.dry_run != 'true'/);
+  const official = YAML.parse(
+    readFileSync(new URL('../../.github/workflows/release.yml', import.meta.url), 'utf8'),
+  );
+  const publish = official.jobs.publish;
+  assert.equal(official.jobs.package.uses, './.github/workflows/publish.yaml');
+  assert.deepEqual(verify.needs, ['resolve', 'build']);
+  assert.deepEqual(publish.needs, ['plan', 'package']);
+  assert.equal(publish.environment, 'release');
+  assert.equal(publish.if, '!inputs.dry_run');
+  assert.deepEqual(workflow.on.release.types, ['published']);
+  assert.equal(workflow.on.workflow_dispatch.inputs.dry_run.default, true);
+  assert(workflow.jobs['attach-assets'].needs.includes('verify-artifacts'));
+  assert.equal(
+    workflow.jobs['attach-assets'].if,
+    "needs.resolve.outputs.mode == 'event' || needs.resolve.outputs.mode == 'manual'",
+  );
   const validation = publish.steps.findIndex((step) =>
     step.run?.includes('test:acceptance release artifacts'),
   );
-  const releaseWrite = publish.steps.findIndex((step) => step.run?.includes('gh release create'));
-  assert(validation >= 0 && validation < releaseWrite);
+  const releaseWrite = publish.steps.findIndex((step) =>
+    step.run?.includes('manage-release.mjs record'),
+  );
+  const publication = publish.steps.findIndex((step) =>
+    step.run?.includes('deliver-release-assets.mjs publish'),
+  );
+  assert(validation >= 0 && validation < releaseWrite && releaseWrite < publication);
 });

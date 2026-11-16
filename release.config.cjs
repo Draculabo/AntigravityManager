@@ -93,6 +93,7 @@ const releaseConfig = {
         successComment: false,
         failComment: false,
         labels: false,
+        draftRelease: true,
         releaseNameTemplate: 'v<%= nextRelease.version %>',
       },
     ],

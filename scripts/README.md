@@ -97,6 +97,7 @@ installation; CI-only dependency setup skips lifecycle scripts in credentialed t
 ## Unified acceptance entry
 
 Release artifact verification uses `pnpm run test:acceptance release artifacts --source <directory>`.
+Release publication recovery fixtures use `pnpm run test:acceptance release delivery`.
 
 The NSIS artifact inventory uses `pnpm run test:acceptance installers nsis-inventory <packaged-app>
 <installer.exe> <report.json>`. All paths must be under `out/`, and the report path must be new and

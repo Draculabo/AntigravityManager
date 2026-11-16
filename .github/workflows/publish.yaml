@@ -1,6 +1,33 @@
 name: Publish Release
 
 on:
+  workflow_call:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
+    secrets:
+      OTEL_EXPORTER_OTLP_ENDPOINT:
+        required: false
+      OTEL_EXPORTER_OTLP_HEADERS:
+        required: false
+      OTEL_SERVICE_NAME:
+        required: false
+      OTEL_RESOURCE_ATTRIBUTES:
+        required: false
+      CLARITY_PROJECT_ID:
+        required: false
+      SENTRY_DSN:
+        required: false
+      SENTRY_AUTH_TOKEN:
+        required: false
+      SENTRY_ORG:
+        required: false
+      SENTRY_PROJECT:
+        required: false
   release:
     types: [published]
   workflow_dispatch:
@@ -10,6 +37,10 @@ on:
         required: false
         type: boolean
         default: true
+      release_tag:
+        description: 'Existing release tag to update when dry_run is false'
+        required: false
+        type: string
       allow_update_published_release:
         description: 'Allow uploading assets to an already published release'
         required: false
@@ -17,7 +48,64 @@ on:
         default: false
 
 jobs:
+  resolve:
+    name: Resolve Packaging Revision
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      source: ${{ steps.source.outputs.sha }}
+      tag: ${{ steps.source.outputs.tag }}
+      version: ${{ steps.source.outputs.version }}
+      mode: ${{ steps.source.outputs.mode }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Resolve revision and version
+        id: source
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ inputs.source_sha }}
+          CANDIDATE_VERSION: ${{ inputs.version }}
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+          REQUESTED_TAG: ${{ inputs.release_tag }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          if [ -n "$CANDIDATE_SHA" ]; then
+            mode=release
+            source="$CANDIDATE_SHA"
+            tag="v$CANDIDATE_VERSION"
+          elif [ "$GITHUB_EVENT_NAME" = release ]; then
+            mode=event
+            source="$GITHUB_SHA"
+            tag="$EVENT_TAG"
+          elif [ "$DRY_RUN" = true ]; then
+            mode=dry
+            source="$GITHUB_SHA"
+            tag="v$(jq -er '.version' package.json)"
+          else
+            mode=manual
+            tag="$REQUESTED_TAG"
+          fi
+
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]; then
+            echo '::error::An explicit version tag such as v1.2.3 is required.'
+            exit 1
+          fi
+          if [ "$mode" = manual ] || [ "$mode" = event ]; then
+            target="$(git rev-parse --verify "refs/tags/$tag^{commit}")"
+            source="$target"
+          fi
+          if [[ ! "$source" =~ ^[0-9a-f]{40}$ ]]; then
+            echo '::error::The packaging revision is not a commit SHA.'
+            exit 1
+          fi
+          printf 'mode=%s\nsha=%s\ntag=%s\nversion=%s\n' "$mode" "$source" "$tag" "${tag#v}" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: resolve
     strategy:
       fail-fast: false
       matrix:
@@ -49,6 +137,9 @@ jobs:
     steps:
       - name: Checkout git repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.source }}
+          persist-credentials: false
 
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
@@ -85,6 +176,19 @@ jobs:
           timeout_minutes: 20
           retry_wait_seconds: 30
           command: pnpm install --frozen-lockfile
+
+      - name: Set packaging version
+        if: needs.resolve.outputs.mode != 'dry'
+        shell: bash
+        env:
+          PACKAGE_VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const manifest = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            manifest.version = process.env.PACKAGE_VERSION;
+            fs.writeFileSync("package.json", JSON.stringify(manifest, null, 2) + "\n");
+          '
 
       - name: Check Linux AppImage maker and update downloads
         if: matrix.platform == 'linux'
@@ -159,25 +263,21 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           archive: true
-
-      - name: Dry-run summary
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true'
-        run: |
-          echo "Dry run enabled: uploaded artifacts will be verified; release publish step will be skipped."
+          overwrite: true
 
   verify-artifacts:
     name: Verify Release Artifacts
-    needs: build
+    needs: [resolve, build]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read
       actions: read
     steps:
-      - name: Checkout build revision
+      - name: Checkout verification tools
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.workflow_sha }}
           persist-credentials: false
 
       - name: Read build artifact inventory
@@ -207,47 +307,48 @@ jobs:
       - name: Install verification dependencies
         run: pnpm install --frozen-lockfile --prod=false --ignore-scripts
 
+      - name: Test Windows update feed generation
+        run: pnpm run test:acceptance installers feed
+
       - name: Validate downloaded release assets
         run: |
           pnpm run test:acceptance release artifacts \
             --source release-assets --inventory "$RUNNER_TEMP/build-artifacts.json"
 
       - name: Prepare Windows update feed without publication
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
         run: |
-          version="$(node -p "require('./package.json').version")"
           node scripts/prepare-windows-update-feed.mjs \
             --source release-assets \
             --output "$RUNNER_TEMP/verified-windows-update-feed" \
-            --release-tag "v$version" \
+            --release-tag "$RELEASE_TAG" \
             --repository "$GITHUB_REPOSITORY"
 
-  publish:
-    name: Publish Release (Manual Approval)
-    needs: [build, verify-artifacts]
+  attach-assets:
+    name: Attach Assets to Existing Release
+    needs: [resolve, verify-artifacts]
+    if: needs.resolve.outputs.mode == 'event' || needs.resolve.outputs.mode == 'manual'
     runs-on: ubuntu-24.04
-    if: needs.build.result == 'success' && needs.verify-artifacts.result == 'success' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true')
+    concurrency:
+      group: release-write
+      cancel-in-progress: false
     permissions:
       contents: write
-      pull-requests: write
-    # Configure the `release` environment with required reviewers in GitHub settings
-    # to enforce a manual approval gate before assets are uploaded.
-    environment:
-      name: release
-
+      actions: read
+    environment: release
     steps:
-      - name: Checkout git repo
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: main
-
-      - name: Download Build Artifacts
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: make-*
           merge-multiple: true
           path: release-assets
           digest-mismatch: error
-
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           run_install: false
@@ -255,175 +356,19 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-
-      - name: Install publish dependencies
-        run: pnpm install --frozen-lockfile --prod=false --ignore-scripts
-
-      - name: Test Windows update feed generation
-        run: pnpm run test:acceptance installers feed
-
-      - name: Validate release assets
-        run: pnpm run test:acceptance release artifacts --source release-assets
-
-      - name: Resolve release tag
-        id: release_tag
+      - run: pnpm install --frozen-lockfile --prod=false --ignore-scripts
+      - name: Attach and verify files
         env:
-          RELEASE_EVENT_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_MODE: ${{ needs.resolve.outputs.mode }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+          SOURCE_SHA: ${{ needs.resolve.outputs.source }}
+          ALLOW_UPDATE_PUBLISHED_RELEASE: ${{ inputs.allow_update_published_release }}
         run: |
-          if [ -n "$RELEASE_EVENT_TAG" ]; then
-            tag="$RELEASE_EVENT_TAG"
-          else
-            version="$(node -e "const v=require('./package.json').version; if (!v) { throw new Error('package.json version is empty'); } process.stdout.write(v);")"
-            tag="v$version"
-          fi
-
-          if [ -z "$tag" ]; then
-            echo "::error::Resolved release tag is empty"
+          git fetch --no-tags origin "refs/tags/$RELEASE_TAG"
+          target="$(git rev-parse --verify 'FETCH_HEAD^{commit}')"
+          if [ "$target" != "$SOURCE_SHA" ]; then
+            echo '::error::The target tag changed after packaging.'
             exit 1
           fi
-
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "Using release tag: $tag"
-
-      - name: Ensure release is safe to update
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
-          ALLOW_UPDATE_PUBLISHED_RELEASE: ${{ github.event_name == 'release' && 'true' || (github.event_name == 'workflow_dispatch' && github.event.inputs.allow_update_published_release) || 'false' }}
-        run: |
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            is_draft="$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft')"
-            if [ "$is_draft" != "true" ] && [ "$ALLOW_UPDATE_PUBLISHED_RELEASE" != "true" ]; then
-              echo "::error::Release $RELEASE_TAG is already published. Refusing to upload assets."
-              echo "::error::Re-run with workflow_dispatch input allow_update_published_release=true if you explicitly want to update it."
-              exit 1
-            fi
-          else
-            gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --draft --notes "Automated release draft."
-          fi
-
-      - name: Generate updater metadata
-        env:
-          RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release view "$RELEASE_TAG" --json tagName,body,publishedAt,url > "$RUNNER_TEMP/updater-release.json"
-          node scripts/generate-updater-metadata.mjs \
-            --release-file "$RUNNER_TEMP/updater-release.json" \
-            --output release-assets/updater.json
-
-      - name: Prepare Windows static update feed
-        env:
-          RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
-        run: |
-          node scripts/prepare-windows-update-feed.mjs \
-            --source release-assets \
-            --output windows-update-feed \
-            --release-tag "$RELEASE_TAG" \
-            --repository "$GITHUB_REPOSITORY"
-
-      - name: Prepare legacy Windows x64 release feed
-        run: |
-          mkdir -p github-release-assets
-          cp windows-update-feed/win32/x64/RELEASES github-release-assets/RELEASES
-
-      - name: Upload assets to release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
-        run: |
-          mapfile -t files < <(find release-assets -type f \( \
-            -name '*.exe' -o \
-            -name '*.dmg' -o \
-            -name '*.zip' -o \
-            -name '*.AppImage' -o \
-            -name '*.deb' -o \
-            -name '*.rpm' -o \
-            -name '*.msi' -o \
-            -name '*.nupkg' -o \
-            -name '*.yml' -o \
-            -name '*.json' -o \
-            -name '*.txt' \
-          \) | sort)
-          files+=("github-release-assets/RELEASES")
-
-          if [ "${#files[@]}" -eq 0 ]; then
-            echo "::error::No release assets found under release-assets/"
-            exit 1
-          fi
-
-          printf 'Uploading %s assets to %s\n' "${#files[@]}" "$RELEASE_TAG"
-          gh release upload "$RELEASE_TAG" "${files[@]}" --clobber
-
-      - name: Publish Windows static update feed
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
-        run: |
-          branch_dir="$(mktemp -d)"
-          git init "$branch_dir"
-          git -C "$branch_dir" remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-
-          if git -C "$branch_dir" fetch --depth=1 origin release-updates; then
-            git -C "$branch_dir" checkout -B release-updates FETCH_HEAD
-          else
-            git -C "$branch_dir" checkout --orphan release-updates
-          fi
-
-          find "$branch_dir" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
-          cp -R windows-update-feed/. "$branch_dir"/
-
-          git -C "$branch_dir" config user.name "github-actions[bot]"
-          git -C "$branch_dir" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git -C "$branch_dir" add -A
-
-          if git -C "$branch_dir" diff --cached --quiet; then
-            echo "Windows static update feed unchanged."
-            exit 0
-          fi
-
-          git -C "$branch_dir" commit -m "chore: update Windows update feed for ${RELEASE_TAG}"
-          git -C "$branch_dir" push origin HEAD:release-updates
-
-      - name: Update Linux package metadata from release checksums
-        env:
-          RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
-        run: |
-          version="${RELEASE_TAG#v}"
-          amd64_checksums="$(find release-assets -type f -name 'sha256sums-linux-amd64.txt' | head -n 1)"
-          aarch64_checksums="$(find release-assets -type f -name 'sha256sums-linux-aarch64.txt' | head -n 1)"
-
-          if [ -z "$amd64_checksums" ] || [ -z "$aarch64_checksums" ]; then
-            echo "::error::Missing Linux checksum files required to update package metadata"
-            exit 1
-          fi
-
-          node scripts/update-flake-release.mjs \
-            --version "$version" \
-            --amd64-checksums "$amd64_checksums" \
-            --arm64-checksums "$aarch64_checksums"
-
-          node scripts/update-arch-release.mjs \
-            --version "$version" \
-            --amd64-checksums "$amd64_checksums" \
-            --pkgbuild packaging/arch/PKGBUILD
-
-      - name: Remove downloaded release assets
-        run: rm -rf release-assets
-
-      - name: Create Linux package metadata pull request
-        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
-        with:
-          token: ${{ secrets.GH_TOKEN }}
-          base: main
-          branch: chore/update-linux-packaging-${{ steps.release_tag.outputs.tag }}
-          add-paths: |
-            flake.nix
-            packaging/arch/PKGBUILD
-          delete-branch: true
-          title: 'chore(linux): update package metadata to ${{ steps.release_tag.outputs.tag }}'
-          commit-message: 'chore(linux): update package metadata to ${{ steps.release_tag.outputs.tag }}'
-          body: |
-            Update `flake.nix` and the Arch Linux `PKGBUILD` to match `${{ steps.release_tag.outputs.tag }}` release assets.
-
-            The hashes come from the Linux checksum files generated during the release build.
+          node scripts/release/deliver-release-assets.mjs "$RELEASE_MODE" release-assets "$RELEASE_TAG"

@@ -10,13 +10,15 @@ const ReleaseSchema = z.object({
 });
 
 /** Generate the release story inside semantic-release from its exact source range. */
-export async function generateNotes(_pluginConfig, context) {
+export async function generateNotes(pluginConfig, context) {
   const parsed = ReleaseSchema.safeParse(context.nextRelease);
   if (!parsed.success) {
     throw new Error('Release notes require a semantic version and an exact release commit.');
   }
   const release = parsed.data;
-  const baseTag = context.lastRelease.gitTag || null;
+  const baseTag = Object.hasOwn(pluginConfig ?? {}, 'baseTag')
+    ? pluginConfig.baseTag
+    : context.lastRelease.gitTag || null;
   const commits = sourceCommits(context.cwd, baseTag, release.gitHead, release.version);
   const data = await collectReleaseData({
     repository: repositoryName(context.options.repositoryUrl),

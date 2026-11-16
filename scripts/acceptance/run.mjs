@@ -48,6 +48,7 @@ const suites = {
   release: {
     notes: '../release/github-release-notes.test.mjs',
     artifacts: '../release/validate-release-artifacts.mjs',
+    delivery: '../release/release-delivery.test.mjs',
   },
 };
 
@@ -57,6 +58,7 @@ const unitFiles = [
   '../build/trace-standalone-runtime.test.mjs',
   '../release/github-release-notes.test.mjs',
   '../release/validate-release-artifacts.test.mjs',
+  '../release/release-delivery.test.mjs',
   './installers/prepare-windows-update-feed.test.mjs',
   './installers/nsis-inventory.test.mjs',
   './installers/nsis-attempt-log.test.mjs',
