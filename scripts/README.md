@@ -99,6 +99,10 @@ installation; CI-only dependency setup skips lifecycle scripts in credentialed t
 Release artifact verification uses `pnpm run test:acceptance release artifacts --source <directory>`.
 Release publication recovery fixtures use `pnpm run test:acceptance release delivery`.
 
+Native installer logging uses `pnpm run test:acceptance installers nsis-feedback <makensis.exe>`.
+The [installer verification procedure](../docs/testing/delivery.md) describes its Windows compiler
+prerequisite, isolated output, assertions and limits. It does not install the application.
+
 The NSIS artifact inventory uses `pnpm run test:acceptance installers nsis-inventory <packaged-app>
 <installer.exe> <report.json>`. All paths must be under `out/`, and the report path must be new and
 outside the inspected application directory. It records installer size and SHA-256, payload file

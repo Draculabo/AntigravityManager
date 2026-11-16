@@ -92,6 +92,7 @@
           StrCpy $agmLogSize $9
           ${If} $agmLogSize < 60000
             ${GetTime} "" "LS" $2 $3 $4 $5 $6 $7 $9
+            IntFmt $6 "%02u" $6
             StrCpy $0 "time=$4-$3-$2T$6:$7:$9Z$\t$0$\r$\n"
             ${If} $agmLogSize == 0
               FileWriteUTF16LE /BOM $1 "$0"
@@ -128,7 +129,7 @@
       ${GetParent} "$agmLogPath" $0
       StrCpy $1 0
       ${DoWhile} $1 < 8
-        FindFirst $2 $3 "$0\installer-tmp????.log"
+        FindFirst $2 $3 "$0\installer-????-??-??-??????-*.log"
         StrCpy $4 0
         StrCpy $5 ""
         StrCpy $6 0
@@ -176,18 +177,23 @@
       CreateDirectory "$0"
 
       ${GetTime} "" "LS" $1 $2 $4 $5 $6 $7 $8
+      IntFmt $6 "%02u" $6
+      StrCpy $agmLogPath "$0\installer-$4-$2-$1-$6$7$8-"
       ClearErrors
       GetTempFileName $1 "$0"
       ${If} ${Errors}
         StrCpy $agmLogPath ""
         Return
       ${EndIf}
-      StrCpy $2 $1 -4
-      StrCpy $agmLogPath "$2.log"
+      ${GetFileName} "$1" $2
+      StrCpy $2 $2 -4
+      StrCpy $agmLogPath "$agmLogPath$2.log"
       ClearErrors
       Rename "$1" "$agmLogPath"
       ${If} ${Errors}
+        Delete "$1"
         StrCpy $agmLogPath ""
+        ClearErrors
         Return
       ${EndIf}
 

@@ -17,6 +17,7 @@ const suites = {
     'squirrel-upgrade': './installers/installed-squirrel-upgrade.mjs',
     'squirrel-updater': './installers/packaged-squirrel-updater-native.mjs',
     'nsis-updater': './installers/packaged-nsis-updater-native.mjs',
+    'nsis-feedback': './installers/nsis-feedback-native.mjs',
     'nsis-inventory': './installers/nsis-inventory.mjs',
     feed: './installers/prepare-windows-update-feed.test.mjs',
   },

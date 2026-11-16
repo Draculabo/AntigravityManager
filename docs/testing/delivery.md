@@ -110,6 +110,8 @@ restores its shortcuts and login settings. Run it only from a disposable Windows
 installer's automatic relaunch uses that account's default app profile, even when the previous
 process had a temporary profile argument. The check refuses an existing default NSIS installation
 or app profile.
+Uninstall completion requires the owned installation directory to disappear after the uninstaller
+launcher exits. The runner waits up to 90 seconds and treats incomplete cleanup as failure.
 After successful cleanup, the NSIS runner writes a JSON report in a fresh
 `out/nsis-acceptance-*` directory. It records separate silent fresh-install samples for the
 candidate and the previous version,
@@ -117,6 +119,17 @@ the time from selecting restart to the old process exiting and to observing its 
 the candidate's stage durations. The runner derives stage durations from whole-second diagnostic
 timestamps. A zero can mean the step finished within the same recorded second. The new process
 sample requires a responsive Windows main window and does not exercise a control in the renderer.
+
+Run `pnpm run test:acceptance installers nsis-feedback <makensis.exe>` on Windows to exercise
+the production logging functions without a full application payload. Supply an installed NSIS
+compiler with its standard includes and plugins. The check compiles a small executable and
+runs it with isolated `USERPROFILE` values under a fresh `out/nsis-feedback-*` directory. It
+checks native log naming, UTC timestamps, silent/update/failure records, preservation of the
+NSIS error flag, five-file retention, the size bound, and continuation when the log directory
+is unavailable. It also checks that an absent app is reported as not ready during restart.
+It preserves application and unrelated installer logs. The directory retains
+the generated fixture, logs and result; it does not change installation registrations, shortcuts
+or the current user's application profile. This check does not establish full installer or UI behavior.
 
 Run `pnpm run test:acceptance installers nsis-inventory <packaged-app> <installer.exe> <report.json>`
 to record the installer's size and SHA-256, the unpacked Forge file count and size by group, the

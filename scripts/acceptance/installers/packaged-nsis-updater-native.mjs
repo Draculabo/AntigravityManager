@@ -24,6 +24,7 @@ import YAML from 'yaml';
 import { loginSettings } from '../helpers/windows-login-settings.mjs';
 import { squirrelRegistration } from '../helpers/windows-squirrel-registration.mjs';
 import { listNsisAttemptLogs, readNsisAttempt } from './nsis-attempt-log.mjs';
+import { installedAppWindowReady, stopFixtureApps } from './nsis-app-processes.mjs';
 
 const preparationStages = ['check-environment', 'prepare-files', 'extract-files', 'verify-files'];
 const installationStages = [
@@ -58,7 +59,6 @@ if (incompleteInstaller) {
 const metadata = YAML.parse(await readFile(metadataFile, 'utf8'));
 assert.equal(metadata.files?.[0]?.url, path.basename(currentInstaller));
 const currentVersion = metadata.version;
-const diagnosticDirectory = path.join(os.homedir(), '.antigravity-agent');
 const defaultUserData = path.join(process.env.APPDATA, 'Antigravity Manager');
 assert(
   !existsSync(defaultUserData),
@@ -73,6 +73,7 @@ assert(
   `Existing NSIS installation must not be changed: ${defaultInstall}`,
 );
 const profile = path.join(directory, 'profile');
+const diagnosticDirectory = path.join(profile, '.antigravity-agent');
 const userData = path.join(profile, 'desktop-data');
 const marker = path.join(userData, 'retained-marker.txt');
 const loginBackup = path.join(directory, 'login-settings.json');
@@ -121,33 +122,9 @@ function runInstaller(file, args, expectedExit = 0) {
   return Math.round(performance.now() - start);
 }
 
-function fixtureProcesses(command, installRoot) {
-  const result = spawnSync('powershell.exe', ['-NoProfile', '-Command', command], {
-    env: { ...process.env, AGM_TEST_INSTALL_ROOT: installRoot },
-    windowsHide: true,
-    timeout: 15_000,
-    encoding: 'utf8',
-    maxBuffer: 4000,
-  });
-  assert.ifError(result.error);
-  assert.equal(result.status, 0);
-  return result.stdout.trim();
-}
-
-function installedAppWindowReady(installRoot) {
-  return (
-    fixtureProcesses(
-      '$exe=Join-Path $env:AGM_TEST_INSTALL_ROOT "antigravity-manager.exe"; Get-Process -Name antigravity-manager -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe -and $_.MainWindowHandle -ne 0 -and $_.Responding } | Select-Object -First 1 -ExpandProperty Id',
-      installRoot,
-    ).length > 0
-  );
-}
-
-function stopFixtureApps(installRoot) {
-  fixtureProcesses(
-    '$root=[IO.Path]::GetFullPath($env:AGM_TEST_INSTALL_ROOT); Get-CimInstance Win32_Process -Filter "Name = \'antigravity-manager.exe\'" | Where-Object { $_.ExecutablePath -and [IO.Path]::GetFullPath($_.ExecutablePath).StartsWith($root,[StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }',
-    installRoot,
-  );
+async function uninstallApplication(root) {
+  runInstaller(path.join(root, 'Uninstall antigravity-manager.exe'), ['/S']);
+  await until(() => !existsSync(root), 90_000);
 }
 
 let feedMode = 'error';
@@ -238,6 +215,7 @@ try {
   await writeFile(marker, 'NSIS update retains external profile data.');
 
   const logsBeforeFresh = await listNsisAttemptLogs(diagnosticDirectory);
+  console.log('Installing the candidate and checking its native diagnostic log.');
   report.candidateSilentInstallMs = runInstaller(currentInstaller, [
     '/S',
     `/D=${requestedInstall}`,
@@ -254,10 +232,11 @@ try {
     outcome: 'ok',
     stages: installationStages,
   });
-  runInstaller(path.join(installRoot, 'Uninstall antigravity-manager.exe'), ['/S']);
-  assert(!existsSync(path.join(installRoot, 'antigravity-manager.exe')));
+  console.log('Uninstalling the candidate and waiting for directory cleanup.');
+  await uninstallApplication(installRoot);
   installRoot = requestedInstall;
 
+  console.log('Installing the previous version for the update check.');
   report.previousSilentInstallMs = runInstaller(previousInstaller, [
     '/S',
     `/D=${requestedInstall}`,
@@ -273,6 +252,7 @@ try {
   assert.notEqual(JSON.parse(extractFile(asar, 'package.json').toString()).version, currentVersion);
 
   if (incompleteInstaller) {
+    console.log('Checking that an incomplete candidate preserves the previous version.');
     const installationDigests = async () => {
       const digests = [];
       for (const file of [executable, asar, uninstaller]) {
@@ -467,7 +447,7 @@ try {
   for (const root of installRoots) {
     const uninstaller = path.join(root, 'Uninstall antigravity-manager.exe');
     if (existsSync(uninstaller)) {
-      runInstaller(uninstaller, ['/S']);
+      await uninstallApplication(root);
     }
   }
   const savedSquirrelRegistration = await readFile(squirrelRegistryBackup, 'utf8');
