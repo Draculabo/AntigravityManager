@@ -400,7 +400,11 @@ describe('HTTP continuation after switching from Gemini to Claude', () => {
       ]);
       if (kind === 'stream') {
         expect(response.headers.get('content-type')).toContain('text/event-stream');
-        expect(body).toContain('Continued after the switch');
+        const events = body
+          .split('\n')
+          .filter((line) => line.startsWith('data: '))
+          .map((line) => JSON.parse(line.slice(6)));
+        expect(events).toEqual([geminiTextResponse('Continued after the switch')]);
       }
     },
   );

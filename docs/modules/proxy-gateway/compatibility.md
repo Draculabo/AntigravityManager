@@ -349,6 +349,10 @@ Local validation and account-admission exceptions retain their own HTTP
 status and the existing account-pool `Retry-After` behavior. Unclassified local
 exceptions remain HTTP 500.
 
+Native Gemini `streamGenerateContent` sends each generation response as a top-level Gemini
+object in the SSE data field. The gateway unwraps the internal upstream response envelope
+so clients can read candidates, usage, model version and response ID directly.
+
 ## Upstream transport failures
 
 Before response delivery, all four protocol boundaries preserve valid upstream

@@ -26,6 +26,7 @@ describe('decodeInternalSseData', () => {
 
     expect(result).toEqual({
       kind: 'response',
+      wrapped: true,
       response: {
         candidates: [{ content: { role: 'model', parts: [{ text: 'PONG' }] } }],
         usageMetadata: { promptTokenCount: 9, candidatesTokenCount: 2 },

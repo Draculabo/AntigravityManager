@@ -19,7 +19,7 @@ export interface InternalSseError {
 }
 
 export type InternalSseDecodeResult =
-  | { kind: 'response'; response: GeminiResponse }
+  | { kind: 'response'; response: GeminiResponse; wrapped?: true }
   | { kind: 'error'; error: InternalSseError }
   | { kind: 'ignored' }
   | { kind: 'invalid' };
@@ -246,10 +246,8 @@ export function decodeInternalGeminiPayload(parsed: unknown): InternalSseDecodeR
   // Unwrap only when the envelope is actually present and the payload isn't
   // already unwrapped, so both `v1internal` (wrapped) and
   // `generativelanguage` (bare) shapes survive this same helper.
-  const response =
-    isObjectLike(envelope) && !Array.isArray(envelope) && !('candidates' in payload)
-      ? (envelope as GeminiResponse)
-      : payload;
+  const wrapped = isObjectLike(envelope) && !Array.isArray(envelope) && !('candidates' in payload);
+  const response = wrapped ? (envelope as GeminiResponse) : payload;
   if (!isGeminiGenerationShape(response)) {
     return { kind: 'invalid' };
   }
@@ -265,6 +263,7 @@ export function decodeInternalGeminiPayload(parsed: unknown): InternalSseDecodeR
   return {
     kind: 'response',
     response,
+    ...(wrapped ? { wrapped: true } : {}),
   };
 }
 

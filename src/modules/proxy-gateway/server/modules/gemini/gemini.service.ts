@@ -832,8 +832,11 @@ export class GeminiService extends BaseProxyService {
         subscriber.complete();
         return true;
       };
-      const inspectData = (data: string): { valid: boolean; error?: string; cause?: Error } => {
+      const inspectData = (
+        data: string,
+      ): { valid: boolean; publicData?: string; error?: string; cause?: Error } => {
         let hasValidResponse = false;
+        let publicData: string | undefined;
         if (observesImageSuccess) {
           const observation = this.inspectImageSseData(data);
           sawImageData ||= observation.hasImageData;
@@ -853,6 +856,9 @@ export class GeminiService extends BaseProxyService {
           }
           if (decoded.kind === 'response') {
             const response = decoded.response;
+            if (decoded.wrapped) {
+              publicData = JSON.stringify(response);
+            }
             outputState.observe(response);
             lastUsageMetadata = response.usageMetadata ?? lastUsageMetadata;
             if (response.promptFeedback?.blockReason) {
@@ -879,7 +885,7 @@ export class GeminiService extends BaseProxyService {
         } catch {
           return { valid: false, error: 'Invalid upstream SSE event.' };
         }
-        return { valid: hasValidResponse };
+        return { valid: hasValidResponse, publicData };
       };
       // Do not expose a fragment until its complete data event has passed error inspection.
       const emitData = (data: string): void => {
@@ -902,7 +908,7 @@ export class GeminiService extends BaseProxyService {
         if (inspection.valid) {
           idleTimer.reset();
         }
-        emitData(data);
+        emitData(inspection.publicData ?? data);
         return true;
       };
       const idleTimer = this.createStreamIdleTimer(upstreamStream, 'Gemini-SSE', () => {
@@ -968,7 +974,7 @@ export class GeminiService extends BaseProxyService {
             if (inspection.valid) {
               idleTimer.reset();
             }
-            emitData(tail);
+            emitData(inspection.publicData ?? tail);
           }
         } catch (error) {
           fail(error instanceof Error ? error.message : 'Invalid upstream SSE event.');
