@@ -435,6 +435,8 @@ The same private endpoint hosts a separate [core application RPC router](../src/
 
 The Node CLI in [src/cli](../src/cli) builds independently and offers `service status`, `service start`, `service stop`, and `account login`. It uses Commander for command parsing and a typed, version-checked client over the local management endpoint. `service start` checks profile ownership before launching a detached child, rejects a desktop owner and waits for an already starting core to become ready; `service stop` waits for endpoint disappearance after the shutdown acknowledgment. `account login` starts the core if needed, uses the core's active/default OAuth client, prints a Google authorization URL for a browser on the same machine, and polls for a safe account summary. The Node core owns a temporary loopback callback listener and performs the token exchange and local SQLite account enrollment internally. Neither command sends account credentials or API keys through the management protocol or child arguments.
 
+IPC audit captures track RPC matching, input decoding, business execution and output encoding through the standard-handler interceptor. Capture draining waits for admitted business work to finish. Response transmission has its own transport lifetime, so a desktop disconnect cannot retain a completed business operation during Core shutdown.
+
 Detached Core launches retain the parent's uppercase and lowercase `HTTP_PROXY`, `HTTPS_PROXY`,
 `ALL_PROXY` and `NO_PROXY` variables through the existing environment allowlist. Values remain
 unchanged so each request client retains its routing precedence and bypass behavior. Official

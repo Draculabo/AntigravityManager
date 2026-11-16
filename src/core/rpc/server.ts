@@ -4,6 +4,7 @@ import {
   IPC_CAPTURE_CHUNK_REQUEST_BYTES,
   IPC_CAPTURE_HEADER,
   IpcCaptureCapabilitySchema,
+  type IpcCaptureCapability,
 } from '@/modules/proxy-gateway/audit/ipc-capture.schema';
 import type { FastifyInstance, RouteHandlerMethod } from 'fastify';
 import type { CoreStatus } from '@/core/core-service';
@@ -11,18 +12,27 @@ import { createCoreRpcRouter, type CoreRpcOperations } from './router';
 import { SERVICE_CONFIG_MAX_BYTES } from '@/modules/config/service-config.schema';
 import { OPEN_CODE_SYNC_MAX_BYTES } from '@/modules/proxy-gateway/opencode-sync/opencode-owner.schema';
 
+interface RpcTransportContext {
+  capture?: IpcCaptureCapability;
+}
+
 export function registerCoreRpcRoutes(
   server: FastifyInstance,
   getStatus: () => CoreStatus,
   isShuttingDown: () => boolean,
   operations: CoreRpcOperations,
 ): void {
-  const handler = new RPCHandler(createCoreRpcRouter(operations));
+  const handler = new RPCHandler<RpcTransportContext>(createCoreRpcRouter(operations), {
+    // Track admitted business work independently of a disconnected response's close event.
+    rootInterceptors: [
+      ({ context, next }) =>
+        context.capture ? operations.ipcCapture.run(context.capture, () => next()) : next(),
+    ],
+  });
   const dispatch: RouteHandlerMethod = async (request, reply) => {
     if (isShuttingDown() || getStatus().state !== 'running') {
       return reply.code(503).send({ error: 'Core application RPC is not ready' });
     }
-    const dispatchRpc = () => handler.handle(request, reply, { prefix: '/rpc' });
     const header = request.headers[IPC_CAPTURE_HEADER];
     let matched: boolean;
     if (header !== undefined) {
@@ -39,12 +49,15 @@ export function registerCoreRpcRoutes(
         return reply.code(400).send({ error: 'Invalid IPC capture' });
       }
       try {
-        ({ matched } = await operations.ipcCapture.run(capability.data, dispatchRpc));
+        ({ matched } = await handler.handle(request, reply, {
+          prefix: '/rpc',
+          context: { capture: capability.data },
+        }));
       } catch {
         return reply.code(503).send({ error: 'IPC capture is unavailable' });
       }
     } else {
-      ({ matched } = await dispatchRpc());
+      ({ matched } = await handler.handle(request, reply, { prefix: '/rpc', context: {} }));
     }
     if (matched) {
       return reply;
