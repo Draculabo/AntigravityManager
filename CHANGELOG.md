@@ -2,6 +2,54 @@
 
 # Changelog
 
+# 🚀 Antigravity Manager Release v0.32.1
+
+**Release Date:** 2026-11-16
+**Since v0.32.0:** 3 commits · 2 merged PRs · 1 verified contributor
+
+> This release includes updates in Tooling & Maintenance, Desktop & User Experience.
+
+---
+
+## ✨ Highlights
+
+- **Fix** — preserve context in NSIS dependency patch ([5bbb8fe](https://github.com/Draculabo/AntigravityManager/commit/5bbb8feb8ce3b36afd3b955203c71067fc255808))
+- **Fix** — align React runtime versions ([#427](https://github.com/Draculabo/AntigravityManager/pull/427))
+- **Maintenance** — update package metadata to v0.32.0 ([#425](https://github.com/Draculabo/AntigravityManager/pull/425))
+
+---
+
+## 🔧 Tooling & Maintenance
+
+- **Fix** — preserve context in NSIS dependency patch ([5bbb8fe](https://github.com/Draculabo/AntigravityManager/commit/5bbb8feb8ce3b36afd3b955203c71067fc255808))
+
+---
+
+## 🖥️ Desktop & User Experience
+
+- **Maintenance** — update package metadata to v0.32.0 ([#425](https://github.com/Draculabo/AntigravityManager/pull/425))
+- **Fix** — align React runtime versions ([#427](https://github.com/Draculabo/AntigravityManager/pull/427))
+
+---
+
+## 👥 Contributors
+
+Thanks to everyone who contributed to this release.
+
+@Draculabo
+
+<details>
+<summary>Merged pull requests and authors</summary>
+
+- chore(linux): update package metadata to v0.32.0 by @Draculabo ([#425](https://github.com/Draculabo/AntigravityManager/pull/425))
+- fix: align React runtime versions by @Draculabo ([#427](https://github.com/Draculabo/AntigravityManager/pull/427))
+
+</details>
+
+---
+
+**Full Changelog:** https://github.com/Draculabo/AntigravityManager/compare/v0.32.0...v0.32.1
+
 # 🚀 Antigravity Manager Release v0.32.0
 
 **Release Date:** 2026-11-15
