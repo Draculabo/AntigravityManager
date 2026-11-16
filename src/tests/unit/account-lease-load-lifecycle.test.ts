@@ -24,7 +24,7 @@ function fixture() {
   const accounts = [createAccount('load-a')];
   const store: AccountLeaseAccountStore = {
     getAccounts: vi.fn(async () => structuredClone(accounts)),
-    getAccount: vi.fn(),
+    getAccount: vi.fn(async (id) => structuredClone(accounts.find((account) => account.id === id))),
     async compareAndUpdateToken(id, _expected, token, guard) {
       await this.updateToken(id, token, guard);
       return true;
@@ -193,7 +193,7 @@ describe('account-cache load publication', () => {
   });
 
   it('does not let an obsolete conditional OAuth eviction cancel a current load', async () => {
-    const { store, lease } = fixture();
+    const { accounts, store, lease } = fixture();
     await lease.loadAccounts();
     const current = Promise.withResolvers<CloudAccount[]>();
     vi.mocked(store.getAccounts).mockReturnValueOnce(current.promise);
@@ -201,7 +201,8 @@ describe('account-cache load publication', () => {
     expect(
       lease.evictAccount('load-a', { email: 'load-a@example.com', refreshToken: 'obsolete' }),
     ).toBe(false);
-    current.resolve([createAccount('load-current')]);
+    accounts.splice(0, accounts.length, createAccount('load-current'));
+    current.resolve(structuredClone(accounts));
     expect(await pending).toBe(1);
     expect((await lease.getNextToken())?.id).toBe('load-current');
   });

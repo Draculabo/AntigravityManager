@@ -21,7 +21,10 @@ async function fixture() {
       await this.updateToken(id, token, guard);
       return true;
     },
-    updateToken: vi.fn(),
+    updateToken: vi.fn(async (_id, token, guard) => {
+      guard?.(structuredClone(account));
+      account.token = structuredClone(token);
+    }),
     updateQuota: vi.fn(),
     mutateHealth: vi.fn(),
   };
@@ -112,16 +115,19 @@ describe('project cache lifecycle through AccountLeaseService', () => {
       Promise.withResolvers<Awaited<ReturnType<AccountLeaseAccountStore['getAccount']>>>();
     const arrived = Promise.withResolvers<void>();
     vi.mocked(upstream.fetchProjectId).mockResolvedValue('obsolete-project');
-    vi.mocked(store.getAccount).mockImplementationOnce(() => {
-      arrived.resolve();
-      return read.promise;
-    });
+    vi.mocked(store.getAccount)
+      .mockResolvedValueOnce(structuredClone(account))
+      .mockImplementationOnce(() => {
+        arrived.resolve();
+        return read.promise;
+      });
     await select();
     await arrived.promise;
     service.evictAccount(account.id);
     account.token.refresh_token = 'replacement-synthetic-refresh';
-    await service.loadAccounts();
+    const reloading = service.loadAccounts();
     read.resolve(structuredClone(account));
+    await reloading;
     await service.onModuleDestroy();
     expect(store.updateToken).not.toHaveBeenCalled();
   });

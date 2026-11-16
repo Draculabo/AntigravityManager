@@ -314,14 +314,15 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
 
   async loadAccounts(): Promise<number> {
     try {
-      if (this.recoveryJournal) {
-        await recoverOAuthJournal(this.recoveryJournal, this.accountStore).catch((error) => {
-          this.logger.error('Failed to recover OAuth journal on account lease load', error);
-          throw error;
-        });
-      }
-      await this.hydrationPolicy.retryFailedPersistence();
-      const count = await this.tokenCache.loadAccounts();
+      const count = await this.tokenCache.loadAccounts(async () => {
+        if (this.recoveryJournal) {
+          await recoverOAuthJournal(this.recoveryJournal, this.accountStore).catch((error) => {
+            this.logger.error('Failed to recover OAuth journal on account lease load', error);
+            throw error;
+          });
+        }
+        await this.hydrationPolicy.retryFailedPersistence();
+      });
       this.restoreMemoryQuarantines();
       return count - this.excludeRecoveryBlockedAccounts();
     } finally {
@@ -332,11 +333,12 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
   async reloadAllAccountsOrThrow(): Promise<number> {
     let count: number;
     try {
-      if (this.recoveryJournal) {
-        await recoverOAuthJournal(this.recoveryJournal, this.accountStore);
-      }
-      await this.hydrationPolicy.retryFailedPersistence();
-      count = await this.tokenCache.loadAccountsOrThrow();
+      count = await this.tokenCache.loadAccountsOrThrow(async () => {
+        if (this.recoveryJournal) {
+          await recoverOAuthJournal(this.recoveryJournal, this.accountStore);
+        }
+        await this.hydrationPolicy.retryFailedPersistence();
+      });
       this.restoreMemoryQuarantines();
       count -= this.excludeRecoveryBlockedAccounts();
     } finally {

@@ -25,9 +25,13 @@ describe('AccountLeaseService adapters', () => {
 
     const accountStore: AccountLeaseAccountStore = {
       getAccounts: vi.fn().mockResolvedValue([account]),
-      getAccount: vi.fn().mockResolvedValue(account),
+      getAccount: vi.fn(async () => structuredClone(account)),
       updateToken: vi.fn().mockResolvedValue(undefined),
-      compareAndUpdateToken: vi.fn().mockResolvedValue(true),
+      compareAndUpdateToken: vi.fn(async (_id, _expected, token, guard) => {
+        guard?.(structuredClone(account));
+        account.token = structuredClone(token);
+        return true;
+      }),
       updateQuota: vi.fn().mockResolvedValue(undefined),
       mutateHealth: vi.fn(),
     };

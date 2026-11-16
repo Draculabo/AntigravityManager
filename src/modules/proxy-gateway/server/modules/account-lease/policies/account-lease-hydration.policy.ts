@@ -149,10 +149,32 @@ export class AccountLeaseHydrationPolicy {
       refresh_token: tokenToRefresh.refresh_token,
       oauth_client_key: tokenToRefresh.oauth_client_key,
     };
+    const { email, upstream_proxy_url, stored_context } = tokenToRefresh;
+    const lifecycleGeneration = stored_context?.account.lifecycle_generation;
+    const currentToken = () => {
+      const latest = tokenCache.get(accountId);
+      if (
+        !latest ||
+        latest.access_token !== expected.access_token ||
+        latest.refresh_token !== expected.refresh_token ||
+        latest.oauth_client_key !== expected.oauth_client_key ||
+        latest.email !== email ||
+        latest.upstream_proxy_url !== upstream_proxy_url ||
+        latest.stored_context?.account.lifecycle_generation !== lifecycleGeneration ||
+        latest.oauth_health?.refresh_blocked ||
+        latest.service_disabled
+      ) {
+        throw new AccountLeaseStaleTokenError(accountId);
+      }
+      if (control) {
+        this.assertCurrent(accountId, tokenToRefresh, executionCurrent);
+      }
+      return latest;
+    };
     const executionCurrent = () => {
       control?.signal.throwIfAborted();
       control?.assertCurrent();
-      return isCurrent();
+      return isCurrent() && tokenToRefresh.access_token === expected.access_token;
     };
     this.options.logger.log(`Access token near expiry for account ${accountId}; refreshing`);
     let persistenceStarted = false;
@@ -172,7 +194,7 @@ export class AccountLeaseHydrationPolicy {
         });
       }
       const refreshed = await this.options.upstream.refreshAccessToken(...args);
-      const latest = tokenCache.get(accountId);
+      currentToken();
       const nextToken = {
         ...tokenToRefresh,
         access_token: refreshed.access_token,
@@ -186,25 +208,9 @@ export class AccountLeaseHydrationPolicy {
           refreshed.oauth_client_key,
         ),
       };
-      if (
-        !latest ||
-        latest.access_token !== expected.access_token ||
-        latest.refresh_token !== expected.refresh_token ||
-        latest.oauth_client_key !== expected.oauth_client_key ||
-        latest.upstream_proxy_url !== tokenToRefresh.upstream_proxy_url ||
-        latest.email !== tokenToRefresh.email ||
-        latest.stored_context?.account.lifecycle_generation !==
-          tokenToRefresh.stored_context?.account.lifecycle_generation
-      ) {
-        if (control) {
-          throw new AccountLeaseStaleTokenError(accountId);
-        }
-        return;
-      }
-
       const recoveryName = await this.recordRefreshRecovery(accountId, nextToken, expected);
+      const latest = currentToken();
       if (control) {
-        this.assertCurrent(accountId, tokenToRefresh, executionCurrent);
         persistenceStarted = true;
         await this.enqueueTokenStatePersistence(
           accountId,
@@ -215,13 +221,6 @@ export class AccountLeaseHydrationPolicy {
           true,
         );
         this.assertCurrent(accountId, tokenToRefresh, executionCurrent);
-      }
-      if (
-        tokenCache.get(accountId) !== latest ||
-        latest.oauth_health?.refresh_blocked ||
-        latest.service_disabled
-      ) {
-        return;
       }
       Object.assign(latest, {
         access_token: nextToken.access_token,
@@ -252,10 +251,7 @@ export class AccountLeaseHydrationPolicy {
         error instanceof CloudAccountRefreshBlockedError ||
         (error instanceof OAuthTokenRefreshError && error.code === 'invalid_grant')
       ) {
-        if (
-          error instanceof CloudAccountRefreshBlockedError &&
-          tokenCache.get(accountId) === tokenToRefresh
-        ) {
+        if (error instanceof CloudAccountRefreshBlockedError && isCurrent()) {
           this.invalidateProject(accountId);
           tokenCache.delete(accountId);
         }
@@ -308,12 +304,14 @@ export class AccountLeaseHydrationPolicy {
 
   private captureRefreshContext(accountId: string, token: AccountLeaseTokenData): () => boolean {
     const { refresh_token, oauth_client_key, upstream_proxy_url, email } = token;
+    const lifecycle = token.stored_context?.account.lifecycle_generation;
     return () =>
       this.options.getTokenCache().get(accountId) === token &&
       token.refresh_token === refresh_token &&
       token.oauth_client_key === oauth_client_key &&
       token.upstream_proxy_url === upstream_proxy_url &&
-      token.email === email;
+      token.email === email &&
+      token.stored_context?.account.lifecycle_generation === lifecycle;
   }
 
   private assertCurrent(
@@ -321,7 +319,7 @@ export class AccountLeaseHydrationPolicy {
     token: AccountLeaseTokenData,
     isCurrent: () => boolean,
   ): void {
-    if (!isCurrent() || token.oauth_health?.refresh_blocked) {
+    if (!isCurrent() || token.oauth_health?.refresh_blocked || token.service_disabled) {
       throw new AccountLeaseStaleTokenError(accountId);
     }
   }

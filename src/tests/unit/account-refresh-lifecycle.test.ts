@@ -73,7 +73,17 @@ describe('refresh cache-entry lifecycle', () => {
     const { original, cache, store, upstream, policy } = fixture();
     const pending = Promise.withResolvers<TokenResponse>();
     vi.mocked(upstream.refreshAccessToken).mockReturnValue(pending.promise);
-    vi.mocked(store.getAccount).mockResolvedValue(createAccount(original.account_id));
+    const stored = createAccount(original.account_id);
+    stored.email = original.email;
+    stored.token = {
+      access_token: original.access_token,
+      refresh_token: original.refresh_token,
+      expiry_timestamp: original.expiry_timestamp,
+      expires_in: original.expires_in,
+      token_type: original.token_type,
+      project_id: original.project_id,
+    };
+    vi.mocked(store.getAccount).mockResolvedValue(stored);
     const first = policy.refreshSelectedTokenIfNeeded(original.account_id, original, 0);
     const second = policy.refreshSelectedTokenIfNeeded(original.account_id, original, 0);
     expect(upstream.refreshAccessToken).toHaveBeenCalledTimes(1);
@@ -264,7 +274,7 @@ describe('refresh cache-entry lifecycle', () => {
       arrived.resolve();
       return pending.promise;
     });
-    const service = new AccountLeaseService(store, upstream);
+    const service = new AccountLeaseService(store, upstream, undefined, undefined, undefined, null);
     drains.push(() => service.onModuleDestroy());
     await service.loadAccounts();
     const selected = service.getNextToken();

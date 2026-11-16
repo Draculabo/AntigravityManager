@@ -31,7 +31,10 @@ async function fixture(withoutProject = false) {
       await this.updateToken(id, token, guard);
       return true;
     },
-    updateToken: vi.fn(),
+    updateToken: vi.fn(async (_id, token, guard) => {
+      guard?.(structuredClone(account));
+      account.token = structuredClone(token);
+    }),
     updateQuota: vi.fn(),
     mutateHealth: vi.fn(),
   };

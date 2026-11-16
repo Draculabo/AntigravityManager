@@ -49,18 +49,26 @@ export class AccountLeaseTokenCache {
     tokens.set(account.id, replacement);
   }
 
-  async loadAccounts(): Promise<number> {
+  async loadAccounts(beforeRead?: () => Promise<void>): Promise<number> {
+    const prepareRead = this.prepareLoad();
+    if (beforeRead) {
+      await beforeRead();
+    }
     try {
-      return await this.replaceAccounts();
+      return await this.replaceAccounts(prepareRead());
     } catch (error) {
       this.options.logger.error('Failed to load cloud accounts into token cache', error);
       return 0;
     }
   }
 
-  async loadAccountsOrThrow(): Promise<number> {
+  async loadAccountsOrThrow(beforeRead?: () => Promise<void>): Promise<number> {
+    const prepareRead = this.prepareLoad();
     try {
-      return await this.replaceAccounts();
+      if (beforeRead) {
+        await beforeRead();
+      }
+      return await this.replaceAccounts(prepareRead());
     } catch (error) {
       this.options.logger.error('Failed to load cloud accounts into token cache', error);
       throw error;
@@ -111,7 +119,7 @@ export class AccountLeaseTokenCache {
     return (-(min + rand)).toString();
   }
 
-  private async replaceAccounts(): Promise<number> {
+  private prepareLoad(): () => () => void {
     const generation = (this.loadGeneration = Symbol());
     const tokenCache = this.options.getTokenCache();
     // Entry/scalar updates during the store read must not be overwritten by its older snapshot.
@@ -122,20 +130,39 @@ export class AccountLeaseTokenCache {
       state: { ...entry },
       storedAccount: entry.stored_context?.account,
     }));
+    const assertCurrent = () => {
+      if (
+        generation !== this.loadGeneration ||
+        tokenCache !== this.options.getTokenCache() ||
+        tokenCache.size !== before.length ||
+        before.some(
+          ({ id, entry, state }) => tokenCache.get(id) !== entry || !isEqual(entry, state),
+        )
+      ) {
+        throw new AccountLeaseLoadSupersededError();
+      }
+    };
+    return () => {
+      assertCurrent();
+      // Reconciliation may have advanced the persisted snapshot before the read starts.
+      for (const item of before) {
+        item.storedAccount = item.entry.stored_context?.account;
+      }
+      return () => {
+        assertCurrent();
+        if (
+          before.some(({ entry, storedAccount }) => entry.stored_context?.account !== storedAccount)
+        ) {
+          throw new AccountLeaseLoadSupersededError();
+        }
+      };
+    };
+  }
+
+  private async replaceAccounts(assertLoadCurrent: () => void): Promise<number> {
+    const tokenCache = this.options.getTokenCache();
     const accounts = await this.options.accountStore.getAccounts();
-    if (
-      generation !== this.loadGeneration ||
-      tokenCache !== this.options.getTokenCache() ||
-      tokenCache.size !== before.length ||
-      before.some(
-        ({ id, entry, state, storedAccount }) =>
-          tokenCache.get(id) !== entry ||
-          !isEqual(entry, state) ||
-          entry.stored_context?.account !== storedAccount,
-      )
-    ) {
-      throw new AccountLeaseLoadSupersededError();
-    }
+    assertLoadCurrent();
 
     const prepared = accounts.flatMap((account) => {
       if (account.health?.oauth?.refresh_blocked === true) {

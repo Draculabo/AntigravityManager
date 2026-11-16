@@ -182,7 +182,7 @@ describe('AccountLeaseHydrationPolicy', () => {
       expires_in: 3600,
       token_type: 'Bearer',
     });
-    await refresh;
+    await expect(refresh).rejects.toMatchObject({ name: 'AccountLeaseStaleTokenError' });
     await policy.drainBackgroundPersistence();
     expect(replacement.refresh_token).toBe('replacement-refresh');
     expect(persistTokenState).not.toHaveBeenCalled();

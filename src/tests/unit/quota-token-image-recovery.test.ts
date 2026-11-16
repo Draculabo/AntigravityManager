@@ -100,7 +100,7 @@ async function fixture({ expiredToken = true, expiredQuota = true, ids = ['a'] }
   };
   const scheduler = new ImageAccountSchedulerService();
   const tracker = new RateLimitTrackerService();
-  const lease = new AccountLeaseService(store, upstream, tracker, undefined, scheduler);
+  const lease = new AccountLeaseService(store, upstream, tracker, undefined, scheduler, null);
   services.push(lease);
   await lease.loadAccounts();
   return { lease, store, upstream, accounts, scheduler, tracker };

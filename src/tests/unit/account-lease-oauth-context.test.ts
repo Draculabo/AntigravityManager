@@ -19,7 +19,7 @@ async function fixture() {
   account.proxy_url = 'http://127.0.0.1:8046';
   const store: AccountLeaseAccountStore = {
     getAccounts: vi.fn(async () => [structuredClone(account)]),
-    getAccount: vi.fn(),
+    getAccount: vi.fn(async (id) => (id === account.id ? structuredClone(account) : undefined)),
     async compareAndUpdateToken(id, _expected, token, guard) {
       await this.updateToken(id, token, guard);
       return true;
