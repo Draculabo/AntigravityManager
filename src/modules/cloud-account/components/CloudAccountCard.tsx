@@ -1272,25 +1272,29 @@ export function CompactCloudAccountCard({
           </div>
         ) : (
           <>
-          <AccountQuotaWindowSections
-            restrictionGroups={
-              isMinimalMode ? restrictionGroups.filter(isGeminiQuotaGroup) : restrictionGroups
-            }
-            quotaWindow={quotaWindow}
-            weeklyItems={
-              isMinimalMode
-                ? weeklyQuotaItems.filter(
-                    (item) => isGeminiWeeklyQuotaItem(item) || isClaudeOrGptWeeklyQuotaItem(item),
-                  )
-                : weeklyQuotaItems
-            }
-            fiveHourHidden={isMinimalMode ? false : fiveHourHidden}
-            weeklyHidden={isMinimalMode ? false : weeklyHidden}
-            hasQuotaSummary={account.quota?.quota_groups !== undefined}
-            variant="compact"
-            fiveHourContent={<CompactModelQuotaDisplay items={compactQuotaItems} />}
-          />
-          <CurrentCycleUsage accountId={account.id} groups={account.quota?.quota_groups} compact />
+            <AccountQuotaWindowSections
+              restrictionGroups={
+                isMinimalMode ? restrictionGroups.filter(isGeminiQuotaGroup) : restrictionGroups
+              }
+              quotaWindow={quotaWindow}
+              weeklyItems={
+                isMinimalMode
+                  ? weeklyQuotaItems.filter(
+                      (item) => isGeminiWeeklyQuotaItem(item) || isClaudeOrGptWeeklyQuotaItem(item),
+                    )
+                  : weeklyQuotaItems
+              }
+              fiveHourHidden={isMinimalMode ? false : fiveHourHidden}
+              weeklyHidden={isMinimalMode ? false : weeklyHidden}
+              hasQuotaSummary={account.quota?.quota_groups !== undefined}
+              variant="compact"
+              fiveHourContent={<CompactModelQuotaDisplay items={compactQuotaItems} />}
+            />
+            <CurrentCycleUsage
+              accountId={account.id}
+              groups={account.quota?.quota_groups}
+              compact
+            />
           </>
         )}
       </div>

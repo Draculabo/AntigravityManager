@@ -72,6 +72,10 @@ async function fixture({ expiredToken = true, expiredQuota = true, ids = ['a'] }
     getAccounts: vi.fn(async () => structuredClone(accounts)),
     getAccount: vi.fn(async (id) => structuredClone(accounts.find((a) => a.id === id))),
     assertCurrentAccount: (id, guard) => guard(structuredClone(accounts.find((a) => a.id === id))),
+    async compareAndUpdateToken(id, _expected, token, guard) {
+      await this.updateToken(id, token, guard);
+      return true;
+    },
     updateToken: vi.fn(async (id, token, guard) => {
       const account = accounts.find((a) => a.id === id);
       guard?.(structuredClone(account));

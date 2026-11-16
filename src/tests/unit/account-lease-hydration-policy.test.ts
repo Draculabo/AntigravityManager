@@ -149,6 +149,7 @@ describe('AccountLeaseHydrationPolicy', () => {
       'acc-1',
       expect.objectContaining({ refresh_token: 'rotated-refresh' }),
       expect.objectContaining({ refresh_token: 'refresh-token' }),
+      expect.any(Function),
     );
   });
 

@@ -139,6 +139,7 @@ describe('cloud account read adapter', () => {
           shutdown: async () => {},
           onShutdownError: vi.fn(),
           rpc: createCoreRpcOperations({
+            ...mockCoreGatewayLifecycle(),
             startGateway: vi.fn(async (port: number) => ({
               success: true as const,
               port,
@@ -213,6 +214,7 @@ describe('cloud account read adapter', () => {
       shutdown: async () => {},
       onShutdownError: vi.fn(),
       rpc: createCoreRpcOperations({
+        ...mockCoreGatewayLifecycle(),
         startGateway: vi.fn(async (port: number) => ({
           success: true as const,
           port,

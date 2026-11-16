@@ -356,7 +356,10 @@ export class GeminiService extends BaseProxyService {
           throw err;
         }
         this.rethrowTerminalGenerationFailure(err, retryState);
-        if (!this.retryPolicy.isFatalCircuitBreakError(err) && this.admitProjectDowngrade(retryState, err, token.token.project_id, signal)) {
+        if (
+          !this.retryPolicy.isFatalCircuitBreakError(err) &&
+          this.admitProjectDowngrade(retryState, err, token.token.project_id, signal)
+        ) {
           this.logger.warn('Gemini project context rejected. Retrying once without project.');
           try {
             markProxyNormalizationStarted();
@@ -641,7 +644,10 @@ export class GeminiService extends BaseProxyService {
           throw err;
         }
         this.rethrowTerminalGenerationFailure(err, retryState);
-        if (!this.retryPolicy.isFatalCircuitBreakError(err) && this.admitProjectDowngrade(retryState, err, token.token.project_id, signal)) {
+        if (
+          !this.retryPolicy.isFatalCircuitBreakError(err) &&
+          this.admitProjectDowngrade(retryState, err, token.token.project_id, signal)
+        ) {
           this.logger.warn(
             'Gemini stream project context rejected. Retrying once without project.',
           );

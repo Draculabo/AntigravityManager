@@ -22,6 +22,19 @@ function createPersistence(initial: ProxyModelAvailability[] = []): {
 }
 
 describe('ModelAvailabilityService', () => {
+  it('reopens an image model only when a refreshed quota snapshot advertises it', () => {
+    const store = new ModelAvailabilityService();
+    const model = 'gemini-3.1-flash-image';
+    store.mark('acc-1', model, 'model_forbidden');
+    store.mark('acc-2', model, 'model_forbidden');
+
+    store.clearCapabilityFailures('acc-1', ['gemini-3.8-flash-high']);
+    expect(store.isCapabilityBlocked('acc-1', model)).toBe(true);
+
+    store.clearCapabilityFailures('acc-1', [model]);
+    expect(store.isCapabilityBlocked('acc-1', model)).toBe(false);
+    expect(store.isCapabilityBlocked('acc-2', model)).toBe(true);
+  });
   it('removes only the deleted account from a cold durable snapshot', () => {
     const durable = createPersistence();
     const original = new ModelAvailabilityService(durable.persistence);

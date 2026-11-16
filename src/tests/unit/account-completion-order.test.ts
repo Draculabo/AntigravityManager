@@ -35,6 +35,10 @@ async function fixture() {
     getAccounts: vi.fn(async () => [structuredClone(account)]),
     getAccount: vi.fn(async () => structuredClone(account)),
     assertCurrentAccount: (_id, guard) => guard(structuredClone(account)),
+    async compareAndUpdateToken(id, _expected, token, guard) {
+      await this.updateToken(id, token, guard);
+      return true;
+    },
     updateToken: vi.fn(),
     updateQuota: vi.fn(async (_id, quota, guard) => {
       guard?.(structuredClone(account));

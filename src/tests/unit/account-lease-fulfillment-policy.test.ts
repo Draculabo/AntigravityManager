@@ -146,21 +146,18 @@ describe('AccountLeaseFulfillmentPolicy', () => {
   });
 
   it.each(['missing', 'ineligible'] as const)(
-    'does not bind a session or issue a lease when the account is %s',
+    'does not issue a lease when the account is %s',
     async (state) => {
       const accountStore = createAccountStore();
       if (state === 'missing') {
         vi.mocked(accountStore.getAccount).mockResolvedValue(undefined);
       }
-      const bindSession = vi.fn();
       const policy = new AccountLeaseFulfillmentPolicy({
         accountStore,
         isStillEligible: () => state !== 'ineligible',
         hydrationPolicy: {
           hydrateSelectedToken: vi.fn().mockResolvedValue('project'),
         } as unknown as AccountLeaseHydrationPolicy,
-        bindSession,
-        stickySessionTtlMs: 600_000,
         resolveFallbackProjectId: () => 'fallback',
         logger: { error: vi.fn() },
       });
@@ -169,10 +166,8 @@ describe('AccountLeaseFulfillmentPolicy', () => {
           accountId: 'acc-1',
           tokenData: createToken(),
           nowSeconds: 100,
-          sessionKey: 'session',
         }),
       ).resolves.toBeNull();
-      expect(bindSession).not.toHaveBeenCalled();
     },
   );
 });

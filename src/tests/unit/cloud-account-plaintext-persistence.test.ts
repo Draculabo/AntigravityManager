@@ -906,7 +906,7 @@ describe('plaintext cloud-account persistence', () => {
     );
     await expect(service.onModuleDestroy()).rejects.toThrow('storage unavailable');
     fail = false;
-    await service.reloadAllAccounts();
+    await service.reloadAllAccountsOrThrow();
     expect((await service.getNextToken({ targetAccountId: first.id }))?.token.refresh_token).toBe(
       'rotated-refresh',
     );

@@ -525,7 +525,10 @@ export class OpenAIService extends BaseProxyService {
           throw err;
         }
         this.rethrowTerminalGenerationFailure(err, retryState);
-        if (!this.retryPolicy.isFatalCircuitBreakError(err) && this.admitProjectDowngrade(retryState, err, token.token.project_id, signal)) {
+        if (
+          !this.retryPolicy.isFatalCircuitBreakError(err) &&
+          this.admitProjectDowngrade(retryState, err, token.token.project_id, signal)
+        ) {
           this.logger.warn(
             'OpenAI compatibility project context rejected. Retrying once without project.',
           );

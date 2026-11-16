@@ -401,7 +401,10 @@ export class AnthropicService extends BaseProxyService {
           throw error;
         }
         lastError = error;
-        if (!this.retryPolicy.isFatalCircuitBreakError(error) && this.admitProjectDowngrade(retryState, error, token.token.project_id, signal)) {
+        if (
+          !this.retryPolicy.isFatalCircuitBreakError(error) &&
+          this.admitProjectDowngrade(retryState, error, token.token.project_id, signal)
+        ) {
           this.logger.warn('Anthropic project context rejected. Retrying once without project.');
           try {
             const execution = await this.executeAnthropicAccountRequest({

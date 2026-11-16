@@ -171,6 +171,9 @@ test('the release CLI binds all six manifests to the checkout and the exact tag 
   const staleCheckout = run();
   assert.equal(staleCheckout.status, 1, staleCheckout.stderr);
   assert.match(staleCheckout.stderr, /Build source .* does not match checked-out commit/);
+  const verifiedFromToolsCheckout = run('--source-sha', releaseSha, '--version', '0.25.2');
+  assert.equal(verifiedFromToolsCheckout.status, 0, verifiedFromToolsCheckout.stderr);
+  assert.equal(run('--source-sha', releaseSha, '--version', '0.25.3').status, 1);
 
   await writeManifests(nextSha, '0.25.2');
   const wrongTagCommit = run('--release-tag', 'v0.25.2');

@@ -1,5 +1,8 @@
 import { mergeQuotaWindows } from '../utils/quota-windows';
-import { CloudAccountRepo, type CloudAccountWriteGuard } from '@/modules/cloud-account/persistence/cloudHandler';
+import {
+  CloudAccountRepo,
+  type CloudAccountWriteGuard,
+} from '@/modules/cloud-account/persistence/cloudHandler';
 import { assertAccountOAuthRecoveryReady } from '@/modules/cloud-account/persistence/oauth-recovery-service';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { classifyAccountStatusFromError } from '@/modules/cloud-account/utils/account-status';
@@ -25,7 +28,10 @@ import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shar
 import { AppError } from '@/shared/errors/appError';
 import { logger } from '@/shared/logging/logger';
 import { CloudAccountRefreshWriteback } from './cloud-account-refresh-writeback';
-import { captureRefreshContext, CloudAccountRefreshContextChangedError } from './cloud-account-refresh-context';
+import {
+  captureRefreshContext,
+  CloudAccountRefreshContextChangedError,
+} from './cloud-account-refresh-context';
 import { CloudAccountQuotaObservation } from './cloud-account-quota-observation';
 
 /** Desktop effects are owned by the caller; the core and post-import path omit them. */
@@ -117,7 +123,9 @@ async function refreshAccountQuotaCoreOwned(
       throw new Error(`Account not found: ${accountId}`);
     }
     if (account.health?.service_disabled) {
-      logger.warn(`Skipping quota refresh for ${account.email}: account is marked service_disabled`);
+      logger.warn(
+        `Skipping quota refresh for ${account.email}: account is marked service_disabled`,
+      );
       return account;
     }
     const writeback = new CloudAccountRefreshWriteback(account, observation);
@@ -194,7 +202,7 @@ async function refreshAccountQuotaCoreOwned(
       await clearAccountStatus(account, writeback.guard);
       await clearValidationHealthAfterSuccessfulProbe(account, writeback.guard);
       await writeback.assertCurrent();
-      proxyModelAvailabilityStore.clearCapabilityFailures(account.id);
+      proxyModelAvailabilityStore.clearCapabilityFailures(account.id, Object.keys(quota.models));
 
       hooks.onPrimarySuccess?.(account);
       return account;
@@ -249,7 +257,10 @@ async function refreshAccountQuotaCoreOwned(
           await clearAccountStatus(account, writeback.guard);
           await clearValidationHealthAfterSuccessfulProbe(account, writeback.guard);
           await writeback.assertCurrent();
-          proxyModelAvailabilityStore.clearCapabilityFailures(account.id);
+          proxyModelAvailabilityStore.clearCapabilityFailures(
+            account.id,
+            Object.keys(quota.models),
+          );
 
           hooks.onRetrySuccess?.(account);
           return account;

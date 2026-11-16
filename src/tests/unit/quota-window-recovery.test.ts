@@ -71,6 +71,10 @@ async function fixture(accounts: CloudAccount[] = [{ ...createAccount('a'), quot
         current.quota = next;
       }
     }),
+    async compareAndUpdateToken(id, _expected, token, guard) {
+      await this.updateToken(id, token, guard);
+      return true;
+    },
     updateToken: vi.fn(),
     mutateHealth: vi.fn(),
   };

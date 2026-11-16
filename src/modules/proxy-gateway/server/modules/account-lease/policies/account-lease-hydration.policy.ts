@@ -179,8 +179,8 @@ export class AccountLeaseHydrationPolicy {
         refresh_token: refreshed.refresh_token ?? tokenToRefresh.refresh_token,
         id_token: refreshed.id_token ?? tokenToRefresh.id_token,
         expires_in: refreshed.expires_in,
-        expiry_timestamp: (control ? Math.floor(Date.now() / 1000) : nowSeconds) +
-          refreshed.expires_in,
+        expiry_timestamp:
+          (control ? Math.floor(Date.now() / 1000) : nowSeconds) + refreshed.expires_in,
         oauth_client_key: this.normalizeRefreshedOauthClientKey(
           tokenToRefresh,
           refreshed.oauth_client_key,
@@ -206,10 +206,21 @@ export class AccountLeaseHydrationPolicy {
       if (control) {
         this.assertCurrent(accountId, tokenToRefresh, executionCurrent);
         persistenceStarted = true;
-        await this.enqueueTokenStatePersistence(accountId, nextToken, executionCurrent, expected, recoveryName, true);
+        await this.enqueueTokenStatePersistence(
+          accountId,
+          nextToken,
+          executionCurrent,
+          expected,
+          recoveryName,
+          true,
+        );
         this.assertCurrent(accountId, tokenToRefresh, executionCurrent);
       }
-      if (tokenCache.get(accountId) !== latest || latest.oauth_health?.refresh_blocked || latest.service_disabled) {
+      if (
+        tokenCache.get(accountId) !== latest ||
+        latest.oauth_health?.refresh_blocked ||
+        latest.service_disabled
+      ) {
         return;
       }
       Object.assign(latest, {
@@ -241,7 +252,10 @@ export class AccountLeaseHydrationPolicy {
         error instanceof CloudAccountRefreshBlockedError ||
         (error instanceof OAuthTokenRefreshError && error.code === 'invalid_grant')
       ) {
-        if (error instanceof CloudAccountRefreshBlockedError && tokenCache.get(accountId) === tokenToRefresh) {
+        if (
+          error instanceof CloudAccountRefreshBlockedError &&
+          tokenCache.get(accountId) === tokenToRefresh
+        ) {
           this.invalidateProject(accountId);
           tokenCache.delete(accountId);
         }
@@ -257,7 +271,11 @@ export class AccountLeaseHydrationPolicy {
     expected: TokenIdentity,
   ): Promise<string | undefined> {
     const journal = this.options.recoveryJournal;
-    if (!journal || (token.access_token === expected.access_token && token.refresh_token === expected.refresh_token)) {
+    if (
+      !journal ||
+      (token.access_token === expected.access_token &&
+        token.refresh_token === expected.refresh_token)
+    ) {
       return undefined;
     }
     try {
@@ -280,7 +298,10 @@ export class AccountLeaseHydrationPolicy {
         },
       });
     } catch (error) {
-      this.options.logger.error(`Failed to write OAuth recovery record for account ${accountId}`, error);
+      this.options.logger.error(
+        `Failed to write OAuth recovery record for account ${accountId}`,
+        error,
+      );
       return undefined;
     }
   }
@@ -332,12 +353,11 @@ export class AccountLeaseHydrationPolicy {
         account.token.refresh_token !== expected.refresh_token ||
         normalizeClientKey(account.token.oauth_client_key) !==
           normalizeClientKey(expected.oauth_client_key) ||
-        (storedContext && (
-          storedContext.lifecycle_generation !== account.lifecycle_generation ||
-          storedContext.created_at !== account.created_at ||
-          storedContext.email !== account.email ||
-          storedContext.proxy_url !== account.proxy_url
-        ))
+        (storedContext &&
+          (storedContext.lifecycle_generation !== account.lifecycle_generation ||
+            storedContext.created_at !== account.created_at ||
+            storedContext.email !== account.email ||
+            storedContext.proxy_url !== account.proxy_url))
       ) {
         return false;
       }
@@ -355,11 +375,14 @@ export class AccountLeaseHydrationPolicy {
         id_token: tokenData.id_token ?? account.token.id_token,
         expires_in: tokenData.expires_in,
         expiry_timestamp: tokenData.expiry_timestamp,
-        project_id: attempt > 0 && account.token.project_id !== initialProjectId
-          ? account.token.project_id
-          : (tokenData.project_id ?? account.token.project_id),
-        oauth_client_key: tokenData.oauth_client_key ??
-          normalizeClientKey(account.token.oauth_client_key) ?? account.token.oauth_client_key,
+        project_id:
+          attempt > 0 && account.token.project_id !== initialProjectId
+            ? account.token.project_id
+            : (tokenData.project_id ?? account.token.project_id),
+        oauth_client_key:
+          tokenData.oauth_client_key ??
+          normalizeClientKey(account.token.oauth_client_key) ??
+          account.token.oauth_client_key,
         session_id: tokenData.session_id ?? account.token.session_id,
         upstream_proxy_url: tokenData.upstream_proxy_url ?? account.token.upstream_proxy_url,
       };
@@ -373,7 +396,10 @@ export class AccountLeaseHydrationPolicy {
         if (tokenData.stored_context) {
           const current = await this.options.accountStore.getAccount(accountId);
           captureLeaseWriteGuard(
-            { ...tokenData, stored_context: leaseStoredContext({ ...account, token: updatedToken }) },
+            {
+              ...tokenData,
+              stored_context: leaseStoredContext({ ...account, token: updatedToken }),
+            },
             isCurrent ?? (() => true),
           )(current);
           if (!current) {
@@ -384,7 +410,9 @@ export class AccountLeaseHydrationPolicy {
         return true;
       }
     }
-    throw new Error(`Token state was not persisted for ${accountId}: account changed during update`);
+    throw new Error(
+      `Token state was not persisted for ${accountId}: account changed during update`,
+    );
   }
 
   normalizeRefreshedOauthClientKey(
@@ -446,8 +474,15 @@ export class AccountLeaseHydrationPolicy {
     const write = previous
       .then(() => new Promise<void>((resolve) => setImmediate(resolve)))
       .then(async () => {
-        const saved = (!isCurrent || isCurrent()) &&
-          await this.saveTokenState(accountId, snapshot, expectedSnapshot, recoveryName, isCurrent);
+        const saved =
+          (!isCurrent || isCurrent()) &&
+          (await this.saveTokenState(
+            accountId,
+            snapshot,
+            expectedSnapshot,
+            recoveryName,
+            isCurrent,
+          ));
         if (!saved && strict) {
           throw new AccountLeaseStaleTokenError(accountId);
         }
@@ -455,10 +490,12 @@ export class AccountLeaseHydrationPolicy {
     const task = write.catch((error: unknown) => {
       if (!strict && (!isCurrent || isCurrent())) {
         const earlier = this.failedPersistence.get(accountId);
-        const chained = earlier &&
+        const chained =
+          earlier &&
           earlier.token.access_token === expectedSnapshot.access_token &&
           earlier.token.refresh_token === expectedSnapshot.refresh_token &&
-          normalizeClientKey(earlier.token.oauth_client_key) === normalizeClientKey(expectedSnapshot.oauth_client_key);
+          normalizeClientKey(earlier.token.oauth_client_key) ===
+            normalizeClientKey(expectedSnapshot.oauth_client_key);
         this.failedPersistence.set(accountId, {
           token: snapshot,
           expected: chained ? earlier.expected : expectedSnapshot,

@@ -14,7 +14,6 @@ import { detectAgyCliExecutablePath } from '@/modules/antigravity-runtime/binary
 import * as electronMock from 'electron';
 import * as healthService from '@/modules/cloud-account/services/CloudAccountHealthService';
 import { CloudAccountHealthSchema, type CloudAccount } from '@/modules/cloud-account/types';
-import type { CloudAccount } from '@/modules/cloud-account/types';
 
 function seedStoredRefreshAccounts(accounts: CloudAccount[]): void {
   vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue(accounts);
@@ -22,6 +21,17 @@ function seedStoredRefreshAccounts(accounts: CloudAccount[]): void {
     const account = accounts.find((candidate) => candidate.id === id);
     return account ? structuredClone(account) : undefined;
   });
+  vi.mocked(CloudAccountRepo.compareAndUpdateToken).mockImplementation(
+    async (id, _expected, token, guard) => {
+      const account = accounts.find((candidate) => candidate.id === id);
+      guard?.(account ? structuredClone(account) : undefined);
+      if (!account) {
+        return false;
+      }
+      account.token = structuredClone(token);
+      return true;
+    },
+  );
 }
 
 // Mock dependencies
@@ -50,6 +60,7 @@ describe('CloudMonitorService', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    vi.mocked(GoogleAPIService.fetchAICredits).mockReset();
     vi.mocked(CloudAccountRepo.getAccount).mockReset();
     vi.mocked(CloudAccountRepo.getAccount).mockImplementation(async (id) => {
       const latest: CloudAccount[] | undefined = await vi
@@ -126,10 +137,11 @@ describe('CloudMonitorService', () => {
       quota: { models: {} },
     };
     const weeklyQuota = {
-      models: {},
+      models: { 'claude-sonnet-4-6': { percentage: 100, resetTime: '2026-09-01T00:00:00Z' } },
       quota_groups: [
         {
           display_name: 'Claude Models',
+          model_ids: ['claude-sonnet-4-6'],
           buckets: [
             {
               bucket_id: 'claude-weekly',
@@ -158,9 +170,11 @@ describe('CloudMonitorService', () => {
     await vi.advanceTimersByTimeAsync(1000);
     await pollPromise;
 
+    await CloudMonitorService.drainWeeklyWarmups();
     expect(warmup).toHaveBeenCalledExactlyOnceWith({
       accessToken: 'weekly-token',
       model: 'claude-sonnet-4-6',
+      availableModels: ['claude-sonnet-4-6'],
       projectId: 'weekly-project',
       upstreamProxyUrl: undefined,
       signal: expect.any(AbortSignal),
@@ -295,7 +309,10 @@ describe('CloudMonitorService', () => {
     const poll = CloudMonitorService.poll();
     await vi.advanceTimersByTimeAsync(4000);
     await poll;
-    expect(evict).toHaveBeenCalledWith(account.id);
+    expect(evict).toHaveBeenCalledWith(
+      account.id,
+      expect.objectContaining({ email: account.email }),
+    );
     expect(stored.health?.service_disabled?.reason).toBe('TOS_VIOLATION');
     expect(await lease.getNextToken({ targetAccountId: account.id })).toBeNull();
   });
@@ -496,6 +513,7 @@ describe('CloudMonitorService', () => {
         id_token: 'new_id_token',
       }),
       expect.any(Function),
+      true,
     );
     expect(GoogleAPIService.fetchQuota).toHaveBeenCalledWith('new_token', undefined);
   });
@@ -549,6 +567,7 @@ describe('CloudMonitorService', () => {
         access_token: 'refreshed_access_token',
       }),
       expect.any(Function),
+      true,
     );
     expect(GoogleAPIService.fetchQuota).toHaveBeenNthCalledWith(1, 'stale_token', undefined);
     expect(GoogleAPIService.fetchQuota).toHaveBeenNthCalledWith(
@@ -609,6 +628,7 @@ describe('CloudMonitorService', () => {
       expect.objectContaining({ access_token: 'stale_token' }),
       expect.objectContaining({ access_token: 'refreshed_access_token' }),
       expect.any(Function),
+      true,
     );
     expect(GoogleAPIService.fetchAICredits).toHaveBeenNthCalledWith(1, 'stale_token', undefined);
     expect(GoogleAPIService.fetchAICredits).toHaveBeenNthCalledWith(
@@ -946,7 +966,12 @@ describe('AccountLeaseService project-id hydration', () => {
 
     vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([account] as never);
     vi.mocked(CloudAccountRepo.getAccount).mockResolvedValue(account as never);
-    vi.mocked(CloudAccountRepo.compareAndUpdateToken).mockResolvedValue(true);
+    vi.mocked(CloudAccountRepo.compareAndUpdateToken).mockImplementation(
+      async (_id, _expected, token) => {
+        account.token = { ...account.token, ...token };
+        return true;
+      },
+    );
     vi.mocked(GoogleAPIService.fetchProjectId).mockResolvedValue('resolved-project' as never);
 
     const service = new AccountLeaseService();
@@ -961,6 +986,7 @@ describe('AccountLeaseService project-id hydration', () => {
         project_id: 'resolved-project',
       }),
       expect.any(Function),
+      true,
     );
     expect(selectedToken?.token.project_id).toBe('resolved-project');
   });
@@ -1039,7 +1065,12 @@ describe('AccountLeaseService project-id hydration', () => {
 
     vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([account] as never);
     vi.mocked(CloudAccountRepo.getAccount).mockResolvedValue(account as never);
-    vi.mocked(CloudAccountRepo.compareAndUpdateToken).mockResolvedValue(true);
+    vi.mocked(CloudAccountRepo.compareAndUpdateToken).mockImplementation(
+      async (_id, _expected, token) => {
+        account.token = { ...account.token, ...token };
+        return true;
+      },
+    );
     vi.mocked(GoogleAPIService.fetchProjectId).mockResolvedValue('resolved-project-4' as never);
 
     const service = new AccountLeaseService();
@@ -1054,6 +1085,7 @@ describe('AccountLeaseService project-id hydration', () => {
         project_id: 'resolved-project-4',
       }),
       expect.any(Function),
+      true,
     );
     expect(selectedToken?.token.project_id).toBe('resolved-project-4');
   });

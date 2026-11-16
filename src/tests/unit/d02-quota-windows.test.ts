@@ -58,6 +58,10 @@ function fixture(previous: CloudQuotaData, next: CloudQuotaData) {
     accountStore: {
       getAccounts: vi.fn(),
       getAccount: vi.fn(),
+      async compareAndUpdateToken(id, _expected, token, guard) {
+        await this.updateToken(id, token, guard);
+        return true;
+      },
       updateToken: vi.fn(),
       updateQuota,
       mutateHealth: vi.fn(),

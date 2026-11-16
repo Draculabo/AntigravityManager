@@ -27,12 +27,13 @@ vi.mock('@/modules/cloud-account/services/CloudAccountHealthService', () => ({
 }));
 vi.mock(
   '@/modules/proxy-gateway/server/shared/services/model-availability.service',
-  async (importOriginal) => ({
-    ...(await importOriginal<
-      typeof import('@/modules/proxy-gateway/server/shared/services/model-availability.service')
-    >()),
-    proxyModelAvailabilityStore: { clearCapabilityFailures: vi.fn() },
-  }),
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('@/modules/proxy-gateway/server/shared/services/model-availability.service')
+      >();
+    return { ...actual, proxyModelAvailabilityStore: new actual.ModelAvailabilityService() };
+  },
 );
 vi.mock('@/shared/logging/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -49,6 +50,7 @@ function account(expiryTimestamp = Math.floor(Date.now() / 1000) + 3600): CloudA
       expires_in: 3600,
       expiry_timestamp: expiryTimestamp,
       token_type: 'Bearer',
+      project_id: 'quota-project',
     },
     quota: {
       models: { gemini: { percentage: 20, resetTime: 'later' } },
@@ -159,7 +161,7 @@ describe('Node-safe cloud account quota refresh', () => {
     vi.mocked(CloudAccountRepo.compareAndUpdateToken).mockResolvedValue(false);
     const fetchQuota = vi.spyOn(GoogleAPIService, 'fetchQuota');
     await expect(refreshAccountQuotaCore(stored.id)).rejects.toThrow(
-      'Account token changed during quota refresh',
+      'Account quota-account changed during OAuth refresh',
     );
     expect(stored.token.refresh_token).toBe('old-refresh');
     expect(fetchQuota).not.toHaveBeenCalled();
@@ -178,7 +180,7 @@ describe('Node-safe cloud account quota refresh', () => {
     });
     vi.mocked(CloudAccountRepo.compareAndUpdateToken).mockResolvedValue(false);
     await expect(refreshAccountQuotaCore(stored.id)).rejects.toThrow(
-      'Account token changed during quota refresh',
+      'Account quota-account changed during OAuth refresh',
     );
     expect(CloudAccountRepo.setAccountStatus).not.toHaveBeenCalled();
     expect(GoogleAPIService.fetchQuota).toHaveBeenCalledOnce();

@@ -383,8 +383,11 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
 
   isLeaseEligible(token: CloudAccount): boolean {
     const entry = this.tokens.get(token.id);
-    return entry !== undefined && this.isAccountAdmissionOpen(token.id, entry) &&
-      this.completionPolicy.isEligible(token);
+    return (
+      entry !== undefined &&
+      this.isAccountAdmissionOpen(token.id, entry) &&
+      this.completionPolicy.isEligible(token)
+    );
   }
 
   acceptLeaseCompletion(token: CloudAccount): boolean {
@@ -441,12 +444,13 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
   }
 
   private isAccountAdmissionOpen(accountId: string, token: AccountLeaseTokenData): boolean {
-    return token.proxy_enabled !== false &&
+    return (
+      token.proxy_enabled !== false &&
       !token.service_disabled &&
       !this.quarantinedAccountIds.has(accountId) &&
-      !(this.recoveryJournal && isAccountOAuthRecoveryBlocked(accountId, this.recoveryJournal));
+      !(this.recoveryJournal && isAccountOAuthRecoveryBlocked(accountId, this.recoveryJournal))
+    );
   }
-
 
   replaceAccountToken(account: CloudAccount): void {
     if (account.health?.oauth?.refresh_blocked) {

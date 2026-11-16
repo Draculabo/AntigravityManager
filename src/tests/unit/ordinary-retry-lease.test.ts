@@ -32,6 +32,10 @@ function fixture(size = 1) {
   const store: AccountLeaseAccountStore = {
     getAccounts: vi.fn(async () => structuredClone(accounts)),
     getAccount: vi.fn(async (id) => structuredClone(accounts.find((account) => account.id === id))),
+    async compareAndUpdateToken(id, _expected, token, guard) {
+      await this.updateToken(id, token, guard);
+      return true;
+    },
     updateToken: vi.fn(),
     updateQuota: vi.fn(),
     mutateHealth: vi.fn(),

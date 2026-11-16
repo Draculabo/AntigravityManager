@@ -270,7 +270,9 @@ describe('ProxyService Empty Stream Retry Logic', () => {
       .mockRejectedValueOnce(
         new Error('Google Cloud Project lacks a Gemini Code Assist license (#3501)'),
       )
-      .mockResolvedValueOnce({ candidates: [{ content: { parts: [{ text: 'ok' }] } }] });
+      .mockResolvedValueOnce({
+        candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
+      });
     await service.handleChatCompletions({
       model: 'gpt-4o',
       messages: [{ role: 'user', content: 'hello' }],
@@ -306,7 +308,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     mockAccountLeaseService.getNextToken.mockResolvedValue(createToken());
     mockGeminiClient.streamGenerateInternal.mockRejectedValue(new Error('socket hang up'));
     mockGeminiClient.generateInternal.mockResolvedValue({
-      candidates: [{ content: { parts: [{ text: 'ok' }] } }],
+      candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
     });
     await service.handleChatCompletions({
       model: 'gpt-4o',
@@ -607,7 +609,8 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     expect(stream.destroyed).toBe(true);
     expect(chunks).toHaveLength(2);
     expect(chunks[0]).toContain('"text":"partial"');
-    expect(chunks[1]).toContain('Upstream response stream timed out.');
+    expect(chunks[1]).toContain('"gatewayInterrupted":true');
+    expect(chunks[1]).toContain('"finishReason":"MAX_TOKENS"');
   });
 
   it('releases Gemini passthrough resources once on unsubscribe and ignores late data', () => {
@@ -766,7 +769,8 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     await finished;
 
     expect(chunks[0]).toContain('partial');
-    expect(chunks.join('')).toContain('UPSTREAM_STREAM_ERROR');
+    expect(chunks[1]).toContain('"gatewayInterrupted":true');
+    expect(chunks[1]).toContain('"finishReason":"MAX_TOKENS"');
     expect(chunks).toHaveLength(2);
     expect(release).toHaveBeenCalledOnce();
   });
@@ -927,8 +931,9 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     stream.emit('close');
     await done;
 
-    expect(chunks.join('')).toContain('UPSTREAM_STREAM_ERROR');
-    expect(chunks.join('')).toContain('closed before completion');
+    expect(chunks[0]).toContain('partial');
+    expect(chunks[1]).toContain('"gatewayInterrupted":true');
+    expect(chunks[1]).toContain('"finishReason":"MAX_TOKENS"');
     expect(chunks.join('')).not.toContain('[DONE]');
     expect(release).toHaveBeenCalledOnce();
   });
@@ -959,7 +964,8 @@ describe('ProxyService Empty Stream Retry Logic', () => {
       accountIdOrEmail: 'acc-1',
       status: 429,
       body: '429 quota exceeded',
-      model: 'gemini-3-flash',
+      model: 'gemini-3-flash-agent',
+      effort: undefined,
     });
     expect((result as any).choices?.[0]?.message?.content).toBeDefined();
   });
@@ -1501,6 +1507,8 @@ describe('ProxyService Empty Stream Retry Logic', () => {
       sessionKey: expect.stringMatching(/^session:store:v2:[a-f0-9]{64}$/),
       excludeAccountIds: ['acc-1'],
       model: 'gemini-3-flash-agent',
+      physicalTarget: true,
+      effort: undefined,
       allowSelectionWait: false,
       signal: mockAccountLeaseService.getNextToken.mock.calls[0][0].signal,
       selectionDeadlineMs:
@@ -1619,7 +1627,7 @@ describe('GeminiClient internal request parity', () => {
   it('uses fixed-length JSON body for non-stream internal requests', async () => {
     const postSpy = vi.spyOn(axios, 'post').mockResolvedValue({
       data: {
-        candidates: [{ content: { parts: [{ text: 'ok' }] } }],
+        candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
       },
     });
     const client = new GeminiClient(new Upstream4xxCaptureService());
@@ -1696,7 +1704,7 @@ describe('GeminiClient internal request parity', () => {
     const postSpy = vi.spyOn(axios, 'post').mockRejectedValue(forbidden);
     const client = new GeminiClient(new Upstream4xxCaptureService());
     await expect(
-      client.streamGenerateInternal({ project: 'project-1', request: {} } as any, 'access-token'),
+      client.streamGenerateInternal(structuredClone(generationRequest), 'access-token'),
     ).rejects.toMatchObject({
       status: 403,
       details: [expect.objectContaining({ reason: 'TOS_VIOLATION' })],
@@ -1707,7 +1715,7 @@ describe('GeminiClient internal request parity', () => {
   it('removes case-insensitive quota-project reinjection while preserving other extra headers', async () => {
     const postSpy = vi.spyOn(axios, 'post').mockResolvedValue({
       data: {
-        candidates: [{ content: { parts: [{ text: 'ok' }] } }],
+        candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
       },
     });
     const client = new GeminiClient(new Upstream4xxCaptureService());
@@ -1832,12 +1840,24 @@ describe('GeminiClient internal request parity', () => {
     expect(postSpy).toHaveBeenCalledOnce();
   });
 
-  it('retains downgrade for an accepted ordinary 403', async () => {
+  it('retains downgrade for an accepted project consumer denial', async () => {
     const postSpy = vi
       .spyOn(axios, 'post')
       .mockResolvedValueOnce({
         status: 403,
-        data: '{"error":{"message":"PERMISSION_DENIED"}}',
+        data: {
+          error: {
+            status: 'PERMISSION_DENIED',
+            details: [
+              {
+                '@type': 'type.googleapis.com/google.rpc.ErrorInfo',
+                domain: 'googleapis.com',
+                reason: 'USER_PROJECT_DENIED',
+                metadata: { consumer: 'projects/project-1' },
+              },
+            ],
+          },
+        },
         headers: {},
       })
       .mockResolvedValueOnce({ status: 200, data: '{}', headers: {} });
@@ -2071,7 +2091,7 @@ describe('ProxyService Protocol Parity Fixtures', () => {
     expect(chunks.filter((chunk) => chunk.includes('data: [DONE]'))).toHaveLength(1);
   });
 
-  it('fails a Chat stream on clean EOF after content without a finish reason', async () => {
+  it('preserves Chat output and closes with length on an interrupted stream', async () => {
     const service = new TestableOpenAIService();
     const stream = new EventEmitter();
     const chunks: string[] = [];
@@ -2096,9 +2116,9 @@ describe('ProxyService Protocol Parity Fixtures', () => {
     await finished;
 
     expect(chunks.some((chunk) => chunk.includes('Partial answer'))).toBe(true);
-    expect(chunks.at(-1)).toContain('"code":"upstream_interrupted"');
+    expect(chunks.join('')).toContain('"finish_reason":"length"');
     expect(chunks.join('')).not.toContain('"finish_reason":"stop"');
-    expect(chunks).not.toContain('data: [DONE]\n\n');
+    expect(chunks.at(-1)).toBe('data: [DONE]\n\n');
   });
 
   it('marks OpenAI Chat and Responses accounts successful only after completion', async () => {

@@ -24,7 +24,12 @@ import {
   parseDeviceProfileColumn,
 } from './cloud-account-device-profile-codec';
 import { populateSyntheticArgonModels } from '@/modules/cloud-account/utils/quota-groups';
-import { bindGoogleUsageIdentity, createGoogleUsageIdentity, googleUsageGrantHash, readGoogleUsageIdentity } from './google-usage-identity';
+import {
+  bindGoogleUsageIdentity,
+  createGoogleUsageIdentity,
+  googleUsageGrantHash,
+  readGoogleUsageIdentity,
+} from './google-usage-identity';
 
 function parseCloudToken(accountId: string, value: string): CloudAccount['token'] {
   try {
@@ -199,7 +204,10 @@ export class CloudAccountRepo {
   }
 
   /** Email admission and the returned incarnation belong to the same insertion transaction. */
-  static async insertAccount(account: CloudAccount, verifiedGoogleSubject?: string): Promise<CloudAccount> {
+  static async insertAccount(
+    account: CloudAccount,
+    verifiedGoogleSubject?: string,
+  ): Promise<CloudAccount> {
     CloudAccountSchema.parse(account);
     const { raw, orm } = getCloudDb();
     try {
@@ -211,10 +219,16 @@ export class CloudAccountRepo {
           if (existingEmails.some((existing) => existing.email.toLowerCase() === email)) {
             throw new CloudAccountEmailConflictError();
           }
-          transaction.insert(accounts).values({
-            ...cloudAccountRowValues(account),
-            googleUsageIdentityJson: verifiedGoogleSubject === undefined ? null : createGoogleUsageIdentity(verifiedGoogleSubject, account.token),
-          }).run();
+          transaction
+            .insert(accounts)
+            .values({
+              ...cloudAccountRowValues(account),
+              googleUsageIdentityJson:
+                verifiedGoogleSubject === undefined
+                  ? null
+                  : createGoogleUsageIdentity(verifiedGoogleSubject, account.token),
+            })
+            .run();
           const row = transaction.select().from(accounts).where(eq(accounts.id, account.id)).get();
           if (!row) {
             throw new Error('Inserted cloud account could not be read');
@@ -291,24 +305,32 @@ export class CloudAccountRepo {
     }
 
     let subject: string | undefined;
-    writeAccount(id, (current) => {
-      guard?.(current);
-      if (current?.google_usage_subject_hash && (trustedRefresh || (
-        googleUsageGrantHash(current.token) === googleUsageGrantHash(token)
-      ))) {
-        subject = current.google_usage_subject_hash;
-      }
-    }, (transaction) => {
-      const tokenJson = JSON.stringify(token);
-      const result = transaction
-        .update(accounts)
-        .set({ tokenJson, googleUsageIdentityJson: subject ? bindGoogleUsageIdentity(subject, token) : null })
-        .where(eq(accounts.id, id))
-        .run();
-      if (result.changes === 0) {
-        logger.warn(`updateToken: No account found with ID ${id}`);
-      }
-    });
+    writeAccount(
+      id,
+      (current) => {
+        guard?.(current);
+        if (
+          current?.google_usage_subject_hash &&
+          (trustedRefresh || googleUsageGrantHash(current.token) === googleUsageGrantHash(token))
+        ) {
+          subject = current.google_usage_subject_hash;
+        }
+      },
+      (transaction) => {
+        const tokenJson = JSON.stringify(token);
+        const result = transaction
+          .update(accounts)
+          .set({
+            tokenJson,
+            googleUsageIdentityJson: subject ? bindGoogleUsageIdentity(subject, token) : null,
+          })
+          .where(eq(accounts.id, id))
+          .run();
+        if (result.changes === 0) {
+          logger.warn(`updateToken: No account found with ID ${id}`);
+        }
+      },
+    );
   }
 
   static async compareAndUpdateToken(
@@ -325,39 +347,46 @@ export class CloudAccountRepo {
     const expectedJson = JSON.stringify(CloudTokenDataSchema.parse(expected));
     let updated = false;
     let subject: string | undefined;
-    writeAccount(id, (current) => {
-      guard?.(current);
-      if (
-        current?.google_usage_subject_hash &&
-        (trustedRefresh || googleUsageGrantHash(current.token) === googleUsageGrantHash(validated))
-      ) {
-        subject = current.google_usage_subject_hash;
-      }
-    }, (transaction) => {
-      const row = transaction
-        .select({ tokenJson: accounts.tokenJson })
-        .from(accounts)
-        .where(eq(accounts.id, id))
-        .get();
-      if (
-        !row ||
-        JSON.stringify(parseCloudToken(id, row.tokenJson)) !== expectedJson
-      ) {
-        return;
-      }
-      updated =
-        transaction
-          .update(accounts)
-          .set({
-            tokenJson: JSON.stringify(validated),
-            googleUsageIdentityJson: subject ? bindGoogleUsageIdentity(subject, validated) : null,
-          })
-          .where(and(eq(accounts.id, id), eq(accounts.tokenJson, row.tokenJson)))
-          .run().changes === 1;
-    });
+    writeAccount(
+      id,
+      (current) => {
+        if (
+          !current ||
+          JSON.stringify(CloudTokenDataSchema.parse(current.token)) !== expectedJson
+        ) {
+          return;
+        }
+        guard?.(current);
+        if (
+          current?.google_usage_subject_hash &&
+          (trustedRefresh ||
+            googleUsageGrantHash(current.token) === googleUsageGrantHash(validated))
+        ) {
+          subject = current.google_usage_subject_hash;
+        }
+      },
+      (transaction) => {
+        const row = transaction
+          .select({ tokenJson: accounts.tokenJson })
+          .from(accounts)
+          .where(eq(accounts.id, id))
+          .get();
+        if (!row || JSON.stringify(parseCloudToken(id, row.tokenJson)) !== expectedJson) {
+          return;
+        }
+        updated =
+          transaction
+            .update(accounts)
+            .set({
+              tokenJson: JSON.stringify(validated),
+              googleUsageIdentityJson: subject ? bindGoogleUsageIdentity(subject, validated) : null,
+            })
+            .where(and(eq(accounts.id, id), eq(accounts.tokenJson, row.tokenJson)))
+            .run().changes === 1;
+      },
+    );
     return updated;
   }
-
 
   static updateProjectId(
     id: string,
@@ -365,19 +394,24 @@ export class CloudAccountRepo {
     selectCurrent: (current: CloudAccount | undefined) => CloudAccount,
   ): CloudAccount {
     let current: CloudAccount;
-    return writeAccount(id, (account) => {
-      current = selectCurrent(account);
-    }, (transaction) => {
-      if (current.token.project_id !== (projectId ?? undefined)) {
-        // Keep the rest of the token JSON and the credential-bound usage identity intact.
-        const tokenJson = projectId === null
-          ? sql`json_remove(${accounts.tokenJson}, '$.project_id')`
-          : sql`json_set(${accounts.tokenJson}, '$.project_id', ${projectId})`;
-        transaction.update(accounts).set({ tokenJson }).where(eq(accounts.id, id)).run();
-        current.token.project_id = projectId ?? undefined;
-      }
-      return current;
-    });
+    return writeAccount(
+      id,
+      (account) => {
+        current = selectCurrent(account);
+      },
+      (transaction) => {
+        if (current.token.project_id !== (projectId ?? undefined)) {
+          // Keep the rest of the token JSON and the credential-bound usage identity intact.
+          const tokenJson =
+            projectId === null
+              ? sql`json_remove(${accounts.tokenJson}, '$.project_id')`
+              : sql`json_set(${accounts.tokenJson}, '$.project_id', ${projectId})`;
+          transaction.update(accounts).set({ tokenJson }).where(eq(accounts.id, id)).run();
+          current.token.project_id = projectId ?? undefined;
+        }
+        return current;
+      },
+    );
   }
 
   static async updateQuota(
@@ -524,11 +558,7 @@ export class CloudAccountRepo {
     }
   }
 
-  static setAccountRouting(
-    id: string,
-    proxyPriority: number,
-    proxyEnabled: boolean,
-  ): void {
+  static setAccountRouting(id: string, proxyPriority: number, proxyEnabled: boolean): void {
     const parsedPriority = CloudAccountProxyPrioritySchema.parse(proxyPriority);
     const { raw, orm } = getCloudDb();
     try {

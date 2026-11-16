@@ -199,6 +199,27 @@ export class ModelAvailabilityService {
     return deleted;
   }
 
+  clearCapabilityFailures(accountId: string, advertisedModels?: readonly string[]): void {
+    this.hydrate();
+    const advertisedFamilies =
+      advertisedModels && new Set(advertisedModels.map(getCapabilityModelId));
+    let changed = false;
+    for (const [key, entry] of this.entries) {
+      if (
+        entry.accountId === accountId &&
+        entry.modelId.includes('image') &&
+        (!advertisedFamilies || advertisedFamilies.has(entry.modelId)) &&
+        (entry.reason === 'model_not_supported' || entry.reason === 'model_forbidden')
+      ) {
+        this.entries.delete(key);
+        changed = true;
+      }
+    }
+    if (changed) {
+      this.persist();
+    }
+  }
+
   isCapabilityBlocked(accountId: string, modelId: string): boolean {
     this.hydrate();
     const entry =

@@ -2,7 +2,10 @@ import { mergeQuotaWindows } from '../utils/quota-windows';
 import fs from 'fs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod';
-import { CloudAccountRepo, type CloudAccountWriteGuard } from '@/modules/cloud-account/persistence/cloudHandler';
+import {
+  CloudAccountRepo,
+  type CloudAccountWriteGuard,
+} from '@/modules/cloud-account/persistence/cloudHandler';
 import { isAccountOAuthRecoveryBlocked } from '@/modules/cloud-account/persistence/oauth-recovery-service';
 import { CloudAccountSettingsStore } from '@/modules/cloud-account/persistence/cloud-account-settings-store';
 import { GoogleAPIService, type QuotaData } from './GoogleAPIService';
@@ -379,11 +382,7 @@ export class CloudMonitorService {
                     retryError,
                   );
                   await writeback.assertCurrent(retryError);
-                  await persistMonitorFailure(
-                    account,
-                    retryError,
-                    writeback.guardFor(retryError),
-                  );
+                  await persistMonitorFailure(account, retryError, writeback.guardFor(retryError));
                   if (previousAICredits) {
                     quota.ai_credits = previousAICredits;
                   }
@@ -446,7 +445,10 @@ export class CloudMonitorService {
           await CloudAccountRepo.setAccountStatus(account.id, 'active', null, writeback.guard);
           await clearValidationHealthAfterSuccessfulProbe(account, writeback.guard);
           await writeback.assertCurrent();
-          proxyModelAvailabilityStore.clearCapabilityFailures(account.id);
+          proxyModelAvailabilityStore.clearCapabilityFailures(
+            account.id,
+            Object.keys(quota.models),
+          );
           account.status = 'active';
           account.status_reason = undefined;
           refreshedAccounts.push(account);
@@ -459,11 +461,7 @@ export class CloudMonitorService {
           try {
             await writeback.assertCurrent(error);
             observation.accept(error);
-            await persistMonitorFailure(
-              account,
-              error,
-              writeback.guardFor(error),
-            );
+            await persistMonitorFailure(account, error, writeback.guardFor(error));
           } catch (statusError) {
             if (statusError instanceof CloudAccountRefreshContextChangedError) {
               staleAccountIds.add(account.id);

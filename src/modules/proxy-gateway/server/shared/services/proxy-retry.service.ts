@@ -50,7 +50,11 @@ export interface ProxyRetryAccountLeaseService {
   isLeaseCurrent(token: CloudAccount): boolean;
   isLeaseEligible(token: CloudAccount): boolean;
   acceptLeaseCompletion(token: CloudAccount): boolean;
-  getRetryAccountPoolSize(model?: string, effort?: string, physicalTarget?: boolean): Promise<number>;
+  getRetryAccountPoolSize(
+    model?: string,
+    effort?: string,
+    physicalTarget?: boolean,
+  ): Promise<number>;
   rejectSession(token: CloudAccount): void;
   getOrdinaryRetryWaitMs(options: {
     model: string;
