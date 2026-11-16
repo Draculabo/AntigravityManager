@@ -24,6 +24,8 @@ does not establish installer, native keyring or live-provider behavior.
 pnpm applies the [AppImage maker patch](../../patches/@pengx17__electron-forge-maker-appimage@1.2.1.patch)
 through `patchedDependencies`, including installations with lifecycle scripts disabled. The patch
 preserves the requested x64 or arm64 architecture and paths containing spaces.
+Before repacking, the maker restores `0755` on directories that the legacy runtime extracted
+with `0700`, so an unprivileged process can traverse the mounted AppImage in Firejail.
 Linux AppImage packaging runs the maker's downloaded `appimagetool` with
 `--appimage-extract-and-run`, so the build step does not require FUSE libraries or mount
 access. Running the installed AppImage still requires a supported AppImage runtime

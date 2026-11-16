@@ -81,7 +81,7 @@ for (const [arch, toolArch] of [
   ['arm64', 'aarch64'],
 ]) {
   test(
-    `AppImage ${arch} repacking runs without FUSE and preserves its payload`,
+    `AppImage ${arch} repacking runs without FUSE and restores directory traversal`,
     {
       skip: process.platform !== 'linux',
     },
@@ -98,7 +98,9 @@ for (const [arch, toolArch] of [
           `#!/usr/bin/env bash
 set -eu
 test "$1" = --appimage-extract
-mkdir squashfs-root
+mkdir -m 700 squashfs-root
+mkdir -m 700 squashfs-root/usr
+mkdir -m 755 squashfs-root/usr/lib
 printf '#!/usr/bin/env bash\\nexport EXISTING=retained\\nprintf payload\\n' > squashfs-root/AppRun
 `,
           { mode: 0o755 },
@@ -120,6 +122,9 @@ fi
 test "$ARCH" = "$EXPECTED_TOOL_ARCH"
 test "$2" = ./squashfs-root/
 test "$3" = "$EXPECTED_OUTPUT"
+test "$(stat -c %a "$2")" = 755
+test "$(stat -c %a "$2/usr")" = 755
+test "$(stat -c %a "$2/usr/lib")" = 755
 grep -qx 'export EXISTING=retained' "$2/AppRun"
 grep -qx 'export ELECTRON_OZONE_PLATFORM_HINT=auto' "$2/AppRun"
 cp "$2/AppRun" "$3"
