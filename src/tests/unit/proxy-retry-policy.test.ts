@@ -803,6 +803,7 @@ describe('ProxyRetryService', () => {
       status: 429,
       body: '429 quota exceeded',
       model: 'gemini-3-flash',
+      statusInferred: true,
     });
   });
   it('quarantines the account for a VALIDATION_REQUIRED 403', async () => {

@@ -109,6 +109,21 @@ export class RateLimitTrackerService {
     return this.getRemainingWaitSeconds(accountId, model);
   }
 
+  getUpstream429WaitSeconds(accountId: string, models: readonly string[], now: number): number {
+    let resetTimeMs = now;
+    for (const key of [accountId, ...models.map((model) => this.buildLockoutKey(accountId, model))]) {
+      const lock = this.lockoutByKey.get(key);
+      if (!lock || lock.resetTimeMs <= now) {
+        continue;
+      }
+      if (lock.upstreamStatus !== 429) {
+        return 0;
+      }
+      resetTimeMs = Math.max(resetTimeMs, lock.resetTimeMs);
+    }
+    return Math.ceil((resetTimeMs - now) / 1000);
+  }
+
   isRateLimited(accountId: string, model?: string): boolean {
     return this.getRemainingWaitSeconds(accountId, model) > 0;
   }
@@ -155,6 +170,7 @@ export class RateLimitTrackerService {
     reason: RateLimitReason,
     model?: string,
     preservesExplicitQuota = false,
+    upstreamStatus?: number,
   ): void {
     const now = Date.now();
     const rawRetryAfterSec = Math.max(2, Math.ceil((resetTimeMs - now) / 1000));
@@ -168,6 +184,7 @@ export class RateLimitTrackerService {
       reason,
       model,
       preservesExplicitQuota,
+      ...(upstreamStatus === undefined ? {} : { upstreamStatus }),
     });
   }
 
@@ -182,6 +199,7 @@ export class RateLimitTrackerService {
       RateLimitReason.QuotaExhausted,
       entry.modelId,
       true,
+      entry.status,
     );
     return true;
   }
@@ -274,6 +292,7 @@ export class RateLimitTrackerService {
   trackFromUpstreamError(params: {
     accountId: string;
     status?: number;
+    statusInferred?: true;
     retryAfter?: string;
     body?: string;
     model?: string;
@@ -310,6 +329,7 @@ export class RateLimitTrackerService {
 
     const info: RateLimitInfo = {
       reason,
+      ...(params.statusInferred ? {} : { upstreamStatus: status }),
       retryAfterSec,
       resetTimeMs: Date.now() + retryAfterSec * 1000,
       model: params.model,

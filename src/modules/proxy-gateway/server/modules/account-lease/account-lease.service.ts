@@ -584,16 +584,9 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
     effort?: string;
     physicalTarget?: boolean;
   }): number | undefined {
-    const now = Date.now();
     const model = normalizeModelId(options?.model) ?? options?.model;
-    const availableAccounts = Array.from(this.tokens.entries()).filter(
-      ([accountId, tokenData]) =>
-        this.isAccountAdmissionOpen(accountId, tokenData) &&
-        (tokenData.validation_blocked_until_ms === undefined ||
-          now >= tokenData.validation_blocked_until_ms),
-    );
     const waits = this.selectModelCapableAccounts(
-      availableAccounts,
+      this.getLeaseCandidates(Date.now()),
       model,
       options?.effort,
       options?.physicalTarget,
@@ -605,6 +598,47 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
     return waits.length > 0 ? Math.min(...waits) : undefined;
   }
 
+  /** Earliest ordinary lease retry when the current route pool is blocked by upstream 429s. */
+  getUpstream429RetryAfter(options: {
+    model: string;
+    effort?: string;
+    physicalTarget?: boolean;
+    targetAccountId?: string;
+  }): number | undefined {
+    const now = Date.now();
+    const { model, effort, physicalTarget } = options;
+    const target = options.targetAccountId?.trim();
+    const targetId = target ? this.findTargetEntry(target)?.[0] : undefined;
+    const pool = this.getLeaseCandidates(now);
+    const candidates = this.selectModelCapableAccounts(
+      target ? pool.filter(([id]) => id === targetId) : pool,
+      model,
+      effort,
+      physicalTarget,
+    );
+    let retryAfter: number | undefined;
+    for (const [id, token] of candidates) {
+      const route = this.modelPolicy.resolveDynamicModelForAccount(id, model, effort, physicalTarget);
+      const normalizedRoute = normalizeModelId(route) ?? route;
+      const quota = token.model_quotas?.[normalizedRoute];
+      if (
+        token.oauth_health?.refresh_blocked ||
+        (this.accountCooldowns.get(id) ?? 0) > now ||
+        needsQuotaWindowRefresh(token.quota, route, now) ||
+        quotaWindowWaitSeconds(token.quota, route, now) > 0 ||
+        (quota !== undefined && Number.isFinite(quota) && quota <= 0)
+      ) {
+        return undefined;
+      }
+      const wait = this.rateLimitTracker.getUpstream429WaitSeconds(id, [model, route], now);
+      if (wait === 0) {
+        return undefined;
+      }
+      retryAfter = Math.min(retryAfter ?? wait, wait);
+    }
+    return retryAfter;
+  }
+
   /** Read the current eligible pool without leasing, hydrating or changing session bindings. */
   getEligibleRetryAccountCount(options: {
     model?: string;
@@ -614,14 +648,8 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
   }): number {
     const now = Date.now();
     const excluded = new Set(options.excludeAccountIds);
-    const candidates = Array.from(this.tokens.entries()).filter(
-      ([accountId, token]) =>
-        this.isAccountAdmissionOpen(accountId, token) &&
-        (token.validation_blocked_until_ms === undefined ||
-          now >= token.validation_blocked_until_ms),
-    );
     return this.selectModelCapableAccounts(
-      candidates,
+      this.getLeaseCandidates(now),
       options.model,
       options.effort,
       options.physicalTarget,
@@ -655,12 +683,7 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
   }): number | null {
     const now = Date.now();
     const candidates = this.selectModelCapableAccounts(
-      Array.from(this.tokens.entries()).filter(
-        ([accountId, token]) =>
-          this.isAccountAdmissionOpen(accountId, token) &&
-          (token.validation_blocked_until_ms === undefined ||
-            now >= token.validation_blocked_until_ms),
-      ),
+      this.getLeaseCandidates(now),
       options.model,
       options.effort,
       options.physicalTarget,
@@ -700,14 +723,12 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
     if (this.tokens.size === 0) {
       await this.loadAccounts();
     }
-    const now = Date.now();
-    const candidates = Array.from(this.tokens.entries()).filter(
-      ([accountId, token]) =>
-        this.isAccountAdmissionOpen(accountId, token) &&
-        (token.validation_blocked_until_ms === undefined ||
-          now >= token.validation_blocked_until_ms),
-    );
-    return this.selectModelCapableAccounts(candidates, model, effort, physicalTarget).length;
+    return this.selectModelCapableAccounts(
+      this.getLeaseCandidates(Date.now()),
+      model,
+      effort,
+      physicalTarget,
+    ).length;
   }
 
   private getAccountRouteWait(
@@ -837,18 +858,10 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
 
       this.rateLimitTracker.cleanupExpired();
 
-      let fullAccountPool = Array.from(this.tokens.entries()).filter(
-        ([accountId, tokenData]) =>
-          this.isAccountAdmissionOpen(accountId, tokenData) &&
-          (tokenData.validation_blocked_until_ms === undefined ||
-            now >= tokenData.validation_blocked_until_ms),
-      );
+      let fullAccountPool = this.getLeaseCandidates(now);
       const targetAccountId = options?.targetAccountId?.trim();
       if (targetAccountId) {
-        const normalizedTarget = targetAccountId.toLowerCase();
-        const targetEntry = Array.from(this.tokens.entries()).find(
-          ([id, data]) => id === targetAccountId || data.email?.toLowerCase() === normalizedTarget,
-        );
+        const targetEntry = this.findTargetEntry(targetAccountId);
         if (!targetEntry) {
           this.logger.warn(`Target account ${targetAccountId} not found in token cache`);
           return null;
@@ -1084,6 +1097,21 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
 
   private syncImageSchedulerAccounts(): void {
     this.imageScheduler.syncAccounts(this.tokens.keys());
+  }
+
+  private getLeaseCandidates(now: number): TokenEntry[] {
+    return Array.from(this.tokens.entries()).filter(
+      ([id, token]) =>
+        this.isAccountAdmissionOpen(id, token) &&
+        (token.validation_blocked_until_ms === undefined || now >= token.validation_blocked_until_ms),
+    );
+  }
+
+  private findTargetEntry(target: string): TokenEntry | undefined {
+    const normalizedTarget = target.toLowerCase();
+    return Array.from(this.tokens.entries()).find(
+      ([id, token]) => id === target || token.email?.toLowerCase() === normalizedTarget,
+    );
   }
 
   private selectModelCapableAccounts(

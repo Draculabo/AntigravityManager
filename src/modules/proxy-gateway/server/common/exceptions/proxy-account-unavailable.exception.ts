@@ -8,10 +8,11 @@ export class ProxyAccountUnavailableError extends HttpException {
     retryAfterSeconds?: number;
     cause?: unknown;
   }) {
-    const message =
-      params.status === HttpStatus.TOO_MANY_REQUESTS && params.cause instanceof Error
-        ? params.cause.message
-        : 'All accounts failed or unhealthy';
+    let message = 'All accounts failed or unhealthy';
+    if (params.status === HttpStatus.TOO_MANY_REQUESTS) {
+      message =
+        params.cause instanceof Error ? params.cause.message : 'All available accounts are rate limited';
+    }
     super(message, params.status, { cause: params.cause });
     this.retryAfterSeconds = params.retryAfterSeconds;
   }

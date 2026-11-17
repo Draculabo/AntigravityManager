@@ -87,6 +87,7 @@ export interface ProxyRetryAccountLeaseService {
     isCurrent?: () => boolean;
     accountIdOrEmail: string;
     status?: number;
+    statusInferred?: true;
     retryAfter?: string;
     body?: string;
     model?: string;
@@ -102,6 +103,12 @@ export interface ProxyRetryAccountLeaseService {
     model?: string;
     effort?: string;
     physicalTarget?: boolean;
+  }): number | undefined;
+  getUpstream429RetryAfter?(options: {
+    model: string;
+    effort?: string;
+    physicalTarget?: boolean;
+    targetAccountId?: string;
   }): number | undefined;
   getEligibleRetryAccountCount(options: {
     model?: string;
@@ -357,13 +364,29 @@ export class ProxyRetryService {
             ...(targetAccountId ? { signal } : {}),
           });
     if (!token) {
-      this.refreshPoolRetryAfter(retryState);
+      throwIfRequestAborted(signal);
       if (retryState.attemptedAccountIds.size === 0) {
+        const retryAfter = ordinaryRequest
+          ? this.accountLeaseService.getUpstream429RetryAfter?.({
+              model,
+              effort,
+              physicalTarget: retryState.physicalTarget,
+              targetAccountId,
+            })
+          : undefined;
+        if (retryAfter !== undefined) {
+          throw new ProxyAccountUnavailableError({
+            status: HttpStatus.TOO_MANY_REQUESTS,
+            retryAfterSeconds: retryAfter,
+          });
+        }
+        this.refreshPoolRetryAfter(retryState);
         throw new ProxyAccountUnavailableError({
           status: HttpStatus.SERVICE_UNAVAILABLE,
           retryAfterSeconds: retryState.retryAfterSeconds,
         });
       }
+      this.refreshPoolRetryAfter(retryState);
       return null;
     }
 
@@ -721,6 +744,7 @@ export class ProxyRetryService {
         accountIdOrEmail: accountId,
         ...(isCurrent ? { isCurrent } : {}),
         status: 429,
+        statusInferred: true,
         body: error.message,
         model,
         effort,
@@ -728,7 +752,7 @@ export class ProxyRetryService {
       if (isCurrent && !isCurrent()) {
         return;
       }
-      this.persistModelRateLimit(accountId, model, error.message, 429, effort);
+      this.persistModelRateLimit(accountId, model, error.message, undefined, effort);
     }
   }
 
@@ -887,7 +911,7 @@ export class ProxyRetryService {
     accountId: string,
     model: string,
     message: string,
-    status: number,
+    status: number | undefined,
     effort?: string,
   ): void {
     const waitSeconds = this.accountLeaseService.getRemainingRateLimitWait(

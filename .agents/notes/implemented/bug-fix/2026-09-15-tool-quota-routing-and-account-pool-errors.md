@@ -16,7 +16,7 @@ Finally, an unstructured bare `quota_exhausted` marker was treated as durable qu
 
 The OpenAI and Anthropic adapters omit `requestType` for plain text, send `requestType: "agent"` for tool-enabled requests and send `requestType: "image_gen"` for images. They do not send `enabledCreditTypes`. The Gemini adapter uses the same rule and adds `enabledCreditTypes: ["GOOGLE_ONE_AI"]` only for tool-enabled requests. Plain Gemini requests omit both fields.
 
-`ProxyAccountUnavailableError` represents deliberate account-pool availability outcomes and an optional numeric retry delay. Initial account-pool acquisition failure remains HTTP 503. After actual provider attempts, the retry service returns HTTP 429 only when every recorded failure is a structured 429; otherwise it preserves the last non-429 provider error. The Anthropic response boundary maps a terminal provider-side 403 to HTTP 503 to preserve client retry behavior, while OpenAI and Gemini retain the provider status. The account-lease module reports the shortest active model-scoped wait across eligible accounts, and protocol controllers emit its rounded value as `Retry-After` before writing the response.
+`ProxyAccountUnavailableError` represents deliberate account-pool availability outcomes and an optional numeric retry delay. Initial ordinary lease acquisition returns HTTP 429 when the lease owner can attribute every candidate's wait to an upstream HTTP 429. It reports the earliest candidate's remaining cooldown. Other initial acquisition failures return HTTP 503. After actual provider attempts, the retry service returns HTTP 429 only when every recorded failure is a structured 429; otherwise it preserves the last non-429 provider error. The Anthropic response boundary maps a terminal provider-side 403 to HTTP 503 to preserve client retry behavior, while OpenAI and Gemini retain the provider status. Protocol controllers emit the applicable `Retry-After` before writing the response.
 
 Structured Google `details[].reason = QUOTA_EXHAUSTED` remains authoritative without a delay. Daily, per-day and quota-reset signals also remain durable quota exhaustion. A bare unstructured `quota_exhausted` marker requires a parseable header, structured-body or text delay; without one it is a short rate limit.
 
@@ -24,6 +24,7 @@ Structured Google `details[].reason = QUOTA_EXHAUSTED` remains authoritative wit
 
 - Change `AccountLeaseService.getNextToken()` to return a discriminated result. Rejected because the method has many non-proxy consumers and would expand a transport-specific error change into a broad lease contract migration.
 - Parse the final `No available accounts` string in each controller. Rejected because strings lose both failure composition and retry timing, and protocol controllers would drift again.
+- Infer rate limiting from any positive pool wait. Rejected because a wait may also come from server failures or local quota state, and mixed pools can have a shorter wait for a different reason.
 - Convert every post-provider non-429 failure into a generic pool error. Rejected because it hides actionable provider status from OpenAI and Gemini clients.
 - Use an application branch label as the plain-text `requestType`. Rejected because the field expresses request semantics, not local control flow.
 - Treat every textual `quota` occurrence as durable exhaustion. Rejected because generic resource exhaustion and ambiguous quota text are also used for short rate limits.
@@ -38,6 +39,7 @@ The account-lease return type remains unchanged. Retry timing is exposed through
 
 ## Verification
 
+- `pnpm run test:unit run src/tests/unit/proxy-real-path-parity.test.ts` covers the initial 429 and mixed 503 paths through real lease selection and Chat response handling. An advancing clock verifies the header and that a request can use the earliest recovered account.
 - `npm test -- src/tests/unit/tool-quota-route.test.ts src/tests/unit/claude-request-mapper-cache-compatibility.test.ts src/tests/unit/proxy-internal-request-mapping.test.ts src/tests/unit/gemini-tool-config-wire.test.ts src/tests/unit/weekly-warmup-wire.test.ts src/tests/unit/proxy-real-path-gemini.test.ts src/tests/unit/rate-limit-tracker.test.ts src/tests/unit/rate-limit-tracker-model-scope.test.ts src/tests/unit/account-lease-pool-retry-after.test.ts src/tests/unit/account-lease-selection-policy.test.ts src/tests/unit/proxy-retry-policy.test.ts src/tests/unit/proxy-controller.integration.test.ts src/tests/unit/gemini-controller.integration.test.ts src/tests/unit/image-rate-limit-lifecycle.test.ts`
 - `npm test -- src/tests/unit/anthropic-count-tokens.test.ts src/tests/unit/gemini-count-tokens.test.ts`
 - `npm test -- src/tests/unit/proxy-retry-mock.test.ts -t "omits requestType and credits for a plain Gemini stream"`

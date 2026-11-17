@@ -32,6 +32,7 @@ describe('Account resource-exhausted cooldown', () => {
     });
     expect(first).toEqual({
       reason: RateLimitReason.RateLimitExceeded,
+      upstreamStatus: 429,
       retryAfterSec: 5,
       resetTimeMs: now + 5_000,
       model: 'model-x',
@@ -84,6 +85,7 @@ describe('Account resource-exhausted cooldown', () => {
       tracker.parseAndMarkFromError({ ...genericError, accountId: 'account-a', model: 'model-x' }),
     ).toEqual({
       reason: RateLimitReason.RateLimitExceeded,
+      upstreamStatus: 429,
       retryAfterSec: 5,
       resetTimeMs: now + 10_000,
       model: 'model-x',
@@ -91,6 +93,7 @@ describe('Account resource-exhausted cooldown', () => {
     });
     expect(hardQuota).toEqual({
       reason: RateLimitReason.QuotaExhausted,
+      upstreamStatus: 429,
       retryAfterSec: 3600,
       resetTimeMs: now + 3_600_000,
       model: 'model-hard',

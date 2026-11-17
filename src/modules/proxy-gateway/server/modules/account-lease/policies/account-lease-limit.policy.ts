@@ -13,6 +13,7 @@ export interface AccountLeaseUpstreamErrorParams {
   isCurrent?: () => boolean;
   accountIdOrEmail: string;
   status?: number;
+  statusInferred?: true;
   retryAfter?: string;
   body?: string;
   model?: string;
@@ -220,6 +221,7 @@ export class AccountLeaseLimitPolicy {
     const parsed = this.rateLimitTracker.trackFromUpstreamError({
       accountId,
       status: params.status,
+      statusInferred: params.statusInferred,
       retryAfter: params.retryAfter,
       body: params.body,
       model: normalizedModel,

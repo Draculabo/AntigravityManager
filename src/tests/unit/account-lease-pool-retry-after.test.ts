@@ -67,6 +67,14 @@ describe('AccountLeaseService pool Retry-After', () => {
         });
       }
       expect(service.getMinimumRateLimitWaitForPool({ model: requestedModel })).toBe(3600);
+      expect(service.getUpstream429RetryAfter({ model: requestedModel })).toBe(3600);
+      expect(
+        service.getUpstream429RetryAfter({
+          model: requestedModel,
+          targetAccountId: 'ACC-SLOW@example.com',
+        }),
+      ).toBe(520035);
+      expect(service.getUpstream429RetryAfter({ model: 'gemini-pro-agent' })).toBeUndefined();
       await expect(service.getNextToken({ model: requestedModel })).resolves.toBeNull();
       await expect(service.getNextToken({ model: 'gemini-pro-agent' })).resolves.toMatchObject({
         provider: 'google',

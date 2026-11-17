@@ -557,8 +557,12 @@ Later temporary limit observations retain that original qualifying record; quali
 its original observation time rather than the remaining duration. No durable format changes are
 required. Before selecting an account, both its requested model and resolved upstream route
 are checked for cooldowns. Public presets cannot bypass the physical model's quota lock.
-When the pool is exhausted, the existing unavailable-account response returns HTTP 503 with
-the shortest remaining model wait in `Retry-After`, without an upstream attempt.
+An ordinary generation request that cannot obtain an initial lease returns HTTP 429 when
+every candidate for its route is blocked by a recorded upstream HTTP 429 cooldown. The
+`Retry-After` header reports the shortest remaining cooldown across those candidates,
+rounded up to whole seconds. The gateway makes no upstream generation attempt for that
+request. Other initial lease failures return HTTP 503 and can carry a model wait in
+`Retry-After` when one is known.
 The internal transport stops endpoint failover on an explicit long quota failure,
 including a streamed error body when traffic recording is disabled. Short transient errors
 retain endpoint failover and the existing bounded account rotation and grace retry policy.

@@ -10,6 +10,7 @@ export interface RateLimitInfo {
   resetTimeMs: number;
   retryAfterSec: number;
   reason: RateLimitReason;
+  upstreamStatus?: number;
   model?: string;
   preservesExplicitQuota: boolean;
 }
