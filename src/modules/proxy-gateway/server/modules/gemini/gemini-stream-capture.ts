@@ -69,7 +69,17 @@ export function captureGeminiStreamResult(
           generationFailure ??= new UpstreamGenerationError('invalid_upstream_response');
         } else if (decoded.kind === 'response') {
           generation.observe(decoded.response);
-          observeGenerationStreamProgress(input.signal, generation.streamPhase);
+          const activeParts = decoded.response.candidates?.[0]?.content?.parts;
+          if (
+            activeParts?.some(
+              (part) =>
+                Boolean(part.text?.trim()) ||
+                Boolean(part.functionCall) ||
+                Boolean(part.inlineData?.data),
+            )
+          ) {
+            observeGenerationStreamProgress(input.signal, generation.streamPhase);
+          }
           if (generation.streamPhase === 'output_started') {
             input.stages?.observeUsableOutput();
           }

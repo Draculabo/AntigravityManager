@@ -109,6 +109,7 @@ describe('OpenAIResponsesWebSocketProtocol', () => {
             tools: [],
           },
         })) as never,
+        cacheResponsesStream: (stream) => stream,
       },
       { handleChatCompletions: vi.fn() } as never,
     );
@@ -141,6 +142,7 @@ describe('OpenAIResponsesWebSocketProtocol', () => {
             response_format: { type: 'json_schema', json_schema: { schema: { type: 'object' } } },
           },
         })) as never,
+        cacheResponsesStream: (stream) => stream,
       },
       { handleChatCompletions: vi.fn() } as never,
     );

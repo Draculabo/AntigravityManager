@@ -21,6 +21,7 @@ import {
   isModelPayloadRoute,
 } from '../modules/proxy-gateway/server/proxy.constants';
 import { registerTrafficAuditHttpHooks } from '@/modules/proxy-gateway/audit/traffic-audit-context';
+import { ResponsesWebSocketAudit } from '@/modules/proxy-gateway/audit/responses-websocket-audit';
 import { registerGzipJsonIngress } from '@/modules/proxy-gateway/server/common/gzip-json-ingress';
 import { registerGeminiQueryCredentialIngress } from '@/modules/proxy-gateway/server/guards/gemini-query-credential-ingress';
 import { trafficAuditService } from '@/modules/proxy-gateway/audit/traffic-audit.service';
@@ -218,6 +219,7 @@ export async function bootstrapNestServer(config: ProxyConfig): Promise<NestServ
     const openAIOperations = app.get(OpenAIOperations);
     const proxyService = app.get(ProxyService);
     detachResponsesWebSocketServer = attachOpenAIResponsesWebSocketServer(app.getHttpServer(), {
+      createAudit: (payload, context) => new ResponsesWebSocketAudit(payload, context),
       ...createResponsesWebSocketOperations(openAIOperations, proxyService),
       isAuthorized: (request) => {
         const decision = evaluateClientAddress(

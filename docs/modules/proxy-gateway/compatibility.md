@@ -833,6 +833,21 @@ authentication, JSON body limit, request preparation, streaming events and error
 It is classified as Responses traffic in the audit view. Stored-response retrieval
 and deletion, and WebSocket upgrades, use their existing `/v1/responses` paths.
 
+WebSocket `response.create` can start a new connection with an owned
+`previous_response_id` and inherit the retained model, instructions and tools.
+Completion is delivered after the shared history writer finishes; explicit
+`store: false` keeps that response transient. Later appends on the connection
+retain the restored transcript. Foreign or expired cursors fail before dispatch.
+Each executing message is captured as an independent `WS` audit request with its
+upstream attempts and redacted event stream. Failed terminal events, deadlines
+and client disconnects retain their failure outcomes.
+
+WebSocket streaming waits up to 180 seconds for its initial content phase.
+After thinking or output activity, 120 seconds of silence starts one 180-second
+transition interval. New content resets the activity interval. Heartbeats and
+metadata do not reset it. Every interval is capped by the existing total request
+deadline, including account selection and request preparation.
+
 Chat Completions also accepts a Responses request body when `messages` is absent and
 `input`, `instructions` or `previous_response_id` is present. This compatibility entry
 validates a string or item-array input and reuses Responses preparation for instructions,

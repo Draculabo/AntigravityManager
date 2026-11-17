@@ -27,6 +27,13 @@ import { HttpException } from '@nestjs/common';
 import { ResponsesThoughtContext } from './responses-thought-context';
 
 export interface OpenAIResponsesWebSocketServerDependencies {
+  createAudit?: (
+    payload: unknown,
+    context: SignatureScopeContext,
+  ) => {
+    record(sse: string): void;
+    finish(error?: unknown, cancelled?: boolean): Promise<void>;
+  };
   validateRequest?: (
     request: Record<string, unknown>,
     mode: 'prewarm' | 'generate',
@@ -125,9 +132,12 @@ function handleConnection(
         }
         const payload = parseClientPayload(rawData);
         return thoughtContext.run(payload, context, async () => {
+          const audit = dependencies.createAudit?.(payload, context);
+          let frameError: unknown;
           const deadline = new GenerationDeadlineScope(
             (getServerConfig()?.request_timeout ?? 300) * 1000,
             abort.signal,
+            { initialMs: 180_000, activityMs: 120_000, transitionMs: 180_000 },
           );
           const signal = deadline.signal;
           try {
@@ -136,6 +146,9 @@ function handleConnection(
               throw new Error('Responses history was invalidated');
             }
             if (action.kind === 'local') {
+              for (const event of action.events) {
+                audit?.record(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+              }
               await sendEvents(socket, action.events, failTransport);
               return;
             }
@@ -171,6 +184,7 @@ function handleConnection(
                     try {
                       const canonical = takeSerializedResponsesFrame(stream, chunk);
                       if (canonical) {
+                        audit?.record(canonical.sse);
                         currentOutput.enqueueSerialized(canonical.json);
                         if (
                           !signal.aborted &&
@@ -182,6 +196,7 @@ function handleConnection(
                         return;
                       }
                       for (const event of parseUpstreamChunk(chunk)) {
+                        audit?.record(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
                         currentOutput.enqueue(event);
                         if (signal.aborted) {
                           break;
@@ -211,8 +226,16 @@ function handleConnection(
               currentOutput.stop();
               output = null;
             }
+          } catch (error) {
+            frameError = error;
+            if (audit && !abort.signal.aborted) {
+              const event = createWebSocketErrorEvent(error);
+              audit.record(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+            }
+            throw error;
           } finally {
             deadline.dispose();
+            await audit?.finish(frameError, abort.signal.aborted);
           }
         });
       })
@@ -220,29 +243,7 @@ function handleConnection(
         if (abort.signal.aborted) {
           return;
         }
-        await sendEvents(
-          socket,
-          [
-            {
-              type: 'error',
-              error: {
-                message: publicProxyErrorMessage(
-                  error instanceof Error ? error.message : String(error),
-                ),
-                ...openAIHttpErrorFields(
-                  error instanceof HttpException
-                    ? error.getStatus()
-                    : error instanceof SchemaInputError
-                      ? 400
-                      : (resolveUpstreamErrorHttpStatus(error) ?? 500),
-                  error,
-                ),
-                ...(error instanceof SchemaInputError ? { code: 'invalid_schema' } : {}),
-              },
-            },
-          ],
-          failTransport,
-        );
+        await sendEvents(socket, [createWebSocketErrorEvent(error)], failTransport);
       })
       .finally(() => {
         queuedBytes -= bytes;
@@ -258,6 +259,24 @@ function handleConnection(
     activeSubscription = null;
   });
   socket.once('error', () => failTransport(new Error('Responses WebSocket socket failed')));
+}
+
+function createWebSocketErrorEvent(error: unknown): OpenAIResponsesWebSocketEvent {
+  return {
+    type: 'error',
+    error: {
+      message: publicProxyErrorMessage(error instanceof Error ? error.message : String(error)),
+      ...openAIHttpErrorFields(
+        error instanceof HttpException
+          ? error.getStatus()
+          : error instanceof SchemaInputError
+            ? 400
+            : (resolveUpstreamErrorHttpStatus(error) ?? 500),
+        error,
+      ),
+      ...(error instanceof SchemaInputError ? { code: 'invalid_schema' } : {}),
+    },
+  };
 }
 
 function parseClientPayload(rawData: RawData): unknown {

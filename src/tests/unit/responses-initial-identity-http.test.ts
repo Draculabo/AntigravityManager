@@ -99,6 +99,83 @@ function leaseKeys(lease: ReturnType<typeof createLease>): string[] {
     ([options]) => z.object({ sessionKey: z.string().min(1) }).parse(options).sessionKey,
   );
 }
+
+it('recovers a stored WebSocket response on a new connection without resending its model', async () => {
+  const { operations, gateway, store, upstream } = fixture();
+  const server = createServer();
+  const detach = attachOpenAIResponsesWebSocketServer(server, {
+    ...createResponsesWebSocketOperations(operations, gateway.openAIService),
+    isAuthorized: () => true,
+  });
+  const sockets: WebSocket[] = [];
+  try {
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('Expected a loopback address');
+    }
+    const connect = async () => {
+      const socket = new WebSocket(`ws://127.0.0.1:${address.port}/v1/responses`, { headers });
+      sockets.push(socket);
+      await new Promise<void>((resolve, reject) => {
+        socket.once('open', resolve);
+        socket.once('error', reject);
+      });
+      return socket;
+    };
+    const first = await connect();
+    const id = await socketRequest(first, {
+      model: 'gemini-3-flash',
+      store: true,
+      input: [{ type: 'message', role: 'user', content: 'Remember the synthetic token CEDAR.' }],
+    });
+    expect(store.get(id)).not.toBeNull();
+    const closed = new Promise<void>((resolve) => first.once('close', () => resolve()));
+    first.close();
+    await closed;
+    const next = await connect();
+    const nextId = await socketRequest(next, {
+      previous_response_id: id,
+      store: false,
+      input: [{ type: 'message', role: 'user', content: 'Recall the token.' }],
+    });
+    expect(nextId).not.toBe(id);
+    expect(store.get(nextId)).toBeNull();
+    expect(upstream.calls).toHaveLength(2);
+    expect(upstream.calls[1]?.body.request.contents).toEqual([
+      { role: 'user', parts: [{ text: 'Remember the synthetic token CEDAR.' }] },
+      { role: 'model', parts: [{ text: 'ok' }] },
+      { role: 'user', parts: [{ text: 'Recall the token.' }] },
+    ]);
+    await socketRequest(next, {
+      store: false,
+      input: [{ type: 'message', role: 'user', content: 'Recall it once again.' }],
+    });
+    expect(upstream.calls).toHaveLength(3);
+    expect(upstream.calls[2]?.body.request.contents).toEqual([
+      { role: 'user', parts: [{ text: 'Remember the synthetic token CEDAR.' }] },
+      { role: 'model', parts: [{ text: 'ok' }] },
+      { role: 'user', parts: [{ text: 'Recall the token.' }] },
+      { role: 'model', parts: [{ text: 'ok' }] },
+      { role: 'user', parts: [{ text: 'Recall it once again.' }] },
+    ]);
+  } finally {
+    await Promise.all(
+      sockets.map(async (socket) => {
+        if (socket.readyState !== WebSocket.CLOSED) {
+          const closed = new Promise<void>((resolve) => socket.once('close', () => resolve()));
+          socket.terminate();
+          await closed;
+        }
+      }),
+    );
+    detach();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  }
+});
+
 function socketRequest(socket: WebSocket, request: object): Promise<string> {
   return new Promise((resolve, reject) => {
     const cleanup = () => {

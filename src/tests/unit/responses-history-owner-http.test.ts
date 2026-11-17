@@ -213,55 +213,65 @@ describe('Responses history ownership at HTTP and WebSocket boundaries', () => {
     expect((await app.inject({ url: `/v1/responses/${id}`, headers: b })).statusCode).toBe(404);
   });
 
-  it('rejects a foreign HTTP cursor at real WebSocket admission without invoking upstream', async () => {
-    const { app, operations, gateway, lease } = await fixture();
-    const created = await app.inject({
-      method: 'POST',
-      url: '/v1/responses',
-      headers: a,
-      payload: request,
-    });
-    const id = identity.parse(created.json()).id;
-    const server = createServer();
-    const detach = attachOpenAIResponsesWebSocketServer(server, {
-      ...createResponsesWebSocketOperations(operations, gateway.openAIService),
-      isAuthorized: () => true,
-    });
-    let socket: WebSocket | undefined;
-    try {
-      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-      const address = server.address();
-      if (!address || typeof address === 'string') {
-        throw new Error('Expected loopback listener');
+  it.each([true, false])(
+    'rejects a foreign cursor at real WebSocket admission with explicit model=%s',
+    async (includeModel) => {
+      const { app, operations, gateway, lease } = await fixture();
+      const created = await app.inject({
+        method: 'POST',
+        url: '/v1/responses',
+        headers: a,
+        payload: request,
+      });
+      const id = identity.parse(created.json()).id;
+      const server = createServer();
+      const detach = attachOpenAIResponsesWebSocketServer(server, {
+        ...createResponsesWebSocketOperations(operations, gateway.openAIService),
+        isAuthorized: () => true,
+      });
+      let socket: WebSocket | undefined;
+      try {
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+        const address = server.address();
+        if (!address || typeof address === 'string') {
+          throw new Error('Expected loopback listener');
+        }
+        socket = new WebSocket(`ws://127.0.0.1:${address.port}/v1/responses`, { headers: b });
+        const connected = socket;
+        await new Promise<void>((resolve, reject) => {
+          connected.once('open', resolve);
+          connected.once('error', reject);
+        });
+        const rejected = new Promise<unknown>((resolve, reject) => {
+          connected.once('message', (data) => resolve(JSON.parse(data.toString())));
+          connected.once('error', reject);
+        });
+        connected.send(
+          JSON.stringify({
+            type: 'response.create',
+            ...(includeModel ? request : { input: request.input }),
+            previous_response_id: id,
+          }),
+        );
+        expect(await rejected).toEqual({
+          type: 'error',
+          error: {
+            message: 'Unknown or expired previous_response_id',
+            type: 'invalid_request_error',
+          },
+        });
+        expect(lease.getNextToken).toHaveBeenCalledTimes(1);
+      } finally {
+        if (socket && socket.readyState !== WebSocket.CLOSED) {
+          const closed = new Promise<void>((resolve) => socket!.once('close', () => resolve()));
+          socket.terminate();
+          await closed;
+        }
+        detach();
+        await new Promise<void>((resolve, reject) =>
+          server.close((error) => (error ? reject(error) : resolve())),
+        );
       }
-      socket = new WebSocket(`ws://127.0.0.1:${address.port}/v1/responses`, { headers: b });
-      const connected = socket;
-      await new Promise<void>((resolve, reject) => {
-        connected.once('open', resolve);
-        connected.once('error', reject);
-      });
-      const rejected = new Promise<unknown>((resolve, reject) => {
-        connected.once('message', (data) => resolve(JSON.parse(data.toString())));
-        connected.once('error', reject);
-      });
-      connected.send(
-        JSON.stringify({ type: 'response.create', ...request, previous_response_id: id }),
-      );
-      expect(await rejected).toEqual({
-        type: 'error',
-        error: { message: 'Unknown or expired previous_response_id', type: 'server_error' },
-      });
-      expect(lease.getNextToken).toHaveBeenCalledTimes(1);
-    } finally {
-      if (socket && socket.readyState !== WebSocket.CLOSED) {
-        const closed = new Promise<void>((resolve) => socket!.once('close', () => resolve()));
-        socket.terminate();
-        await closed;
-      }
-      detach();
-      await new Promise<void>((resolve, reject) =>
-        server.close((error) => (error ? reject(error) : resolve())),
-      );
-    }
-  });
+    },
+  );
 });

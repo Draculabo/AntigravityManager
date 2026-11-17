@@ -180,7 +180,7 @@ export class OpenAIResponsesWebSocketProtocol {
       delete normalized.generate;
       normalized.stream = true;
       normalized.input ??= [];
-      if (!getString(normalized, 'model')) {
+      if (!getString(normalized, 'model') && !getString(normalized, 'previous_response_id')) {
         throw new Error('missing model in response.create request');
       }
       await this.validateBeforePublish(normalized, 'generate', signal);

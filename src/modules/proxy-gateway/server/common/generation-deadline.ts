@@ -9,6 +9,10 @@ import { inheritObservableFlowControl } from './observable-flow-control';
 import { awaitRequestOperation, throwIfRequestAborted } from './request-cancellation';
 import { GenerationDeadlineExceededError } from './exceptions/generation-deadline.exception';
 import { GenerationReplayLimitError } from './exceptions/generation-replay-limit.exception';
+import {
+  GenerationStreamTimeout,
+  type GenerationStreamTimeouts,
+} from './generation-stream-timeout';
 
 const scopes = new WeakMap<AbortSignal, GenerationDeadlineScope>();
 export const LARGE_GENERATION_SEND_BYTES = 4 * 1024 * 1024;
@@ -31,13 +35,22 @@ export class GenerationDeadlineScope {
   private streamPhase: GenerationStreamPhase | undefined;
   private streamTimeoutReported = false;
   private admittedSends = 0;
+  private readonly streamTimeout?: GenerationStreamTimeout;
 
   constructor(
     timeoutMs: number,
     private readonly parent?: AbortSignal,
+    streamTimeouts?: GenerationStreamTimeouts,
   ) {
     this.signal = this.controller.signal;
     this.deadlineAt = performance.now() + timeoutMs;
+    if (streamTimeouts) {
+      this.streamTimeout = new GenerationStreamTimeout(
+        streamTimeouts,
+        () => this.deadlineAt - performance.now(),
+        () => this.controller.abort(this.deadlineError()),
+      );
+    }
     scopes.set(this.signal, this);
     this.timer = setTimeout(() => this.controller.abort(this.deadlineError()), timeoutMs);
     this.timer.unref?.();
@@ -55,6 +68,7 @@ export class GenerationDeadlineScope {
     if (!this.streamPhase || streamProgressOrder[phase] > streamProgressOrder[this.streamPhase]) {
       this.streamPhase = phase;
     }
+    this.streamTimeout?.observe(this.streamPhase);
   }
 
   admitUpstreamSend(serializedBytes: number): void {
@@ -84,6 +98,7 @@ export class GenerationDeadlineScope {
     }
     this.disposed = true;
     clearTimeout(this.timer);
+    this.streamTimeout?.dispose();
     this.parent?.removeEventListener('abort', this.cancel);
     for (const cleanup of this.cleanups) {
       cleanup();

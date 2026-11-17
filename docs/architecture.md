@@ -275,8 +275,11 @@ the first store access drops those records and atomically replaces the active fi
 historical filenames are not searched or imported. Missing ownership cannot be claimed through
 the public history API. Earlier cursors are unavailable even when their caller ownership is
 valid. No encryption is added.
-Transport-local WebSocket transcripts retain their connection owner and do not acquire new
-durable publication. See the [history security and upgrade contract](modules/proxy-gateway/security.md#responses-history-ownership),
+WebSocket completions use the HTTP Responses history writer before completion is delivered.
+New connections can restore an owned saved cursor, including its model and transcript;
+subsequent appends retain that recovered history. Explicit `store: false` keeps only the
+connection-local transcript. Each executing message owns a separate audit parent and upstream
+attempt context, with bounded redacted SSE capture. See the [history security and upgrade contract](modules/proxy-gateway/security.md#responses-history-ownership),
 [client-hint decision](../.agents/notes/implemented/bug-fix/2026-10-17-client-session-hints.md)
 and [initial identity decision](../.agents/notes/implemented/bug-fix/2026-10-17-responses-initial-identity-metadata.md).
 

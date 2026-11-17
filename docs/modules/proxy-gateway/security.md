@@ -41,9 +41,12 @@ distinct human identities; header-free callers share its anonymous scope.
 Admission precedes history materialization and retention renewal. Unknown, foreign,
 expired and missing HTTP cursors use the existing not-found envelope; WebSocket
 durable-history admission uses the same ownership check. Parent and child ownership
-must agree. Cancelled, failed and incomplete HTTP requests cannot publish completed
-history, and `store:false` still prevents durable publication. Transport-local
-WebSocket transcripts remain scoped to their connection and are not newly persisted.
+must agree. Cancelled, failed and incomplete responses cannot publish completed
+history. WebSocket and HTTP completions share the history writer and its caller
+ownership checks. Explicit `store:false` prevents durable publication while retaining
+the active WebSocket connection's transcript. A new connection may restore an owned
+saved cursor without supplying its model again. Its later appends retain the recovered
+transcript and effective model. Foreign and expired cursors are rejected before dispatch.
 
 The active store reuses `openai-responses-sessions.json`, with the generic version-1 durable
 envelope and the Responses-owned `sha256-v1:` caller codec. The strict current decoder rejects

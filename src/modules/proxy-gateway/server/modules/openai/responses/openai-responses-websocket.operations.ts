@@ -1,4 +1,5 @@
 import { isObservable } from 'rxjs';
+import { NotFoundException } from '@nestjs/common';
 import type { SignatureScopeContext } from '../../../common/signature-session-scope';
 import type { OpenAIOperations, PreparedResponsesRequest } from '../openai-operations.service';
 import type { OpenAIService } from '../openai.service';
@@ -12,7 +13,7 @@ import type { OpenAIResponsesWebSocketServerDependencies } from './openai-respon
 
 /** Own Schema admission before socket state publication and reuse the result during execution. */
 export function createResponsesWebSocketOperations(
-  operations: Pick<OpenAIOperations, 'prepareResponsesRequest'>,
+  operations: Pick<OpenAIOperations, 'prepareResponsesRequest' | 'cacheResponsesStream'>,
   service: Pick<OpenAIService, 'handleChatCompletions'>,
 ): Omit<OpenAIResponsesWebSocketServerDependencies, 'isAuthorized'> {
   const preparedRequests = new WeakMap<
@@ -31,11 +32,18 @@ export function createResponsesWebSocketOperations(
       }
       const prepared = await operations.prepareResponsesRequest(body, context);
       if (!prepared) {
-        throw new Error('Unknown or expired previous_response_id');
+        throw new NotFoundException('Unknown or expired previous_response_id');
       }
       const schemas = prepareOpenAIRequestSchemas(prepared.request, 'responses');
       validateOpenAIRequestTools(prepared.request.tool_choice, schemas.schemas, 'responses');
       if (mode === 'generate') {
+        if (body.previous_response_id) {
+          // A fresh connection retains the authorized parent's complete transcript for later appends.
+          request.input = prepared.resolvedInput;
+          request.model ??= prepared.session.model;
+          request.instructions ??= prepared.session.instructions;
+          request.tools ??= prepared.session.tools;
+        }
         preparedRequests.set(request, { request: prepared, schemas, context });
       }
     },
@@ -65,7 +73,10 @@ export function createResponsesWebSocketOperations(
       if (!isObservable(result)) {
         throw new Error('Responses WebSocket request did not produce a stream');
       }
-      return result;
+      // Publish completion only after the HTTP-owned history writer commits the same record.
+      return prepared.transient
+        ? result
+        : operations.cacheResponsesStream(result, prepared, signal);
     },
   };
 }

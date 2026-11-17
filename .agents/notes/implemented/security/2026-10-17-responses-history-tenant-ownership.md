@@ -42,6 +42,10 @@ is diagnosed by the durable owner. A successful generation or `flush()` does not
 persistence after such a failure. Cancellation or failed generation cannot publish
 completed history through the HTTP operation.
 
+The [WebSocket lifecycle decision](../protocol/2026-11-17-responses-websocket-lifecycle.md)
+reuses this writer and ownership contract for saved WebSocket completions and
+reconnection. Explicit transient socket responses retain only their connection history.
+
 Credential rotation changes history identity. Restoring a trusted original credential
 restores access to its retained records, but the application never guesses aliases.
 Open mode remains unauthenticated: freely chosen headers are not proof of distinct

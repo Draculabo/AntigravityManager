@@ -142,6 +142,7 @@ export interface OpenAITextCompletionRequest {
 }
 
 export interface PreparedResponsesRequest {
+  resolvedInput: unknown[];
   transient?: true;
   mediaWindowProtectLatestUserTurn?: true;
   parent: OpenAIResponsesSessionParent | null;
@@ -856,6 +857,7 @@ export class OpenAIOperations extends BaseProxyController {
     }
 
     return {
+      resolvedInput: requestInput,
       transient: body.store === false ? true : undefined,
       mediaWindowProtectLatestUserTurn: currentMediaTurn.hasUserMessage ? true : undefined,
       parent:
@@ -884,7 +886,8 @@ export class OpenAIOperations extends BaseProxyController {
     };
   }
 
-  private cacheResponsesStream(
+  /** Both transports deliver completion after the shared history writer reaches its commit point. */
+  public cacheResponsesStream(
     stream: Observable<unknown>,
     prepared: PreparedResponsesRequest,
     signal?: AbortSignal,
