@@ -41,6 +41,15 @@ cannot identify everything between them as a client template. The bounded
 transformation diagnostic records only the removal kind and location. Configured
 global prompts and ordinary conversation retain their existing ownership.
 
+The [Hermes compact prompt mode](../../../../docs/modules/proxy-gateway/agent-tools.md#compact-hermes-system-prompt)
+is selected by a provider-scoped request header on ordinary OpenAI Chat requests.
+The default system identity at the start of the first message establishes which
+Hermes-generated message to replace. Hermes can assemble project rules and
+memory in that slot, so removing its contents requires explicit opt-in. The
+mapper receives the compact text before it derives upstream request identity
+and tool declarations. Request-local diagnostics record only the transformation
+kind and position.
+
 User/tool text and signed/thought history never enter system normalization.
 Native system parts carrying either signature alias or a thought marker also
 remain unchanged, including their metadata and empty carrier text.

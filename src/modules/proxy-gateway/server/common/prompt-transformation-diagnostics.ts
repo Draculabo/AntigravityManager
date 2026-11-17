@@ -4,6 +4,7 @@ export type PromptTransformationKind =
   | 'billing-metadata-removed'
   | 'client-security-policy-removed'
   | 'identity-normalized'
+  | 'hermes-system-compacted'
   | 'initial-system-promoted'
   | 'late-system-reminder'
   | 'global-system-prepended'

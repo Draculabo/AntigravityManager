@@ -88,6 +88,31 @@ adapter keeps comments and unrelated nodes. The `antigravity-manager` provider u
 when discovery is off. Conflicting credential or endpoint aliases in that provider are refused.
 Only explicit default activation changes `model.provider` and `model.default`.
 
+### Compact Hermes system prompt
+
+If a full Hermes tool-enabled request receives upstream HTTP 429
+`RESOURCE_EXHAUSTED`, add the following header to the existing Manager provider
+entry in Hermes `config.yaml`, then start a fresh Hermes session.
+
+```yaml
+providers:
+  antigravity-manager:
+    extra_headers:
+      X-Antigravity-Hermes-Prompt: compact
+```
+
+This opt-in applies to `POST /v1/chat/completions` when the first message is a
+plain-text system message starting with a known default Hermes identity. The
+gateway replaces that message with `Answer briefly.` before mapping the request.
+Hermes may have embedded workspace rules, memory and skill guidance in that
+message. Use the mode in sessions where that bundled context can be omitted.
+Separate instructions, the conversation, tool declarations and tool results
+continue through the normal mapper. The mode applies to streamed and non-streamed
+Chat requests. Unrecognized system messages, including auxiliary prompts and
+custom identities, follow ordinary mapping. Remove the header to disable the mode.
+
+### OpenClaw provider
+
 OpenClaw targets `OPENCLAW_CONFIG_PATH`, otherwise `OPENCLAW_DIR/openclaw.json` or
 `~/.openclaw/openclaw.json`. JSONC edits keep comments and unrelated nodes. The selected `v1`
 format owns individual Manager entries in `agents.defaults.models`; `v2` owns only its

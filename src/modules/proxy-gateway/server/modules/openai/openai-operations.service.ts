@@ -9,6 +9,7 @@ import {
 } from './media/image-output-failure';
 import { admitGenerationProjectRecovery } from '../../common/generation-project-recovery';
 import { resolveClientSessionHint } from '../../common/client-session-hint';
+import { applyHermesCompactPrompt, HERMES_PROMPT_HEADER } from './chat/hermes-compact-prompt';
 import { admitOpenAIInlineMedia } from '../../common/inline-media-admission';
 import {
   findOpenAIInitialTask,
@@ -665,7 +666,11 @@ export class OpenAIOperations extends BaseProxyController {
         responsesContext = this.toResponsesExecutionContext(prepared);
       } else {
         request = await awaitRequestOperation(
-          expandFileReferences(body, 'openai-chat', this.files),
+          expandFileReferences(
+            applyHermesCompactPrompt(body, req?.headers?.[HERMES_PROMPT_HEADER]),
+            'openai-chat',
+            this.files,
+          ),
           deadline.signal,
         );
       }
