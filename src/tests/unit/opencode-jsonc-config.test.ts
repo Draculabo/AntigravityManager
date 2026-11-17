@@ -100,7 +100,7 @@ describe('OpenCode JSONC config editing', () => {
       apiKey: 'dedicated-key',
       baseUrl: 'http://127.0.0.1:8045',
       models: [
-        { id: 'gemini-3.1-pro' },
+        { id: 'gemini-3.1-pro-low' },
         { id: 'gemini-3.5-flash' },
         { id: 'gemini-3.6-flash-high' },
       ],
@@ -111,13 +111,13 @@ describe('OpenCode JSONC config editing', () => {
       }
     ).provider['antigravity-manager'].models;
 
-    expect(models['gemini-3.1-pro'].variants).toEqual({
+    expect(models['gemini-3.1-pro-low'].variants).toEqual({
       low: { effort: 'low' },
       medium: { disabled: true },
-      high: { effort: 'high' },
+      high: { disabled: true },
       max: { disabled: true },
     });
-    expect(Object.keys(models['gemini-3.1-pro'].variants as object)).toEqual([
+    expect(Object.keys(models['gemini-3.1-pro-low'].variants as object)).toEqual([
       'low',
       'medium',
       'high',
@@ -152,7 +152,7 @@ describe('OpenCode JSONC config editing', () => {
       '  "provider": {',
       '    "antigravity-manager": {',
       '      "models": {',
-      '        "gemini-3.1-pro-high": {',
+      '        "gemini-3.6-flash-high": {',
       '          // alias-owned comment',
       '          "custom": true,',
       '        },',
@@ -166,13 +166,38 @@ describe('OpenCode JSONC config editing', () => {
     const updated = updateOpenCodeConfigJsonc(aliasSource, {
       apiKey: 'dedicated-key',
       baseUrl: 'http://127.0.0.1:8045',
-      models: [{ id: 'gemini-3.1-pro-high' }],
+      models: [{ id: 'gemini-3.6-flash-high' }],
     });
 
-    expect(updated).toContain('"gemini-3.1-pro"');
-    expect(updated).not.toContain('"gemini-3.1-pro-high"');
+    expect(updated).toContain('"gemini-3.7-flash"');
+    expect(updated).not.toContain('"gemini-3.6-flash-high"');
     expect(updated).toContain('// alias-owned comment');
     expect(updated).toContain('"custom": true');
+  });
+
+  it('removes retired models from the managed provider during sync', () => {
+    const source = JSON.stringify({
+      provider: {
+        google: { models: { 'gemini-pro-agent': {} } },
+        'antigravity-manager': {
+          models: { 'gemini-pro-agent': {}, 'gemini-3.1-pro-high': {}, 'gemini-3.1-pro-low': {} },
+        },
+      },
+    });
+    const updated = updateOpenCodeConfigJsonc(source, {
+      apiKey: 'dedicated-key',
+      baseUrl: 'http://127.0.0.1:8045',
+      models: [
+        { id: 'gemini-pro-agent' },
+        { id: 'gemini-3.1-pro-high' },
+        { id: 'gemini-3.1-pro-low' },
+      ],
+    });
+
+    expect(Object.keys(parse(updated).provider['antigravity-manager'].models)).toEqual([
+      'gemini-3.1-pro-low',
+    ]);
+    expect(parse(updated).provider.google.models).toEqual({ 'gemini-pro-agent': {} });
   });
 
   it('merges an alias into an existing canonical model while retaining its comments', () => {
@@ -181,8 +206,8 @@ describe('OpenCode JSONC config editing', () => {
       '  "provider": {',
       '    "antigravity-manager": {',
       '      "models": {',
-      '        "gemini-3.1-pro": { "custom": "canonical" },',
-      '        "gemini-3.1-pro-low": {',
+      '        "gemini-3.7-flash": { "custom": "canonical" },',
+      '        "gemini-3.6-flash-low": {',
       '          // retain this alias comment',
       '          "custom": "alias",',
       '          "aliasOnly": true,',
@@ -197,10 +222,10 @@ describe('OpenCode JSONC config editing', () => {
     const updated = updateOpenCodeConfigJsonc(mergedSource, {
       apiKey: 'dedicated-key',
       baseUrl: 'http://127.0.0.1:8045',
-      models: [{ id: 'gemini-3.1-pro' }],
+      models: [{ id: 'gemini-3.7-flash' }],
     });
 
-    expect(updated).not.toContain('"gemini-3.1-pro-low"');
+    expect(updated).not.toContain('"gemini-3.6-flash-low"');
     expect(updated).toContain('// retain this alias comment');
     expect(updated).toContain('"custom": "canonical"');
     expect(updated).toContain('"aliasOnly": true');

@@ -106,9 +106,9 @@ describe('thought signature compatibility', () => {
     ]);
   });
 
-  it('keeps gemini-pro-agent thinking enabled without inventing a tool signature', () => {
+  it('keeps gemini-3-flash-agent thinking enabled without inventing a tool signature', () => {
     const request: ClaudeRequest = {
-      model: 'gemini-3.1-pro-high',
+      model: 'gemini-3-flash-agent',
       max_tokens: 1024,
       thinking: { type: 'enabled', budget_tokens: 256 },
       messages: [
@@ -128,7 +128,7 @@ describe('thought signature compatibility', () => {
 
     const body = transformClaudeRequestIn(request);
 
-    expect(body.model).toBe('gemini-pro-agent');
+    expect(body.model).toBe('gemini-3-flash-agent');
     expect(body.request.generationConfig?.thinkingConfig).toEqual({
       includeThoughts: true,
       thinkingBudget: 256,

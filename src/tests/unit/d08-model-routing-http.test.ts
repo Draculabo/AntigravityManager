@@ -57,12 +57,13 @@ afterEach(async () => {
   }
 });
 
-async function fixture(models = ['gemini-3.1-pro-high', 'gemini-pro-agent']) {
+async function fixture(models = ['gemini-3.1-pro-low']) {
   setServerConfig({
     ...DEFAULT_APP_CONFIG.proxy,
     api_key: key,
     model_aliases: [
-      { alias: 'd08-client', target: 'gemini-3.1-pro-high', enabled: true },
+      { alias: 'd08-client', target: 'gemini-3.1-pro-low', enabled: true },
+      { alias: 'd08-retired-target', target: 'gemini-3.1-pro-high', enabled: true },
       { alias: 'd08-retired-http', target: 'claude-sonnet-4-6-thinking', enabled: true },
       { alias: 'claude-d08', target: 'claude-sonnet-4-6-thinking', enabled: true },
     ],
@@ -217,22 +218,55 @@ it('uses the same alias target limits in OpenAI, Gemini and props discovery', as
   expect(wire).toEqual([]);
 });
 
-it.each([
-  [['gemini-3.1-pro-high', 'gemini-pro-agent'], 'gemini-3.1-pro-high'],
-  [['gemini-pro-agent'], 'gemini-pro-agent'],
-] as const)('binds Pro High to the selected account catalog %j', async (models, physical) => {
-  const { app, wire } = await fixture([...models]);
+it('rejects retired models and aliases before leasing despite stale provider catalog data', async () => {
+  const retired = ['gemini-pro-agent', 'gemini-3.1-pro-high'];
+  const { app, wire, lease } = await fixture(['gemini-3.1-pro-low', ...retired]);
+  const listed = await app.inject({ url: '/v1/models', headers });
+  expect(listed.statusCode).toBe(200);
+  expect(listed.json().data).toContainEqual(expect.objectContaining({ id: 'gemini-3.1-pro-low' }));
+  for (const model of [...retired, 'd08-retired-target']) {
+    expect(listed.json().data).not.toContainEqual(expect.objectContaining({ id: model }));
+    const detail = await app.inject({ url: `/v1/models/${model}`, headers });
+    expect(detail.statusCode).toBe(404);
+    const completion = await app.inject({
+      method: 'POST',
+      url: '/v1/chat/completions',
+      headers,
+      payload: { model, messages: [{ role: 'user', content: 'Reply briefly' }] },
+    });
+    expect(completion.statusCode).toBe(404);
+    expect(completion.json()).toMatchObject({ error: { code: 'model_not_found', param: 'model' } });
+
+    const gemini = await app.inject({
+      method: 'POST',
+      url: `/v1beta/models/${model}:generateContent`,
+      headers,
+      payload: { contents: [{ role: 'user', parts: [{ text: 'Reply briefly' }] }] },
+    });
+    expect(gemini.statusCode).toBe(404);
+
+    const anthropic = await app.inject({
+      method: 'POST',
+      url: '/v1/messages',
+      headers,
+      payload: { model, max_tokens: 32, messages: [{ role: 'user', content: 'Reply briefly' }] },
+    });
+    expect(anthropic.statusCode).toBe(404);
+  }
+  expect(lease.getNextToken).not.toHaveBeenCalled();
+  expect(wire).toEqual([]);
+
   const response = await app.inject({
     method: 'POST',
     url: '/v1/chat/completions',
     headers,
     payload: {
-      model: 'gemini-3.1-pro-high',
+      model: 'gemini-3.1-pro-low',
       messages: [{ role: 'user', content: 'Reply briefly' }],
     },
   });
   expect(response.statusCode).toBe(200);
-  expect(wire.map((entry) => entry.body.model)).toEqual([physical]);
+  expect(wire.map((entry) => entry.body.model)).toEqual(['gemini-3.1-pro-low']);
 });
 
 it('uses exact replacement metadata and sends its target despite a runtime retirement rule', async () => {

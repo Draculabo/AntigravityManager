@@ -12,6 +12,8 @@ import { ModelRouteMissJournalService } from './model-route-miss-journal.service
 import { normalizeClaudeContextModel } from '../../../antigravity/claude-context-model';
 import { getContextWindow } from '../../../antigravity/ModelSpecs';
 import { resolveAdaptiveModel, type AdaptiveRoutingContext } from './adaptive-model-routing';
+import { isRetiredModel } from '../../../antigravity/retired-models';
+import { RetiredModelError } from '../../common/exceptions/retired-model.exception';
 
 /**
  * How a route was decided.
@@ -91,7 +93,13 @@ export class ModelRoutingService {
     config = getServerConfig(),
     adaptive?: AdaptiveRoutingContext,
   ): ModelRouteResolution {
+    if (isRetiredModel(model)) {
+      throw new RetiredModelError(model);
+    }
     const route = this.resolveStaticModelRoute(model, config);
+    if (isRetiredModel(route.resolvedModel)) {
+      throw new RetiredModelError(model);
+    }
     if (route.source === 'configured' && route.resolvedModel.startsWith('auto:')) {
       return {
         ...route,

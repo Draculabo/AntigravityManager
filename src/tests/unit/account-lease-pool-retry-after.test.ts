@@ -37,7 +37,7 @@ describe('AccountLeaseService pool Retry-After', () => {
         quota: {
           models: {
             [physicalModel]: { percentage: 100, resetTime: '', display_name: displayName },
-            'gemini-pro-agent': { percentage: 100, resetTime: '' },
+            'gemini-3.1-pro-low': { percentage: 100, resetTime: '' },
           },
         },
       }));
@@ -74,9 +74,9 @@ describe('AccountLeaseService pool Retry-After', () => {
           targetAccountId: 'ACC-SLOW@example.com',
         }),
       ).toBe(520035);
-      expect(service.getUpstream429RetryAfter({ model: 'gemini-pro-agent' })).toBeUndefined();
+      expect(service.getUpstream429RetryAfter({ model: 'gemini-3.1-pro-low' })).toBeUndefined();
       await expect(service.getNextToken({ model: requestedModel })).resolves.toBeNull();
-      await expect(service.getNextToken({ model: 'gemini-pro-agent' })).resolves.toMatchObject({
+      await expect(service.getNextToken({ model: 'gemini-3.1-pro-low' })).resolves.toMatchObject({
         provider: 'google',
       });
     },
@@ -134,7 +134,7 @@ describe('AccountLeaseService pool Retry-After', () => {
     }
     expect(service.getMinimumRateLimitWaitForPool({ model })).toBe(3600);
     await expect(service.getNextToken({ model })).resolves.toBeNull();
-    await expect(service.getNextToken({ model: 'gemini-pro-agent' })).resolves.toMatchObject({
+    await expect(service.getNextToken({ model: 'gemini-3.1-pro-low' })).resolves.toMatchObject({
       provider: 'google',
     });
     expect(upstream.fetchQuota).not.toHaveBeenCalled();

@@ -35,8 +35,9 @@ Explicit configured replacements precede runtime retirement forwarding, with
 retirement still ahead of wildcard rules. This partially replaces the prior R2
 ordering recorded in the original D08 plan. Discovery uses the same route policy
 and publishes provider capabilities only when eligible account evidence agrees.
-Pro High's current and legacy IDs are equivalent only through their complete
-registered operating profile.
+The retired Pro High and legacy agent IDs are rejected at route resolution. Stale
+account catalogs cannot reintroduce them into discovery or account binding. The
+remaining Pro Low recipe retains its own operating profile.
 
 Alias publication is independent of generation. The optional `published` field preserves old
 exact-alias defaults; wildcard and strategy identifiers never become selectable directory IDs.

@@ -63,7 +63,7 @@ describe('opaque signatures through the real gateway tool continuation', () => {
         createLease([createAccount('roundtrip')]),
       );
       const request: AnthropicChatRequest = {
-        model: 'gemini-pro-agent',
+        model: 'gemini-3.1-pro-low',
         max_tokens: 128,
         stream,
         messages: [{ role: 'user', content: 'Read the synthetic fixture' }],
@@ -108,7 +108,7 @@ describe('opaque signatures through the real gateway tool continuation', () => {
     });
     const { openAIService } = createGateway(upstream, createLease([createAccount('roundtrip')]));
     const request: OpenAIChatRequest = {
-      model: 'gemini-pro-agent',
+      model: 'gemini-3.1-pro-low',
       stream,
       messages: [{ role: 'user', content: 'Read the synthetic fixture' }],
       tools: [{ type: 'function', function: { name: 'read', parameters: { type: 'object' } } }],
@@ -159,7 +159,7 @@ describe('opaque signatures through the real gateway tool continuation', () => {
       const first = createReply();
       await operations.responses(
         {
-          model: 'gemini-pro-agent',
+          model: 'gemini-3.1-pro-low',
           input: 'Read the synthetic fixture',
           tools: [{ type: 'function', name: 'read', parameters: { type: 'object' } }],
           stream,
@@ -187,7 +187,7 @@ describe('opaque signatures through the real gateway tool continuation', () => {
       const next = createReply();
       await operations.responses(
         {
-          model: 'gemini-pro-agent',
+          model: 'gemini-3.1-pro-low',
           previous_response_id: responseId,
           store,
           input: [
@@ -222,7 +222,7 @@ describe('opaque signatures through the real gateway tool continuation', () => {
       const first = createReply();
       await operations.responses(
         {
-          model: 'gemini-pro-agent',
+          model: 'gemini-3.1-pro-low',
           input: 'Read the synthetic fixture',
           tools,
           stream,
@@ -237,7 +237,7 @@ describe('opaque signatures through the real gateway tool continuation', () => {
         const next = createReply();
         await operations.responses(
           {
-            model: 'gemini-pro-agent',
+            model: 'gemini-3.1-pro-low',
             store: false,
             stream,
             tools,
@@ -277,7 +277,7 @@ describe('opaque signatures through the real gateway tool continuation', () => {
     }
     const input = [{ type: 'message', role: 'user', content: 'Read the synthetic fixture' }];
     const first = {
-      model: 'gemini-pro-agent',
+      model: 'gemini-3.1-pro-low',
       store: false,
       stream: true,
       input,

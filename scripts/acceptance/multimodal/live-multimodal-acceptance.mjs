@@ -81,7 +81,7 @@ function options(argv) {
   }
   const model =
     values.model ??
-    (values.case.startsWith('image-') ? 'gemini-3.1-flash-image' : 'gemini-3.1-pro-high');
+    (values.case.startsWith('image-') ? 'gemini-3.1-flash-image' : 'gemini-3.8-flash-high');
   if (!/^[a-zA-Z0-9._-]{1,100}$/.test(model)) {
     throw new Error('Invalid --model');
   }

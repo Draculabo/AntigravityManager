@@ -86,7 +86,7 @@ describe('AccountLeaseLimitPolicy', () => {
     await policy.markFromUpstreamError({
       accountIdOrEmail: 'acc-1',
       status: 429,
-      model: 'gemini-3.1-pro-high',
+      model: 'gemini-3.1-pro-low',
       body: JSON.stringify({
         error: {
           message: 'Resource has been exhausted (e.g. check quota).',
@@ -96,7 +96,7 @@ describe('AccountLeaseLimitPolicy', () => {
     });
 
     expect(refreshRealtimeQuotaAndReconcileLimit).not.toHaveBeenCalled();
-    expect(policy.isRateLimited('acc-1', 'gemini-3.1-pro-high')).toBe(true);
+    expect(policy.isRateLimited('acc-1', 'gemini-3.1-pro-low')).toBe(true);
     expect(policy.isRateLimited('acc-1', 'gemini-3.1-flash-lite')).toBe(false);
   });
 
@@ -172,7 +172,7 @@ describe('AccountLeaseLimitPolicy', () => {
       'acc-1',
       resetTime,
       RateLimitReason.QuotaExhausted,
-      'gemini-3.1-pro-high',
+      'gemini-3.1-pro-low',
     );
     tracker.setLockoutUntilIso(
       'acc-1',
@@ -183,7 +183,7 @@ describe('AccountLeaseLimitPolicy', () => {
 
     policy.clearRecoveredQuotaLocks('acc-1', ['gemini-3.1-pro'], false);
 
-    expect(tracker.isRateLimited('acc-1', 'gemini-3.1-pro-high')).toBe(false);
+    expect(tracker.isRateLimited('acc-1', 'gemini-3.1-pro-low')).toBe(false);
     expect(tracker.isRateLimited('acc-1', 'gemini-3.1-flash-lite')).toBe(true);
   });
 

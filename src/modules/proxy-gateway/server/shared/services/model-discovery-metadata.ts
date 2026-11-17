@@ -2,6 +2,7 @@ import { getContextWindow, getMaxOutputTokens } from '../../../antigravity/Model
 import { getServerConfig } from '@/server/server-config';
 import type { AccountLeaseService } from '../../modules/account-lease/account-lease.service';
 import { ModelRoutingService } from './model-routing.service';
+import { RetiredModelError } from '../../common/exceptions/retired-model.exception';
 import { NoAvailableAdaptiveModelError } from './adaptive-model-routing';
 
 type ModelDiscoverySource = Partial<
@@ -47,6 +48,9 @@ export function tryResolveModelDiscoveryMetadata(
   try {
     return resolveModelDiscoveryMetadata(model, source, config);
   } catch (error) {
+    if (error instanceof RetiredModelError) {
+      return undefined;
+    }
     if (error instanceof NoAvailableAdaptiveModelError) {
       // A hidden alias must not erase a physical ID advertised independently by the pool.
       return preservePhysicalModel ? readPhysicalModelMetadata(model, source, false) : undefined;

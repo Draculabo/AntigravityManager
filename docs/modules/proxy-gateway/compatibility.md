@@ -142,9 +142,10 @@ request effort.
 Account availability and physical binding preserve explicit tiers. A missing
 explicit tier does not select another tier merely because the account advertises
 it. Registered public presets retain their defined physical recipes, including
-Gemini 3.5 Flash Low through `gemini-3.5-flash-extra-low`. Gemini 3.1 Pro High
-prefers `gemini-3.1-pro-high` when the selected account advertises it and retains
-the equivalent `gemini-pro-agent` recipe for legacy account catalogs. Registered automatic Flash routes retain their physical
+Gemini 3.5 Flash Low through `gemini-3.5-flash-extra-low`. The retired
+`gemini-3.1-pro-high` and `gemini-pro-agent` IDs are excluded from discovery even
+when a cached account advertises them. Direct requests and aliases pointing to either ID
+return HTTP 404 before account selection. Registered automatic Flash routes retain their physical
 `tiered` ID and adaptive budget regardless of request effort. Fixed High profiles
 do not bind to automatic profiles merely because both are registered as High.
 Explicit provider retirement rules retain their existing registered-recipe safety check and may

@@ -185,7 +185,7 @@ without that SOP flag.
 
    ```powershell
    node dist/cli/main.cjs tools status codex --base-url http://127.0.0.1:8045/v1
-   node dist/cli/main.cjs tools configure codex --base-url http://127.0.0.1:8045/v1 --model gemini-3.1-pro-high
+   node dist/cli/main.cjs tools configure codex --base-url http://127.0.0.1:8045/v1 --model gemini-3.8-flash-high
    ```
 
 3. Reopen the client and verify its requests in Manager's Traffic Monitor. Saved configuration
@@ -213,7 +213,7 @@ DSH profile. The CLI uses the same selected Core owner as the desktop DSH card.
    $dshOptions = @(
      '--profile', 'web', '--protocol', 'openai-completions',
      '--base-url', 'http://127.0.0.1:8045/v1',
-     '--credential-ref', 'manager_key', '--model', 'gemini-3.1-pro-high'
+     '--credential-ref', 'manager_key', '--model', 'gemini-3.8-flash-high'
    )
    node dist/cli/main.cjs tools dsh status --profile web
    node dist/cli/main.cjs tools dsh preview --action sync @dshOptions

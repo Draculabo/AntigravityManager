@@ -108,7 +108,7 @@ describe('HTTP signature scope admission', () => {
       };
       const input = [{ type: 'message', role: 'user', content: 'Read task A' }];
       const initial = {
-        model: 'gemini-pro-agent',
+        model: 'gemini-3.1-pro-low',
         input,
         store: false,
         tools: [{ type: 'function', name: 'read', parameters: { type: 'object' } }],
@@ -150,7 +150,7 @@ describe('HTTP signature scope admission', () => {
   it('passes native Gemini credential, header and actual query hints to account selection', async () => {
     const { app, lease } = await surface();
     const payload = { contents: [{ role: 'user', parts: [{ text: 'synthetic task' }] }] };
-    const url = '/v1beta/models/gemini-pro-agent:generateContent?session_id=query';
+    const url = '/v1beta/models/gemini-3.1-pro-low:generateContent?session_id=query';
     const headers = { authorization: 'Bearer synthetic-tenant-a', 'x-client-session-id': 'header' };
     expect((await app.inject({ method: 'POST', url, headers, payload })).statusCode).toBe(200);
     expect(lease.getNextToken.mock.calls[0][0]).toEqual(
@@ -177,12 +177,12 @@ describe('HTTP signature scope admission', () => {
     async (protocol) => {
       const { app, upstream, signatureA } = await surface();
       const openAI: OpenAIChatRequest = {
-        model: 'gemini-pro-agent',
+        model: 'gemini-3.1-pro-low',
         messages: [{ role: 'user', content: 'The identical initial task' }],
         tools: [{ type: 'function', function: { name: 'read', parameters: { type: 'object' } } }],
       };
       const anthropic: AnthropicChatRequest = {
-        model: 'gemini-pro-agent',
+        model: 'gemini-3.1-pro-low',
         max_tokens: 128,
         messages: [{ role: 'user', content: 'The identical initial task' }],
         tools: [{ name: 'read', input_schema: { type: 'object' } }],
@@ -262,7 +262,7 @@ describe('HTTP signature scope admission', () => {
   it('isolates accepted proxy credentials with the same task and session hint', async () => {
     const { app, upstream, signatureA } = await surface();
     const request: OpenAIChatRequest = {
-      model: 'gemini-pro-agent',
+      model: 'gemini-3.1-pro-low',
       messages: [{ role: 'user', content: 'The identical tenant task' }],
       tools: [{ type: 'function', function: { name: 'read', parameters: { type: 'object' } } }],
     };

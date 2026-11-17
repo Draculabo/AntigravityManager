@@ -1,5 +1,6 @@
 import { isEmpty, isString } from 'lodash-es';
 import { logger } from '@/shared/logging/logger';
+import { isRetiredModel } from './retired-models';
 
 const PUBLIC_MODEL_PRESET_DISPLAY_NAMES = {
   'gemini-4-argon': 'Gemini 4 Argon',
@@ -13,7 +14,6 @@ const PUBLIC_MODEL_PRESET_DISPLAY_NAMES = {
   'gemini-3.5-flash-high': 'Gemini 3.5 Flash (High)',
   'gemini-3.5-flash-low': 'Gemini 3.5 Flash (Low)',
   'gemini-3.1-pro-low': 'Gemini 3.1 Pro (Low)',
-  'gemini-3.1-pro-high': 'Gemini 3.1 Pro (High)',
   'claude-sonnet-4-6-thinking': 'Claude Sonnet 4.6 (Thinking)',
   'claude-opus-4-6-thinking': 'Claude Opus 4.6 (Thinking)',
   'gpt-oss-120b-medium': 'GPT-OSS 120B (Medium)',
@@ -61,8 +61,6 @@ const CLAUDE_TO_GEMINI: Record<string, string> = {
   'gemini-3.5-flash-low': 'gemini-3.5-flash-low',
   'gemini-3.5-flash-extra-low': 'gemini-3.5-flash-extra-low',
   'gemini-3.1-pro-low': 'gemini-3.1-pro-low',
-  'gemini-3.1-pro-high': 'gemini-pro-agent',
-  'gemini-pro-agent': 'gemini-pro-agent',
   'gemini-3-flash': 'gemini-3-flash',
 
   // Alias mappings
@@ -107,15 +105,10 @@ const CLAUDE_TO_GEMINI: Record<string, string> = {
 
   // Gemini Protocol Mapping
   'gemini-2.5-flash-lite': 'gemini-3-flash',
-  'gemini-3.1-pro-preview': 'gemini-3.1-pro-high',
-  'gemini-3.1-pro': 'gemini-3.1-pro-high',
-  'gemini-3.0-pro': 'gemini-3.1-pro-high',
   'gemini-3-pro': 'gemini-3-pro-preview',
   'gemini-3-pro-preview': 'gemini-3-pro-preview',
   'gemini-3-pro-low': 'gemini-3-pro-low',
-  'gemini-3-pro-high': 'gemini-pro-agent',
   'gemini-2.5-flash': 'gemini-3-flash',
-  'gemini-2.5-pro': 'gemini-3.1-pro-high',
   'gemini-2.0-flash': 'gemini-3-flash',
   'gemini-2.0-flash-online': 'gemini-3-flash',
   'gemini-3-pro-image': 'gemini-3-pro-image',
@@ -135,7 +128,6 @@ const EXTRA_DYNAMIC_MODELS = [
   'gemini-3.7-flash-medium',
   'gemini-3.7-flash-low',
   'gemini-3-flash',
-  'gemini-3.1-pro-high',
   'gemini-3.1-pro-low',
   'gemini-3.1-flash-image',
 ];
@@ -153,7 +145,11 @@ function collectDynamicModelIds(dynamicModelIds?: Iterable<string>): Set<string>
   }
 
   for (const dynamicModelId of dynamicModelIds) {
-    if (isString(dynamicModelId) && !isEmpty(dynamicModelId.trim())) {
+    if (
+      isString(dynamicModelId) &&
+      !isEmpty(dynamicModelId.trim()) &&
+      !isRetiredModel(dynamicModelId)
+    ) {
       modelIds.add(dynamicModelId.trim());
     }
   }
@@ -167,8 +163,6 @@ const GEMINI_MODEL_ALIASES: Record<string, string> = {
   'gemini-3-flash-image': 'gemini-3.1-flash-image',
   'gemini-3.1-flash-image-preview': 'gemini-3.1-flash-image',
   'gemini-3-flash-preview': 'gemini-3-flash',
-  'gemini-3.1-pro-preview': 'gemini-3.1-pro-high',
-  'gemini-3.1-pro': 'gemini-3.1-pro-high',
 };
 
 export function getSupportedModels(): string[] {
@@ -211,8 +205,6 @@ export function getAllDynamicModels(
   const modelIds = collectDynamicModelIds(dynamicModelIds);
 
   if (onlyRawQuotaModels) {
-    // Raw discovery is a physical cache view. Adding aliases, fallbacks, or
-    // compatibility filters here would make clients cache models that quota never advertised.
     return [...modelIds].sort();
   }
 
@@ -238,7 +230,9 @@ export function getAllDynamicModels(
     }
   }
 
-  return [...modelIds].filter((id) => !shouldHideDeprecatedModelFromList(id)).sort();
+  return [...modelIds]
+    .filter((id) => !isRetiredModel(id) && !shouldHideDeprecatedModelFromList(id))
+    .sort();
 }
 
 export function getOpenAICompatibleModels(

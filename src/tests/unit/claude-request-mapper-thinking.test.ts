@@ -120,20 +120,7 @@ describe('ClaudeRequestMapper thinking support', () => {
     },
   );
 
-  it.each(['gemini-3.1-pro-high', 'gemini-3-pro-high'])(
-    'routes high-tier Gemini Pro variant %s through gemini-pro-agent',
-    (model) => {
-      const body = transformClaudeRequestIn(createThinkingRequest(model));
-
-      expect(body.model).toBe('gemini-pro-agent');
-      expect(body.request.generationConfig?.thinkingConfig).toEqual({
-        includeThoughts: true,
-        thinkingBudget: 256,
-      });
-    },
-  );
-
-  it.each(['gemini-pro-agent', 'gemini-3-pro-agent', 'gemini-3-flash-agent'])(
+  it.each(['gemini-3-pro-agent', 'gemini-3-flash-agent'])(
     'enables thinking by default for Agent model %s',
     (model) => {
       const request = createThinkingRequest(model);

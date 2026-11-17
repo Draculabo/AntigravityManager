@@ -139,7 +139,7 @@ describe('real request path, Anthropic messages surface', () => {
       {
         max_tokens: 16384,
         messages: [{ content: 'Use the configured profile.', role: 'user' }],
-        model: 'gemini-pro-agent',
+        model: 'gemini-3-flash-agent',
         stream: false,
         thinking: {
           budget_tokens: 1000,
@@ -150,12 +150,12 @@ describe('real request path, Anthropic messages surface', () => {
     );
 
     expect(reply.status).toHaveBeenCalledWith(200);
-    expect(upstream.calls[0]?.body.model).toBe('gemini-pro-agent');
+    expect(upstream.calls[0]?.body.model).toBe('gemini-3-flash-agent');
     expect(upstream.calls[0]?.body.request.generationConfig).toEqual(
       expect.objectContaining({
         thinkingConfig: {
           includeThoughts: true,
-          thinkingBudget: 10001,
+          thinkingBudget: 10000,
         },
       }),
     );
@@ -279,7 +279,7 @@ describe('real request path, Anthropic messages surface', () => {
     });
     const { anthropicService } = createGateway(upstream, createLease([createAccount('acc-1')]));
     const response = await anthropicService.handleAnthropicMessages({
-      model: 'gemini-3.1-pro-high',
+      model: 'gemini-3.1-pro-low',
       max_tokens: 128,
       stream: false,
       messages: [{ role: 'user', content: 'Read the controlled file.' }],
@@ -322,7 +322,7 @@ describe('real request path, Anthropic messages surface', () => {
     const { anthropicService } = createGateway(upstream, createLease([createAccount('acc-1')]));
     await expect(
       anthropicService.handleAnthropicMessages({
-        model: 'gemini-3.1-pro-high',
+        model: 'gemini-3.1-pro-low',
         max_tokens: 128,
         stream: false,
         messages: [{ role: 'user', content: 'Reply.' }],
@@ -343,7 +343,7 @@ describe('real request path, Anthropic messages surface', () => {
     });
     const { anthropicService } = createGateway(upstream, createLease([createAccount('acc-1')]));
     const response = await anthropicService.handleAnthropicMessages({
-      model: 'gemini-3.1-pro-high',
+      model: 'gemini-3.1-pro-low',
       max_tokens: 128,
       stream: false,
       messages: [{ role: 'user', content: 'Reply.' }],
@@ -370,7 +370,7 @@ describe('real request path, Anthropic messages surface', () => {
 
     await expect(
       anthropicService.handleAnthropicMessages({
-        model: 'gemini-3.1-pro-high',
+        model: 'gemini-3.1-pro-low',
         max_tokens: 128,
         stream: false,
         messages: [{ role: 'user', content: 'Reply.' }],

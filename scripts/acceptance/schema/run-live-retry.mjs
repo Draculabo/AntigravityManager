@@ -19,7 +19,7 @@ const selected = z
   .enum(['network', 'rotation', 'incomplete', 'all'])
   .parse(process.argv[2] ?? 'all');
 const model = z
-  .enum(['gemini-3.7-flash-high', 'gemini-3.1-pro-high'])
+  .enum(['gemini-3.7-flash-high', 'gemini-3.8-flash-high'])
   .parse(process.argv[3] ?? 'gemini-3.7-flash-high');
 const root = process.cwd();
 const workspace = fs.mkdtempSync(path.resolve('out/schema-work-package/live-retry-'));

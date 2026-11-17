@@ -25,7 +25,7 @@ import { waitForOwnedCore } from './live-startup.mjs';
 const root = process.cwd();
 const sessionStartedAt = Date.now();
 const openAIModel = z
-  .enum(['gemini-3-flash', 'gemini-3.7-flash-high', 'gemini-3.1-pro-high'])
+  .enum(['gemini-3-flash', 'gemini-3.7-flash-high', 'gemini-3.8-flash-high'])
   .parse(process.argv[2] ?? 'gemini-3.7-flash-high');
 const experimentalProductionEndpoint = process.argv[3] === 'production';
 const clientOnly = ['client', 'client-mcp'].includes(process.argv[3]);
@@ -320,7 +320,7 @@ try {
     !historyOnly &&
     !experimentalUserAgentVersion &&
     !experimentalProductionEndpoint &&
-    openAIModel === 'gemini-3.1-pro-high'
+    openAIModel === 'gemini-3.8-flash-high'
   ) {
     await codingClient();
   }

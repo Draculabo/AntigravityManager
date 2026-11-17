@@ -306,7 +306,7 @@ describe('real request path, Gemini surface', () => {
     const upstream = createUpstream({ generate: geminiTextResponse('ok') });
     const service = createGateway(upstream, createLease([createAccount('acc-1')])).geminiService;
 
-    await service.handleGeminiGenerateContent('gemini-pro-agent', {
+    await service.handleGeminiGenerateContent('gemini-3-flash-agent', {
       ...geminiRequest('hello'),
       generationConfig: {
         temperature: 0.2,
@@ -318,13 +318,13 @@ describe('real request path, Gemini surface', () => {
       },
     });
 
-    expect(upstream.calls[0]?.body.model).toBe('gemini-pro-agent');
+    expect(upstream.calls[0]?.body.model).toBe('gemini-3-flash-agent');
     expect(upstream.calls[0]?.body.request.generationConfig).toEqual({
       temperature: 0.2,
-      maxOutputTokens: 11_025,
+      maxOutputTokens: 11_024,
       thinkingConfig: {
         includeThoughts: true,
-        thinkingBudget: 10_001,
+        thinkingBudget: 10_000,
       },
     });
   });

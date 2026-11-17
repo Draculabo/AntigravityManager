@@ -80,7 +80,7 @@ describe('GeminiController Integration', () => {
     const proxyService = {};
     const accountLeaseService = {
       getAllCollectedModels: vi.fn(
-        () => new Set(['gemini-3-flash', 'gemini-3.1-pro-high', 'gemini-3.5-flash-extra-low']),
+        () => new Set(['gemini-3-flash', 'gemini-3.1-pro-low', 'gemini-3.5-flash-extra-low']),
       ),
     };
     const controller = new GeminiController(proxyService as any, accountLeaseService as any);
@@ -103,7 +103,7 @@ describe('GeminiController Integration', () => {
             supportedGenerationMethods: ['generateContent', 'countTokens'],
           }),
           expect.objectContaining({
-            name: 'models/gemini-3.1-pro-high',
+            name: 'models/gemini-3.1-pro-low',
             description: '',
             inputTokenLimit: 1048576,
             outputTokenLimit: 65536,
@@ -151,7 +151,7 @@ describe('GeminiController Integration', () => {
         'models/gemini-3.5-flash-high',
         'models/gemini-3.5-flash-low',
         'models/gemini-3.1-pro-low',
-        'models/gemini-3.1-pro-high',
+        'models/gemini-3.1-pro-low',
         'models/claude-sonnet-4-6-thinking',
         'models/claude-opus-4-6-thinking',
         'models/gpt-oss-120b-medium',
@@ -204,18 +204,6 @@ describe('GeminiController Integration', () => {
           topP: 0.95,
           version: '001',
         },
-        {
-          name: 'models/gemini-pro-agent',
-          displayName: 'gemini-pro-agent',
-          description: '',
-          inputTokenLimit: 1048576,
-          outputTokenLimit: 65535,
-          supportedGenerationMethods: ['generateContent', 'countTokens'],
-          temperature: 1,
-          topK: 64,
-          topP: 0.95,
-          version: '001',
-        },
       ],
     });
   });
@@ -245,13 +233,13 @@ describe('GeminiController Integration', () => {
     const reply = createReplyMock();
 
     await controller.modelAction(
-      'models/gemini-3.1-pro-high:generateContent',
+      'models/gemini-3.1-pro-low:generateContent',
       { contents: [{ role: 'user', parts: [{ text: 'hello' }] }] } as any,
       reply as any,
     );
 
     expect(proxyService.handleGeminiGenerateContent).toHaveBeenCalledWith(
-      'models/gemini-3.1-pro-high',
+      'models/gemini-3.1-pro-low',
       { contents: [{ role: 'user', parts: [{ text: 'hello' }] }] },
       'generate-content',
       undefined,

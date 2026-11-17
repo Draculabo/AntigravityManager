@@ -24,6 +24,8 @@ describe('proxy example models', () => {
           models: {
             'models/vendor-preview': quota(),
             'gemini-3-flash': quota(),
+            'models/GEMINI-3.1-PRO-HIGH': quota(),
+            'gemini-pro-agent': quota(),
           },
         },
       },

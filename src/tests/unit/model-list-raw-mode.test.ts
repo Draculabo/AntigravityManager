@@ -10,18 +10,18 @@ describe('raw quota model listing', () => {
     'gpt-4o': 'gemini-3-flash',
   };
 
-  it('returns only the complete physical quota model set', () => {
+  it('returns the physical quota model set without retired IDs', () => {
     const quotaModels = [
       'gemini-3-pro-image',
       'gemini-2.5-flash',
       'gemini-pro-agent',
+      'models/GEMINI-3.1-PRO-HIGH',
       'gemini-3-pro-image',
     ];
 
     expect(getAllDynamicModels(customMapping, quotaModels, true)).toEqual([
       'gemini-2.5-flash',
       'gemini-3-pro-image',
-      'gemini-pro-agent',
     ]);
   });
 

@@ -218,7 +218,7 @@ remote Sentry receipt check or calibrate budgets from organic traffic. Run
 `node --test scripts/acceptance/schema/check-client-matrix.mjs` for its protocol, guard, continuation
 and audit evidence controls.
 
-After `pnpm run prepare:standalone`, use `pnpm run test:schema:live gemini-3.1-pro-high` to test
+After `pnpm run prepare:standalone`, use `pnpm run test:schema:live gemini-3.8-flash-high` to test
 ordinary and degraded tool parameters against the real gateway and Google upstream. The harness
 also exercises current native Gemini Flash/Pro routes and installed Claude Code's Read tool.
 Use `pnpm run test:schema:live gemini-3.7-flash-high` for ordinary/degraded Flash tool loops;
@@ -242,7 +242,7 @@ Append `client-mcp` to use default Claude Code declarations and the three inspec
 local MCP servers. This verifies actual declaration acceptance and a controlled Read cycle;
 it does not execute MCP business tools. Append `history` to acquire two real parallel calls and
 compare combined, adjacent and reversed-result histories without rewriting production history.
-Append `history extended` to compare identical resubmissions and bidirectional Pro/Flash
+Append `history extended` to compare identical resubmissions and cross-version Flash
 continuation, choosing the source model in the first argument. Append `history recovery` to
 mutate only signatures in a controlled history and require final result matches plus actual
 upstream 400/200 attempts for one gateway request. A provider accepting the mutation does not
@@ -262,7 +262,7 @@ full cycle record. Append `2.5.5` or `1.23.2` for an isolated User-Agent build e
 `production` for a transient backup-endpoint-only experiment. These modes identify themselves
 in the result and do not alter production routing, version selection or saved configuration.
 
-`node scripts/acceptance/schema/run-live-retry.mjs <network|rotation|incomplete|all> [gemini-3.7-flash-high|gemini-3.1-pro-high]`
+`node scripts/acceptance/schema/run-live-retry.mjs <network|rotation|incomplete|all> [gemini-3.7-flash-high|gemini-3.8-flash-high]`
 starts the prepared core with a temporary loopback relay. Network mode resets the first
 controlled continuation connection; rotation mode returns 503 for both addresses on the
 first account. Successful generations use the real provider. Incomplete mode injects a

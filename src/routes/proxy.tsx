@@ -90,7 +90,6 @@ const ANTHROPIC_ROUTE_OPTIONS = [
   'claude-opus-4-6-thinking',
   'gemini-3-flash',
   'gemini-3.1-pro-low',
-  'gemini-3.1-pro-high',
 ] as const;
 
 const DEFAULT_ANTHROPIC_MAPPING: Record<string, string> = {
@@ -248,7 +247,7 @@ function ProxyPage() {
 
   // ===== Usage Examples State =====
   const [selectedProtocol, setSelectedProtocol] = useState<ProxyProtocol>('openai');
-  const [activeModelTab, setActiveModelTab] = useState('gemini-3.1-pro-high');
+  const [activeModelTab, setActiveModelTab] = useState('gemini-3.7-flash-high');
   const [copied, setCopied] = useState<string | null>(null);
   const exampleModels = useMemo(() => buildProxyExampleModels(cloudAccounts), [cloudAccounts]);
   const visibleExampleModels = useMemo(

@@ -5,6 +5,7 @@ import {
   type ModelDiscoveryCapabilities,
 } from './account-model-catalog';
 import { getPublicModelIdForDisplayName } from '../../../../antigravity/ModelMapping';
+import { isRetiredModel } from '../../../../antigravity/retired-models';
 import type { ModelThinkingTransport } from '../../../common/model-thinking-transport';
 import {
   isModelTierBindingAllowed,
@@ -33,17 +34,14 @@ interface AccountLeaseModelPolicyOptions {
   isModelBlocked(accountId: string, model: string): boolean;
 }
 
-const GEMINI_PRO_FAMILY = new Set([
-  'gemini-pro-agent',
-  'gemini-3-pro',
+const GEMINI_PRO_FALLBACKS = [
+  'gemini-3.1-pro-preview',
   'gemini-3-pro-preview',
   'gemini-3-pro-high',
-  'gemini-3-pro-low',
-  'gemini-3.1-pro',
-  'gemini-3.1-pro-preview',
-  'gemini-3.1-pro-high',
   'gemini-3.1-pro-low',
-]);
+  'gemini-3-pro-low',
+];
+const GEMINI_PRO_FAMILY = new Set(['gemini-3-pro', 'gemini-3.1-pro', ...GEMINI_PRO_FALLBACKS]);
 
 const GEMINI_PRO_IMAGE_FAMILY = new Set(['gemini-3-pro-image', 'gemini-3.1-pro-image']);
 const GEMINI_FLASH_IMAGE_FAMILY = new Set(['gemini-3-flash-image', 'gemini-3.1-flash-image']);
@@ -130,7 +128,12 @@ export class AccountLeaseModelPolicy {
     }
 
     if (GEMINI_PRO_FAMILY.has(normalizedModel)) {
-      return this.buildGeminiProCandidates(normalizedModel, physicalTarget);
+      return [
+        normalizedModel,
+        ...GEMINI_PRO_FALLBACKS.filter((candidate) => candidate !== normalizedModel),
+      ].filter((candidate) =>
+        this.isSafeRegisteredFallback(normalizedModel, candidate, physicalTarget),
+      );
     }
 
     if (GEMINI_PRO_IMAGE_FAMILY.has(normalizedModel)) {
@@ -157,49 +160,6 @@ export class AccountLeaseModelPolicy {
     }
 
     return null;
-  }
-
-  private buildGeminiProCandidates(normalizedModel: string, physicalTarget: boolean): string[] {
-    const candidates: string[] = [];
-    const seen = new Set<string>();
-    const pushCandidate = (candidate: string) => {
-      if (!seen.has(candidate)) {
-        seen.add(candidate);
-        candidates.push(candidate);
-      }
-    };
-
-    // Prefer the current High ID when advertised; the legacy agent has the same
-    // registered operating profile and remains usable on older account catalogs.
-    if (
-      !physicalTarget &&
-      ['gemini-pro-agent', 'gemini-3.1-pro-high', 'gemini-3.1-pro'].includes(normalizedModel)
-    ) {
-      pushCandidate('gemini-3.1-pro-high');
-    }
-    if (normalizedModel === 'gemini-pro-agent') {
-      pushCandidate(normalizedModel);
-    } else if (normalizedModel === 'gemini-3.1-pro-high' || normalizedModel === 'gemini-3.1-pro') {
-      // Older quota snapshots may not advertise the agent id, so retain the
-      // proven preview fallback chain used by those accounts.
-      pushCandidate('gemini-3.1-pro-preview');
-      pushCandidate('gemini-3.1-pro');
-      pushCandidate(normalizedModel);
-    } else {
-      pushCandidate(normalizedModel);
-    }
-
-    pushCandidate('gemini-pro-agent');
-    pushCandidate('gemini-3.1-pro-preview');
-    pushCandidate('gemini-3-pro-preview');
-    pushCandidate('gemini-3.1-pro-high');
-    pushCandidate('gemini-3-pro-high');
-    pushCandidate('gemini-3.1-pro-low');
-    pushCandidate('gemini-3-pro-low');
-
-    return candidates.filter((candidate) =>
-      this.isSafeRegisteredFallback(normalizedModel, candidate, physicalTarget),
-    );
   }
 
   resolveDynamicModelForAccount(
@@ -253,6 +213,9 @@ export class AccountLeaseModelPolicy {
     effort?: string,
     physicalTarget = false,
   ): AccountModelAvailability {
+    if (isRetiredModel(mappedModel)) {
+      return 'unavailable';
+    }
     const tokenData = this.options.getTokenCache().get(accountId);
     if (!tokenData) {
       return 'unknown';
@@ -297,6 +260,9 @@ export class AccountLeaseModelPolicy {
     effort?: string,
     physicalTarget = false,
   ): AccountModelAvailability {
+    if (isRetiredModel(mappedModel)) {
+      return 'unavailable';
+    }
     const tokenData = this.options.getTokenCache().get(accountId);
     if (!tokenData) {
       return 'unknown';
@@ -365,7 +331,11 @@ export class AccountLeaseModelPolicy {
    * can land on a model the generation API refuses to serve.
    */
   private filterRequestableModels(models: Set<string>, accountId: string): Set<string> {
-    return new Set([...models].filter((model) => !this.options.isModelBlocked(accountId, model)));
+    return new Set(
+      [...models].filter(
+        (model) => !isRetiredModel(model) && !this.options.isModelBlocked(accountId, model),
+      ),
+    );
   }
 
   /**
@@ -399,6 +369,9 @@ export class AccountLeaseModelPolicy {
     effort?: string,
     physicalTarget = false,
   ): string | null {
+    if (isRetiredModel(normalizedMappedModel)) {
+      return null;
+    }
     const forwardedModel = this.resolveForwardedModelForAccount(
       tokenData,
       normalizedMappedModel,
@@ -421,12 +394,6 @@ export class AccountLeaseModelPolicy {
       availableModels,
       physicalTarget,
     );
-    if (
-      normalizedMappedModel === 'gemini-pro-agent' &&
-      safeAvailableModels.has('gemini-3.1-pro-high')
-    ) {
-      return 'gemini-3.1-pro-high';
-    }
     if (physicalTarget) {
       return safeAvailableModels.has(normalizedMappedModel)
         ? normalizedMappedModel

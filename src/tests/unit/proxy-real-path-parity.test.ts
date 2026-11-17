@@ -48,81 +48,80 @@ describe('real request path, OpenAI chat surface', () => {
     { secondStatus: 429, statusInferred: undefined, expectedStatus: 429 },
     { secondStatus: 503, statusInferred: undefined, expectedStatus: 503 },
     { secondStatus: 429, statusInferred: true as const, expectedStatus: 503 },
-  ])('reports $expectedStatus for a cooled-down pool (upstream status $secondStatus, inferred $statusInferred)', async ({
-    secondStatus,
-    statusInferred,
-    expectedStatus,
-  }) => {
-    vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(new Date('2026-11-01T00:00:00Z'));
-    const accounts = ['acc-1', 'acc-2'].map((id) => createAccount(id));
-    const availability = new ModelAvailabilityService();
-    const lease = new AccountLeaseService(
-      {
-        getAccounts: async () => structuredClone(accounts),
-        getAccount: async (id) => structuredClone(accounts.find((account) => account.id === id)),
-        updateToken: vi.fn(),
-        compareAndUpdateToken: vi.fn(),
-        updateQuota: vi.fn(),
-        mutateHealth: vi.fn(),
-      },
-      {
-        fetchQuota: vi.fn(),
-        refreshAccessToken: vi.fn(),
-        fetchProjectId: vi.fn(),
-        normalizeRefreshedOAuthClientKey: vi.fn(),
-      },
-      undefined,
-      availability,
-      undefined,
-      null,
-    );
-    try {
-      await lease.loadAccounts();
-      await lease.markFromUpstreamError({
-        accountIdOrEmail: 'acc-1',
-        status: 429,
-        body: '{"error":{"code":429,"status":"RESOURCE_EXHAUSTED"}}',
-        model: 'gemini-3-flash-agent',
-      });
-      await lease.markFromUpstreamError({
-        accountIdOrEmail: 'acc-2',
-        status: secondStatus,
-        statusInferred,
-        retryAfter: '30',
-        model: 'gemini-3-flash-agent',
-      });
-      vi.setSystemTime(Date.now() + 1250);
-      const upstream = createUpstream({ generate: geminiTextResponse('ready') });
-      const controller = new OpenAIOperations(
-        createGateway(upstream, lease, undefined, availability).openAIService,
+  ])(
+    'reports $expectedStatus for a cooled-down pool (upstream status $secondStatus, inferred $statusInferred)',
+    async ({ secondStatus, statusInferred, expectedStatus }) => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-11-01T00:00:00Z'));
+      const accounts = ['acc-1', 'acc-2'].map((id) => createAccount(id));
+      const availability = new ModelAvailabilityService();
+      const lease = new AccountLeaseService(
+        {
+          getAccounts: async () => structuredClone(accounts),
+          getAccount: async (id) => structuredClone(accounts.find((account) => account.id === id)),
+          updateToken: vi.fn(),
+          compareAndUpdateToken: vi.fn(),
+          updateQuota: vi.fn(),
+          mutateHealth: vi.fn(),
+        },
+        {
+          fetchQuota: vi.fn(),
+          refreshAccessToken: vi.fn(),
+          fetchProjectId: vi.fn(),
+          normalizeRefreshedOAuthClientKey: vi.fn(),
+        },
+        undefined,
+        availability,
+        undefined,
+        null,
       );
-      const body = {
-        messages: [{ content: 'Hello', role: 'user' }],
-        model: 'gemini-3-flash',
-        stream: false,
-      } as const;
-      for (const stream of [false, true]) {
-        const reply = createReply();
-        await controller.chatCompletions({ ...body, stream } as never, reply as never);
-        expect(reply.statusCode).toBe(expectedStatus);
-        expect(reply.body).toMatchObject({
-          error: { type: expectedStatus === 429 ? 'rate_limit_error' : 'server_error' },
+      try {
+        await lease.loadAccounts();
+        await lease.markFromUpstreamError({
+          accountIdOrEmail: 'acc-1',
+          status: 429,
+          body: '{"error":{"code":429,"status":"RESOURCE_EXHAUSTED"}}',
+          model: 'gemini-3-flash-agent',
         });
-        expect(reply.header).toHaveBeenCalledWith('Retry-After', '4');
-      }
-      expect(upstream.calls).toHaveLength(0);
+        await lease.markFromUpstreamError({
+          accountIdOrEmail: 'acc-2',
+          status: secondStatus,
+          statusInferred,
+          retryAfter: '30',
+          model: 'gemini-3-flash-agent',
+        });
+        vi.setSystemTime(Date.now() + 1250);
+        const upstream = createUpstream({ generate: geminiTextResponse('ready') });
+        const controller = new OpenAIOperations(
+          createGateway(upstream, lease, undefined, availability).openAIService,
+        );
+        const body = {
+          messages: [{ content: 'Hello', role: 'user' }],
+          model: 'gemini-3-flash',
+          stream: false,
+        } as const;
+        for (const stream of [false, true]) {
+          const reply = createReply();
+          await controller.chatCompletions({ ...body, stream } as never, reply as never);
+          expect(reply.statusCode).toBe(expectedStatus);
+          expect(reply.body).toMatchObject({
+            error: { type: expectedStatus === 429 ? 'rate_limit_error' : 'server_error' },
+          });
+          expect(reply.header).toHaveBeenCalledWith('Retry-After', '4');
+        }
+        expect(upstream.calls).toHaveLength(0);
 
-      vi.setSystemTime(Date.now() + 4000);
-      const recovered = createReply();
-      await controller.chatCompletions(body as never, recovered as never);
-      expect(recovered.statusCode).toBe(200);
-      expect(upstream.calls.map((call) => call.accessToken)).toEqual(['access-acc-1']);
-    } finally {
-      await lease.onModuleDestroy();
-      vi.useRealTimers();
-    }
-  });
+        vi.setSystemTime(Date.now() + 4000);
+        const recovered = createReply();
+        await controller.chatCompletions(body as never, recovered as never);
+        expect(recovered.statusCode).toBe(200);
+        expect(upstream.calls.map((call) => call.accessToken)).toEqual(['access-acc-1']);
+      } finally {
+        await lease.onModuleDestroy();
+        vi.useRealTimers();
+      }
+    },
+  );
 
   it('answers an OpenAI client from an upstream fixture, through every real layer', async () => {
     const upstream = createUpstream({ generate: geminiTextResponse('The weather is cloudy.') });
@@ -281,7 +280,7 @@ describe('real request path, OpenAI chat surface', () => {
 
     await openAIService.handleChatCompletions({
       messages: [{ content: 'Use the configured profile.', role: 'user' }],
-      model: 'gemini-pro-agent',
+      model: 'gemini-3-flash-agent',
       stream: false,
       thinking: {
         budget_tokens: 1000,
@@ -290,13 +289,13 @@ describe('real request path, OpenAI chat surface', () => {
       },
     });
 
-    expect(upstream.calls[0]?.body.model).toBe('gemini-pro-agent');
+    expect(upstream.calls[0]?.body.model).toBe('gemini-3-flash-agent');
     expect(upstream.calls[0]?.body.request.generationConfig).toEqual(
       expect.objectContaining({
-        maxOutputTokens: 11_025,
+        maxOutputTokens: 11_024,
         thinkingConfig: {
           includeThoughts: true,
-          thinkingBudget: 10_001,
+          thinkingBudget: 10_000,
         },
       }),
     );

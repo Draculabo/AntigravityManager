@@ -75,7 +75,7 @@ export async function runLiveCodingClient({
       '--max-turns',
       '4',
       '--model',
-      'gemini-3.1-pro-high',
+      'gemini-3.8-flash-high',
       '--output-format',
       'stream-json',
       '--verbose',
@@ -147,7 +147,7 @@ export async function runLiveCodingClient({
   }
   result.codingClient = {
     client: 'Claude Code',
-    model: 'gemini-3.1-pro-high',
+    model: 'gemini-3.8-flash-high',
     exit,
     toolResultMatched: matched,
     diagnostic,

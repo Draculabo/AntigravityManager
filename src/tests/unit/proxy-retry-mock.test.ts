@@ -1334,7 +1334,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     expect(internalPayload).not.toHaveProperty('sessionId');
   });
 
-  it('resolves the Gemini 3.1 preview alias through the high variant for leasing and upstream', async () => {
+  it('preserves Pro Low through leasing and upstream', async () => {
     const service = new TestableGeminiService();
     mockAccountLeaseService.getNextToken.mockResolvedValue(createToken('acc-1'));
     mockGeminiClient.generateInternal.mockResolvedValue({
@@ -1342,16 +1342,16 @@ describe('ProxyService Empty Stream Retry Logic', () => {
       usageMetadata: { totalTokenCount: 5 },
     });
 
-    await service.handleGeminiGenerateContent('models/gemini-3.1-pro-preview', {
+    await service.handleGeminiGenerateContent('models/gemini-3.1-pro-low', {
       contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
     } as any);
 
     const internalPayload = mockGeminiClient.generateInternal.mock.calls[0][0];
-    expect(mockAccountLeaseService.getNextToken.mock.calls[0][0].model).toBe('gemini-pro-agent');
+    expect(mockAccountLeaseService.getNextToken.mock.calls[0][0].model).toBe('gemini-3.1-pro-low');
     expect(internalPayload).toMatchObject({
-      model: 'gemini-pro-agent',
+      model: 'gemini-3.1-pro-low',
       request: {
-        generationConfig: { thinkingConfig: { includeThoughts: true, thinkingBudget: 10001 } },
+        generationConfig: { thinkingConfig: { includeThoughts: true, thinkingBudget: 1001 } },
       },
     });
   });

@@ -42,7 +42,7 @@ afterEach(() => SignatureStore.clear());
 describe('tool choice across the Anthropic boundary', () => {
   it.each(choices)('maps %j to the complete provider tool control', (tool_choice, mode, names) => {
     const request: ClaudeRequest = {
-      model: 'gemini-3.1-pro-high',
+      model: 'gemini-3.1-pro-low',
       messages: [{ role: 'user', content: 'Use the selected tool.' }],
       tools,
       tool_choice,
@@ -65,7 +65,7 @@ describe('tool choice across the Anthropic boundary', () => {
   ] as const)('rejects an unsupported or unsatisfiable choice %j', (tool_choice, declaredTools) => {
     expect(() =>
       transformClaudeRequestIn({
-        model: 'gemini-3.1-pro-high',
+        model: 'gemini-3.1-pro-low',
         messages: [{ role: 'user', content: 'Use the selected tool.' }],
         tools: [...declaredTools],
         tool_choice,
@@ -81,7 +81,7 @@ describe('tool choice across the Anthropic boundary', () => {
     const reply = createReply();
     await controller.anthropicMessages(
       {
-        model: 'gemini-3.1-pro-high',
+        model: 'gemini-3.1-pro-low',
         messages: [{ role: 'user', content: 'Use read_right.' }],
         max_tokens: 1024,
         tools,
@@ -108,7 +108,7 @@ describe('tool choice across the Anthropic boundary', () => {
 
     await controller.anthropicMessages(
       {
-        model: 'gemini-3.1-pro-high',
+        model: 'gemini-3.1-pro-low',
         messages: [{ role: 'user', content: 'Use a tool.' }],
         max_tokens: 1024,
         tools,

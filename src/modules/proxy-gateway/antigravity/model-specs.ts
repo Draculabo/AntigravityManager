@@ -72,18 +72,6 @@ const modelSpecs = {
       thinking_budget: 32768,
       is_thinking: true,
     },
-    'gemini-3.1-pro-high': {
-      context_window: 1048576,
-      max_output_tokens: 65536,
-      thinking_budget: 49152,
-      is_thinking: true,
-    },
-    'gemini-pro-agent': {
-      context_window: 1048576,
-      max_output_tokens: 65535,
-      thinking_budget: 10001,
-      is_thinking: true,
-    },
     'gemini-3-flash-agent': {
       context_window: 1048576,
       max_output_tokens: 65536,
@@ -128,8 +116,6 @@ const modelSpecs = {
     'gpt-3.5-turbo': 'gemini-3-flash',
     'gemini-2.0-flash': 'gemini-3-flash',
     'gemini-2.5-flash': 'gemini-3-flash',
-    'gemini-3.1-pro': 'gemini-3.1-pro-high',
-    'gemini-3.1-pro-preview': 'gemini-3.1-pro-high',
     'claude-sonnet-4-6': 'claude-sonnet-4-6-thinking',
     'claude-sonnet-4-5': 'claude-sonnet-4-6-thinking',
     'claude-3-5-sonnet': 'claude-sonnet-4-6-thinking',

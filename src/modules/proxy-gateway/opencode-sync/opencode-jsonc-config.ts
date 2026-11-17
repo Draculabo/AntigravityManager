@@ -1,3 +1,4 @@
+import { isRetiredModel } from '../antigravity/retired-models';
 import {
   applyEdits,
   createScanner,
@@ -137,15 +138,15 @@ const MODEL_CATALOG: Record<string, OpenCodeModelDefinition> = {
     reasoning: true,
     variants: CLAUDE_VARIANTS,
   },
-  'gemini-3.1-pro': {
-    name: 'Gemini 3.1 Pro',
+  'gemini-3.1-pro-low': {
+    name: 'Gemini 3.1 Pro (Low)',
     limit: { context: 1048576, output: 65535 },
     modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
     reasoning: true,
     variants: {
       low: buildGemini3EffortVariant('low'),
       medium: { disabled: true },
-      high: buildGemini3EffortVariant('high'),
+      high: { disabled: true },
       max: { disabled: true },
     },
   },
@@ -347,7 +348,7 @@ function normalizeModelInputs(models: OpenCodeModelInput[]): OpenCodeModelInput[
   const normalized = new Map<string, OpenCodeModelInput>();
   for (const model of models) {
     const id = canonicalizeOpenCodeModelId(model.id);
-    if (!id) {
+    if (!id || isRetiredModel(id)) {
       continue;
     }
     const previous = normalized.get(id);
@@ -554,6 +555,14 @@ export function updateOpenCodeConfigJsonc(
   );
   updated = setJsoncValue(updated, API_KEY_PATH, input.apiKey, formattingOptions);
   updated = migrateGeminiAliasModels(updated, formattingOptions);
+
+  const modelsPath = [...PROVIDER_PATH, 'models'];
+  const existingModels = getPathValue(validateJsoncObject(updated), modelsPath);
+  if (isUnknownRecord(existingModels)) {
+    for (const modelId of Object.keys(existingModels).filter(isRetiredModel)) {
+      updated = setJsoncValue(updated, [...modelsPath, modelId], undefined, formattingOptions);
+    }
+  }
 
   const models = normalizeModelInputs(
     input.models ?? Object.keys(MODEL_CATALOG).map((id) => ({ id })),

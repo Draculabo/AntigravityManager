@@ -228,7 +228,7 @@ describe('ordinary retry waiting with the real account lease and tracker', () =>
     const physical = 'claude-sonnet-4-6';
     accounts[0].quota.models = {
       [physical]: { percentage: 80, resetTime: '', display_name: 'Claude Sonnet 4.6 (Thinking)' },
-      'gemini-pro-agent': { percentage: 80, resetTime: '' },
+      'gemini-3.1-pro-low': { percentage: 80, resetTime: '' },
     };
     await lease.loadAccounts();
     expect(lease.resolveDynamicModelForAccount('lease-a', requested)).toBe(physical);
@@ -239,6 +239,6 @@ describe('ordinary retry waiting with the real account lease and tracker', () =>
       physical,
     );
     expect(lease.getOrdinaryRetryWaitMs({ model: requested })).toBeNull();
-    expect(lease.getOrdinaryRetryWaitMs({ model: 'gemini-pro-agent' })).toBe(0);
+    expect(lease.getOrdinaryRetryWaitMs({ model: 'gemini-3.1-pro-low' })).toBe(0);
   });
 });

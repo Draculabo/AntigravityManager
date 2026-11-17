@@ -15,11 +15,11 @@ import type {
 } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 
 const proAgentRecipe = {
-  canonicalModel: 'gemini-3.1-pro',
-  model: 'gemini-pro-agent',
+  canonicalModel: 'gemini-3.5-flash',
+  model: 'gemini-3-flash-agent',
   tier: 'high',
-  thinkingBudget: 10001,
-  maxOutputTokens: 65535,
+  thinkingBudget: 10000,
+  maxOutputTokens: 65536,
   includeThoughts: true,
   preserveClientBudget: false,
   supportsTools: true,
@@ -136,8 +136,8 @@ describe('applyGeminiModelVariant', () => {
       },
     };
 
-    expect(applyGeminiModelVariant('gemini-pro-agent', directRequest)).toEqual({
-      model: 'gemini-pro-agent',
+    expect(applyGeminiModelVariant('gemini-3-flash-agent', directRequest)).toEqual({
+      model: 'gemini-3-flash-agent',
       request: {
         contents: [{ role: 'user', parts: [{ text: 'Hello' }] }],
         generationConfig: { temperature: 0.2 },
@@ -188,7 +188,7 @@ describe('applyAnthropicModelVariant', () => {
 
   it('applies Anthropic effort before forwarding a canonical Gemini request', () => {
     const request: AnthropicChatRequest = {
-      model: 'gemini-3.1-pro',
+      model: 'gemini-3.5-flash',
       messages: [{ role: 'user', content: 'Hello' }],
       max_tokens: 2048,
       thinking: {
@@ -202,29 +202,29 @@ describe('applyAnthropicModelVariant', () => {
 
     expect(applyAnthropicModelVariant(request)).toEqual({
       request: {
-        model: 'gemini-pro-agent',
+        model: 'gemini-3-flash-agent',
         messages: [{ role: 'user', content: 'Hello' }],
         max_tokens: 2048,
         thinking: {
           type: 'enabled',
-          budget_tokens: 10001,
+          budget_tokens: 10000,
         },
         output_config: undefined,
         tools: undefined,
         tool_choice: undefined,
       },
       variant: {
-        canonicalModel: 'gemini-3.1-pro',
-        model: 'gemini-pro-agent',
+        canonicalModel: 'gemini-3.5-flash',
+        model: 'gemini-3-flash-agent',
         tier: 'high',
-        thinkingBudget: 10001,
-        maxOutputTokens: 65535,
+        thinkingBudget: 10000,
+        maxOutputTokens: 65536,
         includeThoughts: true,
         preserveClientBudget: false,
         supportsTools: true,
       },
     });
-    expect(request.model).toBe('gemini-3.1-pro');
+    expect(request.model).toBe('gemini-3.5-flash');
   });
 
   it('does not let a raw Anthropic thinking budget downshift a Gemini 3 profile', () => {
@@ -255,7 +255,7 @@ describe('applyAnthropicModelVariant', () => {
 
   it('does not let Anthropic effort downshift an explicit Gemini 3 tier', () => {
     const applied = applyAnthropicModelVariant({
-      model: 'gemini-3.1-pro-high',
+      model: 'gemini-3.5-flash-high',
       messages: [{ role: 'user', content: 'Hello' }],
       thinking: {
         type: 'enabled',
@@ -267,10 +267,10 @@ describe('applyAnthropicModelVariant', () => {
     });
 
     expect(applied.request).toMatchObject({
-      model: 'gemini-pro-agent',
+      model: 'gemini-3-flash-agent',
       thinking: {
         type: 'enabled',
-        budget_tokens: 10001,
+        budget_tokens: 10000,
       },
       output_config: undefined,
     });
@@ -280,7 +280,7 @@ describe('applyAnthropicModelVariant', () => {
 
   it('removes raw Anthropic thinking controls from a direct Gemini agent request', () => {
     const applied = applyAnthropicModelVariant({
-      model: 'gemini-pro-agent',
+      model: 'gemini-3-flash-agent',
       messages: [{ role: 'user', content: 'Hello' }],
       thinking: {
         type: 'enabled',
@@ -290,11 +290,11 @@ describe('applyAnthropicModelVariant', () => {
 
     expect(applied).toEqual({
       request: {
-        model: 'gemini-pro-agent',
+        model: 'gemini-3-flash-agent',
         messages: [{ role: 'user', content: 'Hello' }],
         thinking: {
           type: 'enabled',
-          budget_tokens: 10001,
+          budget_tokens: 10000,
         },
         output_config: undefined,
         tools: undefined,
@@ -348,20 +348,20 @@ describe('applyAnthropicModelVariant', () => {
 
   it('updates the complete Anthropic request when an account requires a different registered tier', () => {
     const applied = applyAnthropicModelVariant({
-      model: 'gemini-3.1-pro',
+      model: 'gemini-3.5-flash',
       messages: [{ role: 'user', content: 'Hello' }],
       output_config: {
         effort: 'low',
       },
     });
 
-    expect(rebindAnthropicModelVariant(applied, 'gemini-pro-agent').request).toEqual({
-      model: 'gemini-pro-agent',
+    expect(rebindAnthropicModelVariant(applied, 'gemini-3-flash-agent').request).toEqual({
+      model: 'gemini-3-flash-agent',
       messages: [{ role: 'user', content: 'Hello' }],
       output_config: undefined,
       thinking: {
         type: 'enabled',
-        budget_tokens: 10001,
+        budget_tokens: 10000,
       },
       tools: undefined,
       tool_choice: undefined,
@@ -537,7 +537,7 @@ describe('applyOpenAIModelVariant', () => {
 
   it('removes raw OpenAI thinking controls from a direct Gemini agent request', () => {
     const applied = applyOpenAIModelVariant({
-      model: 'gemini-pro-agent',
+      model: 'gemini-3-flash-agent',
       messages: [],
       reasoning_effort: 'medium',
       thinking: {
@@ -549,11 +549,11 @@ describe('applyOpenAIModelVariant', () => {
 
     expect(applied).toEqual({
       request: {
-        model: 'gemini-pro-agent',
+        model: 'gemini-3-flash-agent',
         messages: [],
         reasoning_effort: 'high',
         reasoning: undefined,
-        thinking: { type: 'enabled', budget_tokens: 10001 },
+        thinking: { type: 'enabled', budget_tokens: 10000 },
         tools: undefined,
         tool_choice: undefined,
       },

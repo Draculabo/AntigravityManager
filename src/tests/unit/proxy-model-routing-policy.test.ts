@@ -36,7 +36,7 @@ describe('ModelRoutingService', () => {
     const policy = new ModelRoutingService();
 
     expect(policy.normalizeGeminiModel('models/gemini-2.5-flash')).toBe('gemini-2.5-flash');
-    expect(policy.resolveTargetModel('models/gemini-3.1-pro-preview')).toBe('gemini-3.1-pro-high');
+    expect(policy.resolveTargetModel('models/gemini-3-flash-preview')).toBe('gemini-3-flash');
     expect(policy.resolveTargetModel('gemini-3-flash-image')).toBe('gemini-3.1-flash-image');
   });
 
@@ -47,12 +47,12 @@ describe('ModelRoutingService', () => {
     expect(policy.resolveTargetModel('claude-opus-4.6-thinking')).toBe('claude-opus-4-6-thinking');
   });
 
-  it('routes Gemini Pro high presets through the upstream agent model', () => {
+  it('does not turn another Gemini Pro ID into a retired model', () => {
     const policy = new ModelRoutingService();
 
-    expect(policy.resolveTargetModel('gemini-3.1-pro-high')).toBe('gemini-pro-agent');
-    expect(policy.resolveTargetModel('gemini-3-pro-high')).toBe('gemini-pro-agent');
-    expect(policy.resolveTargetModel('gemini-pro-agent')).toBe('gemini-pro-agent');
+    for (const model of ['gemini-3.1-pro-preview', 'gemini-3-pro-high', 'gemini-2.5-pro']) {
+      expect(policy.resolveTargetModel(model)).toBe(model);
+    }
   });
 
   it('applies configured wildcard mappings after exact mappings and before defaults', () => {
@@ -74,7 +74,7 @@ describe('ModelRoutingService', () => {
         model_aliases: [
           {
             alias: 'path-target-*',
-            target: 'models/gemini-3.1-pro-preview',
+            target: 'models/gemini-3-flash-preview',
             enabled: true,
           },
           {
@@ -87,7 +87,7 @@ describe('ModelRoutingService', () => {
     );
     const policy = new ModelRoutingService();
 
-    expect(policy.resolveTargetModel('path-target-example')).toBe('gemini-3.1-pro-high');
+    expect(policy.resolveTargetModel('path-target-example')).toBe('gemini-3-flash');
     expect(policy.resolveTargetModel('alias-target-example')).toBe('gemini-3.1-flash-image');
   });
 
@@ -97,7 +97,7 @@ describe('ModelRoutingService', () => {
         custom_mapping: {
           'custom-*': 'gemini-3-flash',
           'custom-fast': 'gemini-3.1-pro-low',
-          'custom-fast-*': 'gemini-3.1-pro-high',
+          'custom-fast-*': 'gemini-4-argon-high',
           '*': 'gemini-2.5-flash',
         },
       }),
@@ -105,7 +105,7 @@ describe('ModelRoutingService', () => {
     const policy = new ModelRoutingService();
 
     expect(policy.resolveTargetModel('custom-fast')).toBe('gemini-3.1-pro-low');
-    expect(policy.resolveTargetModel('custom-fast-preview')).toBe('gemini-3.1-pro-high');
+    expect(policy.resolveTargetModel('custom-fast-preview')).toBe('gemini-4-argon-high');
     expect(policy.resolveTargetModel('custom-other')).toBe('gemini-3-flash');
   });
 
@@ -114,7 +114,7 @@ describe('ModelRoutingService', () => {
       createProxyConfig({
         model_aliases: [
           { alias: 'tie-a-*', target: 'gemini-3.1-pro-low', enabled: true },
-          { alias: 'tie-b-*', target: 'gemini-3.1-pro-high', enabled: true },
+          { alias: 'tie-b-*', target: 'gemini-4-argon-high', enabled: true },
         ],
       }),
     );
@@ -127,7 +127,7 @@ describe('ModelRoutingService', () => {
     });
     expect(policy.resolveModelRoute('tie-b-example')).toMatchObject({
       match: 'wildcard',
-      resolvedModel: 'gemini-3.1-pro-high',
+      resolvedModel: 'gemini-4-argon-high',
       source: 'configured',
     });
   });
@@ -148,20 +148,20 @@ describe('ModelRoutingService', () => {
     setServerConfig(
       createProxyConfig({
         model_aliases: [
-          { alias: 'Case-Model', target: 'gemini-3.1-pro-high', enabled: true },
-          { alias: 'case-model', target: 'gemini-3.1-pro-high', enabled: true },
+          { alias: 'Case-Model', target: 'gemini-4-argon-high', enabled: true },
+          { alias: 'case-model', target: 'gemini-4-argon-high', enabled: true },
         ],
       }),
     );
     const sameTarget = new ModelRoutingService();
 
-    expect(sameTarget.resolveModelRoute('CASE-MODEL').resolvedModel).toBe('gemini-3.1-pro-high');
+    expect(sameTarget.resolveModelRoute('CASE-MODEL').resolvedModel).toBe('gemini-4-argon-high');
 
     setServerConfig(
       createProxyConfig({
         model_aliases: [
           { alias: 'Case-Model', target: 'gemini-3.1-pro-low', enabled: true },
-          { alias: 'case-model', target: 'gemini-3.1-pro-high', enabled: true },
+          { alias: 'case-model', target: 'gemini-4-argon-high', enabled: true },
         ],
       }),
     );
@@ -171,7 +171,7 @@ describe('ModelRoutingService', () => {
       'Ambiguous case-insensitive model aliases for "CASE-MODEL"',
     );
     expect(conflicting.resolveModelRoute('Case-Model').resolvedModel).toBe('gemini-3.1-pro-low');
-    expect(conflicting.resolveModelRoute('case-model').resolvedModel).toBe('gemini-3.1-pro-high');
+    expect(conflicting.resolveModelRoute('case-model').resolvedModel).toBe('gemini-4-argon-high');
   });
 
   it('uses a unique Claude-normalized alias but rejects conflicting targets', () => {
@@ -203,7 +203,7 @@ describe('ModelRoutingService', () => {
           },
           {
             alias: 'anthropic/claude-opus-4-6-custom',
-            target: 'gemini-3.1-pro-high',
+            target: 'gemini-4-argon-high',
             enabled: true,
           },
         ],
@@ -264,7 +264,7 @@ describe('ModelRoutingService', () => {
   });
 
   it('keeps exact configured replacements ahead of retirement but protects retirement from wildcards', () => {
-    updateDynamicForwardingRules('d08-retired', 'gemini-3.1-pro-high');
+    updateDynamicForwardingRules('d08-retired', 'gemini-4-argon-high');
     const policy = new ModelRoutingService();
     setServerConfig(
       createProxyConfig({
@@ -290,7 +290,7 @@ describe('ModelRoutingService', () => {
     expect(policy.resolveModelRoute('d08-retired')).toEqual({
       requestedModel: 'd08-retired',
       normalizedModel: 'd08-retired',
-      resolvedModel: 'gemini-3.1-pro-high',
+      resolvedModel: 'gemini-4-argon-high',
       source: 'dynamic-legacy',
       match: 'dynamic-forwarding',
     });
@@ -392,7 +392,7 @@ describe('ModelRoutingService.resolveModelRoute', () => {
     setServerConfig(
       createProxyConfig({
         custom_mapping: {
-          'custom-*': 'models/gemini-3.1-pro-preview',
+          'custom-*': 'models/gemini-3-flash-preview',
         },
       }),
     );
@@ -402,9 +402,9 @@ describe('ModelRoutingService.resolveModelRoute', () => {
       match: 'wildcard',
       matchedRule: {
         alias: 'custom-*',
-        target: 'models/gemini-3.1-pro-preview',
+        target: 'models/gemini-3-flash-preview',
       },
-      resolvedModel: 'gemini-3.1-pro-high',
+      resolvedModel: 'gemini-3-flash',
       source: 'configured',
     });
   });
@@ -413,7 +413,7 @@ describe('ModelRoutingService.resolveModelRoute', () => {
     setServerConfig(
       createProxyConfig({
         anthropic_mapping: {
-          'claude-legacy-tag': 'gemini-3.1-pro-high',
+          'claude-legacy-tag': 'gemini-4-argon-high',
         },
       }),
     );
@@ -423,8 +423,8 @@ describe('ModelRoutingService.resolveModelRoute', () => {
 
     expect(resolution).toMatchObject({
       match: 'exact',
-      matchedRule: { alias: 'claude-legacy-tag', target: 'gemini-3.1-pro-high' },
-      resolvedModel: 'gemini-3.1-pro-high',
+      matchedRule: { alias: 'claude-legacy-tag', target: 'gemini-4-argon-high' },
+      resolvedModel: 'gemini-4-argon-high',
       source: 'configured',
     });
   });

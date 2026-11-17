@@ -25,7 +25,7 @@ const options = new Command()
   .requiredOption('--gateway <origin>')
   .option('--profile-home <directory>', 'Prepared isolated profile', os.homedir())
   .option('--output <directory>', 'Safe report directory', 'out/live-thinking-acceptance')
-  .option('--model <model>', 'Gateway model ID', 'gemini-3.1-pro-high')
+  .option('--model <model>', 'Gateway model ID', 'gemini-3.8-flash-high')
   .parse()
   .opts();
 const gateway = new URL(options.gateway);

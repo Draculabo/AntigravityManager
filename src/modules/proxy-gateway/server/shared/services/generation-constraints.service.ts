@@ -336,10 +336,7 @@ export class GenerationConstraintsService {
       }
       return configured.claude_budget;
     }
-    if (
-      normalized !== 'gemini-pro-agent' &&
-      !/^gemini-(?:[3-9]|\d{2,})(?:[.-]|$)/.test(normalized)
-    ) {
+    if (!/^gemini-(?:[3-9]|\d{2,})(?:[.-]|$)/.test(normalized)) {
       return undefined;
     }
     if (normalized.includes('pro')) {

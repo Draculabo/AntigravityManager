@@ -1,3 +1,5 @@
+import { isRetiredModel } from './retired-models';
+
 export type ModelVariantTier = 'low' | 'medium' | 'high';
 
 export interface ResolveModelVariantInput {
@@ -87,36 +89,6 @@ const GEMINI_35_FLASH_VARIANTS: Record<
   },
 };
 
-const GEMINI_31_PRO_VARIANTS: Record<
-  ModelVariantTier,
-  Omit<ResolvedModelVariant, 'canonicalModel' | 'tier'>
-> = {
-  low: {
-    model: 'gemini-3.1-pro-low',
-    thinkingBudget: 1001,
-    maxOutputTokens: 65535,
-    includeThoughts: true,
-    preserveClientBudget: false,
-    supportsTools: true,
-  },
-  medium: {
-    model: 'gemini-pro-agent',
-    thinkingBudget: 10001,
-    maxOutputTokens: 65535,
-    includeThoughts: true,
-    preserveClientBudget: false,
-    supportsTools: true,
-  },
-  high: {
-    model: 'gemini-pro-agent',
-    thinkingBudget: 10001,
-    maxOutputTokens: 65535,
-    includeThoughts: true,
-    preserveClientBudget: false,
-    supportsTools: true,
-  },
-};
-
 const GEMINI_4_ARGON_VARIANTS: Record<
   ModelVariantTier,
   Omit<ResolvedModelVariant, 'canonicalModel' | 'tier'>
@@ -190,16 +162,6 @@ const MODEL_VARIANT_FAMILIES: ModelVariantFamily[] = [
       'gemini-3.5-flash-medium': 'medium',
       'gemini-3.5-flash-low': 'low',
       'gemini-3-flash': 'tier',
-    },
-  },
-  {
-    canonicalModel: 'gemini-3.1-pro',
-    variants: GEMINI_31_PRO_VARIANTS,
-    physicalAliases: { 'gemini-3.1-pro-high': 'high' },
-    aliases: {
-      'gemini-3.1-pro-high': 'tier',
-      'gemini-pro': 'tier',
-      'gemini-3.1-pro-low': 'low',
     },
   },
 ];
@@ -300,6 +262,19 @@ function resolveNonVariantModel(
   tier: ModelVariantTier,
   budgetTokens: number | undefined,
 ): ResolvedModelVariant | null {
+  if (model === 'gemini-3.1-pro-low') {
+    return {
+      canonicalModel: 'gemini-3.1-pro',
+      model,
+      tier: 'low',
+      thinkingBudget: 1001,
+      maxOutputTokens: 65535,
+      includeThoughts: true,
+      preserveClientBudget: false,
+      supportsTools: true,
+    };
+  }
+
   if (
     model === 'gemini-3.1-flash-lite' ||
     model === 'gemini-2.5-flash-lite' ||
@@ -440,6 +415,9 @@ export function isModelTierBindingAllowed(
   physicalModel: string,
   physicalTarget = false,
 ): boolean {
+  if (isRetiredModel(requestedModel) || isRetiredModel(physicalModel)) {
+    return false;
+  }
   const requested = requestedModel.trim().toLowerCase();
   const physical = physicalModel.trim().toLowerCase();
   const requestedVariant = resolveModelVariant({ model: requested, physicalTarget });

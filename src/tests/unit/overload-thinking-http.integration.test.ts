@@ -371,7 +371,7 @@ describe('Automatic thinking overload recovery over HTTP', () => {
         generationConfig: { thinkingConfig: { includeThoughts: true, thinkingLevel: 'HIGH' } },
       },
     },
-    { protocol: 'chat', extra: { model: 'gemini-3.1-pro-high' } },
+    { protocol: 'chat', extra: { model: 'gemini-3.1-pro-low' } },
   ] satisfies Array<{ protocol: Protocol; extra: RequestExtra }>)(
     '$protocol preserves explicit thinking controls $extra',
     async ({ protocol, extra }) => {

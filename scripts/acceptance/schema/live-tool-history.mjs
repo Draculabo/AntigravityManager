@@ -108,7 +108,7 @@ export async function verifyLiveToolHistory({
   ];
   if (extended) {
     const continuationModel =
-      model === 'gemini-3.1-pro-high' ? 'gemini-3.7-flash-high' : 'gemini-3.1-pro-high';
+      model === 'gemini-3.8-flash-high' ? 'gemini-3.7-flash-high' : 'gemini-3.8-flash-high';
     result.toolHistory.continuationModel = continuationModel;
     result.toolHistory.resubmittedSameModel = false;
     result.toolHistory.crossModel = false;
