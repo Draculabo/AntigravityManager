@@ -12,6 +12,13 @@ import { getServerConfig, setServerConfig } from '@/server/server-config';
 vi.mock('@/modules/cloud-account/persistence/cloudHandler', () => ({
   CloudAccountRepo: { getAccounts: async () => [] },
 }));
+vi.mock(
+  import('@/modules/cloud-account/persistence/oauth-recovery-service'),
+  async (importOriginal) => ({
+    ...(await importOriginal()),
+    recoverOAuthJournal: async () => new Map(),
+  }),
+);
 
 /**
  * A census of every HTTP route this gateway registers, and which test file is

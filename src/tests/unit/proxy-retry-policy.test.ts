@@ -914,20 +914,15 @@ describe('ProxyRetryService', () => {
     expect(terminalError).toBe(tosError);
   });
 
-  it('returns null immediately when client abort signal is already triggered', async () => {
+  it('rejects immediately when the client has already cancelled the request', async () => {
     const { policy, accountLeaseService } = createPolicy();
     const retryState = policy.createTokenRetryState();
     const controller = new AbortController();
     controller.abort();
 
-    const nextToken = await policy.selectRetryToken(
-      retryState,
-      'gemini-3-flash',
-      undefined,
-      false,
-      controller.signal,
-    );
-    expect(nextToken).toBeNull();
+    await expect(
+      policy.selectRetryToken(retryState, 'gemini-3-flash', undefined, false, controller.signal),
+    ).rejects.toMatchObject({ name: 'AbortError' });
     expect(accountLeaseService.getNextToken).not.toHaveBeenCalled();
   });
 

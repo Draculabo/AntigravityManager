@@ -128,6 +128,7 @@ describe('D01 recovery evidence and scoped success', () => {
       'account',
       RateLimitReason.QuotaExhausted,
       model,
+      undefined,
     );
     expect(cached).toHaveBeenCalledExactlyOnceWith(
       'account',
