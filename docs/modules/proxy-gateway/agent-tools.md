@@ -1,9 +1,9 @@
 # Coding Tool Configuration Reference
 
-The proxy page configures Claude Code, Codex, OpenCode, Hermes, OpenClaw and DSH on the computer and under the user
-running the selected Manager backend. An Electron renderer connected to a standalone core
-changes the core user's files, not the renderer user's files. Installation detection is advisory;
-settings can be saved before installing a client. Reopen clients after changing settings.
+The proxy page saves settings for supported coding tools under the operating system user running
+the selected Manager backend. When the Electron renderer connects to a standalone core, Manager
+writes to the core user's settings. Installation detection is advisory. You can save settings
+before installing a client. Reopen the client after applying changes.
 
 ## Configure and recover
 

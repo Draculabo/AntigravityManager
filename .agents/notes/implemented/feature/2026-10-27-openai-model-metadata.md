@@ -64,7 +64,7 @@ Its omitted-model default is the existing `gemini-3-flash`; if raw-only filterin
 excludes that ID, the result is an explicit 404 rather than an unrelated model's
 capacity. Version identifies this application from its build manifest.
 
-Official Hermes source confirms these are external client discovery paths.
+Hermes `agent/model_metadata.py` defines the client discovery order. The HTTP integration fixture sends that sequence directly to the gateway.
 Its props response check selects the llama.cpp compatibility branch; subsequent
 context lookup requests the named model with `autoload=false`. Its `/version`
 check is a vLLM fallback, while `/v1/version` has no confirmed caller in that probe.

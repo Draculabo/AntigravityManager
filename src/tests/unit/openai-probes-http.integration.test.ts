@@ -237,13 +237,12 @@ describe('OpenAI service probes HTTP', () => {
     }
   });
 
-  it('supports the Hermes source probe order over a real loopback socket', async () => {
+  it('identifies the gateway as llama.cpp through ordered model discovery over HTTP', async () => {
     const { app, accounts, generation } = await createSurface();
     await app.listen(0, '127.0.0.1');
     const base = await app.getUrl();
     const seen: Array<{ path: string; status: number }> = [];
     let serverType: string | undefined;
-    // Mirrors Hermes agent/model_metadata.py's detection order, not an installed Hermes run.
     for (const path of ['/api/v1/models', '/api/tags', '/v1/props', '/props', '/version']) {
       const reply = await fetch(`${base}${path}`, { headers });
       const text = await reply.text();

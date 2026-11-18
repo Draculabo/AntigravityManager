@@ -21,7 +21,7 @@ afterEach(() => {
 });
 
 describe.each(['gemini', 'chat', 'responses', 'messages'] as const)(
-  '%s independent generation budget',
+  '%s generation budget is independent of the transport timeout',
   (surface) => {
     it('delivers a response after the legacy 120-second transport setting', async () => {
       const upstream = createUpstream({});

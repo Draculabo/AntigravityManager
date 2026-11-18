@@ -46,9 +46,8 @@ The older application itself has not been run for this controlled check.
 
 Isolated native SQLite tests exercise version-one replacement, rollback after injected
 replacement failure, refusal of unrelated/future databases, exact signature save/load/reopen
-and metadata byte limits. The production worker checks save and history-ingest round trips
-across thread restart. Mapper/service tests verify that A/B signatures restore as A/B and
-that ambiguous calls remain unsigned.
+and metadata byte limits. See the
+[SQLite tests](../../../src/tests/unit/thought-part-signature-database.test.ts).
 
 The production Worker checks save and history-ingest round trips across thread restart.
 Mapper and service tests verify that parallel calls restore their own signatures and that
