@@ -269,6 +269,47 @@ it('rejects retired models and aliases before leasing despite stale provider cat
   expect(wire.map((entry) => entry.body.model)).toEqual(['gemini-3.1-pro-low']);
 });
 
+it('accepts a structured OpenAI title request with reasoning disabled as a routing hint', async () => {
+  const { app, wire } = await fixture(['gemini-3.8-flash-high']);
+  const payload = {
+    model: 'gemini-3.8-flash-high',
+    messages: [
+      { role: 'system', content: 'Return a short title.' },
+      { role: 'user', content: 'Inspect a fixture.' },
+    ],
+    response_format: {
+      type: 'json_schema',
+      json_schema: {
+        name: 'session_title',
+        strict: true,
+        schema: {
+          type: 'object',
+          properties: { title: { type: 'string' } },
+          required: ['title'],
+          additionalProperties: false,
+        },
+      },
+    },
+  };
+  for (const extra of [{}, { reasoning_effort: 'none' }]) {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/chat/completions',
+      headers,
+      payload: { ...payload, ...extra },
+    });
+    expect(response.statusCode).toBe(200);
+  }
+  expect(wire.map(({ body }) => body.model)).toEqual([
+    'gemini-3.8-flash-high',
+    'gemini-3.8-flash-high',
+  ]);
+  expect(wire[0]?.body.request).toMatchObject({
+    generationConfig: { responseMimeType: 'application/json' },
+  });
+  expect(wire[1]?.body.request).toEqual(wire[0]?.body.request);
+});
+
 it('uses exact replacement metadata and sends its target despite a runtime retirement rule', async () => {
   updateDynamicForwardingRules('d08-retired-http', 'gemini-3.1-pro-high');
   const { app, wire } = await fixture(['claude-sonnet-4-6-thinking']);

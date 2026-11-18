@@ -6,7 +6,7 @@ import {
   rebindAnthropicModelVariant,
   rebindGeminiModelVariant,
   rebindOpenAIModelVariant,
-  resolveOpenAIRequestEffort,
+  resolveOpenAIRoutingEffort,
 } from '@/modules/proxy-gateway/server/shared/services/model-variant-request.service';
 import type {
   AnthropicChatRequest,
@@ -472,7 +472,7 @@ describe('applyOpenAIModelVariant', () => {
 
   it('reads Responses reasoning.effort after the legacy effort field', () => {
     expect(
-      resolveOpenAIRequestEffort({
+      resolveOpenAIRoutingEffort({
         model: 'gemini-3.5-flash',
         messages: [],
         reasoning_effort: 'high',
@@ -481,7 +481,7 @@ describe('applyOpenAIModelVariant', () => {
       }),
     ).toBe('high');
     expect(
-      resolveOpenAIRequestEffort({
+      resolveOpenAIRoutingEffort({
         model: 'gemini-3.5-flash',
         messages: [],
         reasoning: { effort: 'low' },
@@ -489,7 +489,7 @@ describe('applyOpenAIModelVariant', () => {
       }),
     ).toBe('low');
     expect(
-      resolveOpenAIRequestEffort({
+      resolveOpenAIRoutingEffort({
         model: 'gemini-3.5-flash',
         messages: [],
         thinking: { effort: 'medium' },

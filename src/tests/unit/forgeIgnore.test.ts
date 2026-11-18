@@ -17,6 +17,25 @@ describe('Forge package ignore policy', () => {
     expect(shouldIgnorePackagePath('/.vite/renderer/main_window/assets/index.js.map')).toBe(true);
   });
 
+  it('excludes dependency TypeScript declarations while preserving runtime files', () => {
+    const dependencyPaths = [
+      '/node_modules/@opentelemetry/semantic-conventions/build/src/index.d.ts',
+      '/node_modules/zod/index.d.mts',
+      '/node_modules/zod/index.d.cts',
+      '/node_modules/zod/index.js',
+      '/node_modules/zod/index.cjs',
+      '/node_modules/zod/LICENSE',
+    ];
+    expect(dependencyPaths.map(shouldIgnorePackagePath)).toEqual([
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+    ]);
+  });
+
   it('prunes renderer and build-time packages from packaged node_modules', () => {
     expect(shouldIgnorePackagePath('/node_modules/lucide-react/dist/cjs/lucide-react.js')).toBe(
       true,

@@ -8,6 +8,7 @@ import { ThoughtStoreRepository } from '../../../src/modules/proxy-gateway/thoug
 import { ThoughtRecordSummaryListSchema } from '../../../src/modules/proxy-gateway/thought-store/thought-store.types';
 import {
   LARGE_THOUGHT_BYTES,
+  LARGE_THOUGHT_PART_SIGNATURES,
   LARGE_THOUGHT_SESSION,
   LARGE_THOUGHT_SIGNATURE,
 } from './fixtures/thought-capacity';
@@ -31,15 +32,7 @@ async function seed(): Promise<void> {
         model: 'gemini-pro',
         sourceFamily: 'gemini-pro',
         signature: LARGE_THOUGHT_SIGNATURE,
-        partSignatures: [
-          {
-            kind: 'thought',
-            position: 0,
-            start: 0,
-            end: LARGE_THOUGHT_BYTES,
-            signature: LARGE_THOUGHT_SIGNATURE,
-          },
-        ],
+        partSignatures: LARGE_THOUGHT_PART_SIGNATURES,
         thought: 'T'.repeat(LARGE_THOUGHT_BYTES),
         toolIds: [],
         toolNames: [],

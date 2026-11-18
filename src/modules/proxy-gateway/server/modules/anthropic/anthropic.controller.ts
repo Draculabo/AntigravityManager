@@ -1,3 +1,4 @@
+import { getGenerationTimeoutMs } from '../../common/generation-timeout-policy';
 import {
   Body,
   Controller,
@@ -147,10 +148,7 @@ export class AnthropicController extends BaseProxyController {
     @Req() req?: FastifyRequest,
   ) {
     const abortScope = createProxyRequestAbortScope(req, res);
-    const deadline = new GenerationDeadlineScope(
-      (getServerConfig()?.request_timeout ?? 300) * 1000,
-      abortScope.signal,
-    );
+    const deadline = new GenerationDeadlineScope(getGenerationTimeoutMs(), abortScope.signal);
     try {
       const request = await awaitRequestOperation(this.expandFileHandles(body), deadline.signal);
       const context = req ? { headers: req.headers, url: req.url } : undefined;

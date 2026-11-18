@@ -4,8 +4,10 @@ import { Logger } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
-import { DEFAULT_APP_CONFIG as DEFAULT_CONFIG } from '@/modules/config/types';
-import { getStreamOutputRetainedBytes } from '@/modules/proxy-gateway/server/common/stream-output-budget';
+import {
+  getStreamOutputRetainedBytes,
+  StreamOutputBudget,
+} from '@/modules/proxy-gateway/server/common/stream-output-budget';
 import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
 import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
 import { runWithTrafficAuditRequestContext } from '@/modules/proxy-gateway/audit/traffic-audit-context';
@@ -17,7 +19,7 @@ import {
   createUpstream,
 } from './proxy-real-path.harness';
 
-const state = vi.hoisted(() => ({ enabled: true }));
+const state = vi.hoisted((): { enabled: boolean | undefined } => ({ enabled: true }));
 vi.mock('@/server/server-config', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/server/server-config')>();
   const { DEFAULT_APP_CONFIG: DEFAULT_CONFIG } = await import('@/modules/config/types');
@@ -165,8 +167,29 @@ afterEach(() => {
   expect(getStreamOutputRetainedBytes()).toBe(0);
 });
 
-it('keeps opt-in absent by default in existing profiles', () => {
-  expect(DEFAULT_CONFIG.proxy.experimental.thinking_only_recovery ?? false).toBe(false);
+it('recovers a clean thinking-only reply when the profile has no explicit override', async () => {
+  state.enabled = undefined;
+  const { execute, sent } = await run('chat', true);
+  expect(await execute()).toContain('controlled final answer');
+  expect(sent).toHaveLength(2);
+});
+
+it('still sends a valid initial request when optional recovery cannot retain its snapshot', async () => {
+  const { execute, post } = await run('chat', false);
+  post.mockResolvedValue({
+    status: 200,
+    headers: new AxiosHeaders(),
+    config: { headers: new AxiosHeaders() },
+    data: { response: answer },
+  });
+  const occupied = new StreamOutputBudget(256 * 1024 * 1024);
+  expect(occupied.reserve(256 * 1024 * 1024)).toBe(true);
+  try {
+    expect(await execute()).toContain('controlled final answer');
+    expect(post).toHaveBeenCalledOnce();
+  } finally {
+    occupied.clear();
+  }
 });
 
 it('preserves signature wire encoding on continuation without replaying new thought', async () => {
@@ -300,7 +323,9 @@ describe.each(['chat', 'responses', 'messages', 'gemini'] as const)(
           model: expect.any(String),
           requestId: expect.any(String),
           request: {
-            contents: expect.arrayContaining([{ role: 'user', parts: [{ text: 'Continue.' }] }]),
+            contents: [
+              { role: 'user', parts: [{ text: 'controlled request' }, { text: 'Continue.' }] },
+            ],
           },
         });
         const ids = sent.map((value) =>

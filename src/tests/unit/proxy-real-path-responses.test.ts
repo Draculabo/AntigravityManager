@@ -42,6 +42,62 @@ describe('real request path, Responses input compatibility', () => {
     OpenAIResponsesSessionStore.clear();
   });
 
+  it.each(['system input', 'instructions', 'custom opening'])(
+    'preserves Codex rules and tools on the Gemini request with %s',
+    async (source) => {
+      const role =
+        'You are a coding agent running in the Codex CLI, a terminal-based coding assistant.';
+      const attribution = ' Codex CLI is an open source project led by OpenAI.';
+      const guidance = ' You are expected to be precise, safe, and helpful.';
+      const opening = role + attribution + guidance;
+      const firstBlock =
+        (source === 'custom opening' ? role + attribution + ' Follow the local role.' : opening) +
+        '\n\nKeep the project rules.';
+      const skillBlock = '# Skills\nUse the log-reading skill.';
+      const ruleBlock = 'Only read the named log.';
+      const message = (role: string, text: string) => ({
+        type: 'message',
+        role,
+        content: [{ type: 'input_text', text }],
+      });
+      const upstream = createUpstream({ generate: geminiTextResponse('ok') });
+      const lease = createLease([createAccount('acc-1')]);
+      const controller = new OpenAIOperations(createGateway(upstream, lease).openAIService);
+      const reply = createReply();
+
+      await controller.responses(
+        {
+          model: 'gemini-3-flash',
+          ...(source === 'instructions' ? { instructions: firstBlock } : {}),
+          input: [
+            ...(source === 'instructions' ? [] : [message('system', firstBlock)]),
+            message('developer', skillBlock),
+            message('developer', ruleBlock),
+            message('user', opening),
+          ],
+          tools: [{ type: 'function', name: 'read_log', parameters: { type: 'object' } }],
+          stream: false,
+          store: false,
+        },
+        reply as never,
+      );
+
+      const expectedFirstBlock =
+        source === 'custom opening'
+          ? firstBlock
+          : 'You are a coding assistant.' + firstBlock.slice(role.length);
+      expect(reply.statusCode).toBe(200);
+      expect(upstream.calls).toHaveLength(1);
+      expect(upstream.calls[0]?.body.request).toMatchObject({
+        systemInstruction: {
+          parts: [{ text: [expectedFirstBlock, skillBlock, ruleBlock].join('\n') }],
+        },
+        contents: [{ role: 'user', parts: [{ text: opening }] }],
+        tools: [{ functionDeclarations: [{ name: 'read_log' }] }],
+      });
+    },
+  );
+
   it.each(['direct', 'stream aggregation'])(
     'normalizes candidates, text blocks and absent usage via %s',
     async (path) => {

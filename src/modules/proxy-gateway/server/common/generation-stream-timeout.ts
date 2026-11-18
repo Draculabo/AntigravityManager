@@ -18,6 +18,14 @@ export class GenerationStreamTimeout {
     private readonly expire: () => void,
   ) {}
 
+  startAttempt(): void {
+    if (this.closed) {
+      return;
+    }
+    this.phase = undefined;
+    this.observe('waiting_for_output');
+  }
+
   observe(phase: GenerationStreamPhase): void {
     if (this.closed || (phase === 'waiting_for_output' && this.phase !== undefined)) {
       return;

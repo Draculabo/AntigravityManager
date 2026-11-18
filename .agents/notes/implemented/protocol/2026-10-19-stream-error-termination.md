@@ -83,12 +83,13 @@ alone do not establish an answer. Anthropic no longer fabricates a period or
 one-token usage for an empty result. Explicit refusals and truncation remain
 separate terminal facts.
 
-The optional `experimental.thinking_only_recovery` configuration defaults to false
-when absent. It authorizes one continuation only after real primary-candidate
+The optional `experimental.thinking_only_recovery` configuration defaults to true
+when absent; an explicit false disables it. It authorizes one continuation only after real primary-candidate
 thought and normal STOP, with no answer, tool, media, error, refusal or competing
 candidate. The original request is cloned under the existing retained-output
 budget, receives a locally chosen user continuation and a new child request ID,
-and uses the captured account/model/endpoint/proxy/header snapshot. The child
+and uses the captured account/model/thinking/tools/endpoint/proxy/header snapshot. A trailing
+user turn receives one text part instead of a consecutive user message. The child
 reapplies signature wire encoding without restoring newly captured thought or
 starting account, endpoint, signature, cache or session recovery chains.
 

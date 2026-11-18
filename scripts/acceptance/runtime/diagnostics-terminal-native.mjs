@@ -6,16 +6,20 @@ import { Worker } from 'node:worker_threads';
 import { buildNativeEntry, runNativeEntry, withNativeFixture } from '../helpers/native-fixture.mjs';
 
 const args = process.argv.slice(2);
-const smokeOnly = args.length === 1 && args[0] === '--smoke';
+const smokeOnly = args[0] === '--smoke';
+const runtimeArgs = smokeOnly ? args.slice(1) : args;
 assert(
-  smokeOnly || args.length === 0 || (args.length === 2 && args[0] === '--runtime-root'),
-  'Usage: pnpm run test:acceptance runtime diagnostics [--smoke | --runtime-root <directory>]',
+  runtimeArgs.length === 0 || (runtimeArgs.length === 2 && runtimeArgs[0] === '--runtime-root'),
+  'Usage: pnpm run test:acceptance runtime diagnostics [--smoke] [--runtime-root <directory>]',
 );
 
 if (smokeOnly) {
-  await checkBuiltWorkers();
+  const buildDirectory = runtimeArgs[1]
+    ? path.resolve(runtimeArgs[1], 'core')
+    : path.resolve('dist/core');
+  await checkBuiltWorkers(buildDirectory);
 } else {
-  const runtimeRoot = path.resolve(args[1] ?? process.cwd());
+  const runtimeRoot = path.resolve(runtimeArgs[1] ?? process.cwd());
   await withNativeFixture(runtimeRoot, 'agm-terminal-native-', async (fixture) => {
     await buildNativeEntry(
       fixture,
@@ -26,8 +30,7 @@ if (smokeOnly) {
   });
 }
 
-async function checkBuiltWorkers() {
-  const buildDirectory = path.resolve('dist/core');
+async function checkBuiltWorkers(buildDirectory) {
   const temporaryRoot = path.resolve(tmpdir());
   const directory = await mkdtemp(path.join(temporaryRoot, 'agm-core-workers-'));
 
@@ -76,15 +79,15 @@ async function checkBuiltWorkers() {
       assert.notEqual(stats, null);
       assert.equal(stats[metric], 0);
       await request('shutdown');
-      process.stdout.write(`${name}: built entry, SQLite open, empty stats and shutdown passed\n`);
     } finally {
       await worker.terminate();
     }
+    process.stdout.write(`${name}: built entry, SQLite open, empty stats and shutdown passed\n`);
   }
 
   try {
-    await checkWorker('traffic-audit', 'rows');
     await checkWorker('thought-store', 'sessions');
+    await checkWorker('traffic-audit', 'rows');
   } finally {
     assert.equal(path.dirname(path.resolve(directory)), temporaryRoot);
     await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });

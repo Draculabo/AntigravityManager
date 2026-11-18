@@ -28,7 +28,7 @@ WebSocket phase timers use the existing generation deadline owner. Initial wait,
 activity silence and the single transition interval use 180, 120 and 180 seconds.
 Each timer is capped by the remaining total request budget. Only actual response
 content renews activity. A timeout preserves a failure event and audit outcome.
-The live 120-second request limit still bounds a thinking-only response.
+The independent generation budget defaults to 270 seconds and still bounds a thinking-only response.
 
 The [caller ownership decision](../security/2026-10-17-responses-history-tenant-ownership.md)
 continues to own credential identity and durable decoding. The
@@ -49,7 +49,7 @@ Saved WebSocket completions become retrievable and usable by the same caller aft
 reconnection. They use the existing store format and retention limits. Removing
 this change stops new socket publication while existing records remain compatible
 with the HTTP history owner. Audit capture follows the existing local settings,
-redaction and storage budgets. The new phase policy applies to WebSocket generation.
+redaction and storage budgets. The phase policy applies to upstream SSE generation over HTTP and WebSocket.
 
 ## Verification
 

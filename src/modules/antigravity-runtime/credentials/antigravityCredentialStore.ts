@@ -172,7 +172,7 @@ export async function readClientAccountToken(
   return readAgyCredentialFile();
 }
 
-/** The CLI's own session is the only source for discovery and active-account reconciliation. */
+/** Read the dedicated CLI session file without consulting the shared credential store. */
 export async function readAgyAccountToken(): Promise<CredentialStoreToken | null> {
   const token = await readAgyCredentialFile();
   if (token && !token.refreshToken) {
@@ -261,9 +261,11 @@ function readViaSecretTool(): Uint8Array | null {
   return payload ? Buffer.from(payload, 'utf-8') : null;
 }
 
-export async function readAntigravityCredentialStoreToken(): Promise<CredentialStoreToken | null> {
+export async function readAntigravityCredentialStoreToken({
+  allowFileFallback = true,
+}: { allowFileFallback?: boolean } = {}): Promise<CredentialStoreToken | null> {
   if (process.platform === 'darwin') {
-    return readMacOSCredentialStore(true);
+    return readMacOSCredentialStore(allowFileFallback);
   }
   if (process.platform === 'win32') {
     try {

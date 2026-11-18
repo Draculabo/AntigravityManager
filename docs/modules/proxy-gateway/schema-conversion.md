@@ -243,10 +243,10 @@ local MCP servers. This verifies actual declaration acceptance and a controlled 
 it does not execute MCP business tools. Append `history` to acquire two real parallel calls and
 compare combined, adjacent and reversed-result histories without rewriting production history.
 Append `history extended` to compare identical resubmissions and cross-version Flash
-continuation, choosing the source model in the first argument. Append `history recovery` to
-mutate only signatures in a controlled history and require final result matches plus actual
-upstream 400/200 attempts for one gateway request. A provider accepting the mutation does not
-prove recovery and keeps this check failing. Audit evidence retains anonymous scenario labels
+continuation, choosing the source model in the first argument. Append `history rejection` to
+mutate only signatures in a controlled history and verify that the gateway returns HTTP 400
+after one upstream HTTP 400 attempt. The preceding controls require both tool results to reach
+the final answer. Audit evidence retains anonymous scenario labels
 and per-request attempt counts. `node scripts/acceptance/schema/check-history-evidence.mjs`
 checks missing-result sensitivity and private audit-context exclusion using isolated fixtures.
 `node scripts/acceptance/schema/run-core-startup.mjs 5` isolates the prepared core's readiness

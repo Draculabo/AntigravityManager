@@ -28,6 +28,12 @@ delimiters and surrounding text. Ordinary business roles without attribution and
 later mentions remain.
 The old global replace-all of one Codex sentence is removed.
 
+The installed OpenCode client emits an interactive CLI agent opening without an
+attribution verb. The normalizer recognizes that complete sentence and the
+interactive CLI tool template at the start of a system block. It reuses the
+neutral identity and existing transformation diagnostic. This preserves the
+tool declarations and any instructions following the identity sentence.
+
 Markdown fences retain their delimiter width and character, including unclosed
 fences and mixed backtick/tilde examples. Inline code, blockquotes, XML comments
 and explicit quote/example/code/pre regions retain their original text. Metadata

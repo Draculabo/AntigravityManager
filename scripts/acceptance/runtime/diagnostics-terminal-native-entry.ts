@@ -5,6 +5,7 @@ import path from 'node:path';
 import { DEFAULT_APP_CONFIG } from '../../../src/modules/config/types';
 import { setServerConfig } from '../../../src/server/server-config';
 import { TrafficAuditService } from '../../../src/modules/proxy-gateway/audit/traffic-audit.service';
+import { thoughtCaptureLeases } from '../../../src/modules/proxy-gateway/thought-store/thought-capture-leases';
 import { ThoughtStoreService } from '../../../src/modules/proxy-gateway/thought-store/thought-store.service';
 import { createIpcAuditRecorder } from '../../../src/modules/proxy-gateway/audit/ipc-audit-recorder';
 import { createIpcCaptureOwner } from '../../../src/modules/proxy-gateway/audit/ipc-capture-owner';
@@ -70,26 +71,32 @@ async function check(): Promise<void> {
     await remoteRecorder.run(['native', 'capacity'], null, () => ({ output: capacityText }));
     captureOwner.closeAdmission();
     await captureOwner.drain();
-    thought.captureGeminiResponse(
-      'native-session',
-      {
-        candidates: [
-          {
-            content: {
-              role: 'model',
-              parts: [
-                {
-                  thought: true,
-                  text: 'native persisted thought',
-                  thoughtSignature: signature,
-                },
-              ],
+    const thoughtLease = thoughtCaptureLeases.acquire('native-session');
+    try {
+      thought.captureGeminiResponse(
+        thoughtLease.sessionKey,
+        {
+          candidates: [
+            {
+              content: {
+                role: 'model',
+                parts: [
+                  {
+                    thought: true,
+                    text: 'native persisted thought',
+                    thoughtSignature: signature,
+                  },
+                ],
+              },
             },
-          },
-        ],
-      },
-      'gemini',
-    );
+          ],
+        },
+        'gemini',
+        thoughtLease,
+      );
+    } finally {
+      thoughtLease.release();
+    }
 
     await Promise.all([audit.shutdown(), thought.shutdown()]);
     await assert.rejects(() => audit.stats(), /shutting down/u);

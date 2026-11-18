@@ -41,6 +41,10 @@ completion marker, retry generation or mark the account successful. The SSE
 writer's terminal-exception fallback also projects its message while retaining
 the original cause for the owning diagnostic completion.
 
+If the Gemini generation deadline expires before response headers are sent,
+the gateway returns HTTP 504 with a JSON `DEADLINE_EXCEEDED` error. Once headers
+are sent, the gateway preserves the HTTP status and sends the error in the SSE stream.
+
 Gemini retains data fragments until the existing event parser produces a complete
 payload. It inspects that payload before emitting a normalized SSE data event,
 including multiline, CRLF, adjacent-record and supported EOF-tail input. This
@@ -94,7 +98,7 @@ attempt remains interrupted. It does not commit account/model success, retry
 generation or persist a completed Responses turn. The adapters log the interruption
 independently of the client-facing finish reason.
 
-## Empty output and optional thinking continuation
+## Empty output and bounded thinking continuation
 
 The unary and SSE boundaries reject malformed generation containers, parts and
 interpreted usage counts. Error envelopes take precedence over candidate data.
@@ -104,17 +108,23 @@ usage and whitespace alone do not establish an answer. Explicit refusal,
 fabricate a period or token usage to make an empty answer appear successful.
 
 `experimental.thinking_only_recovery` is an optional proxy configuration field.
-Omitted or false disables continuation. When true, only a single primary candidate
+Omitted or true enables continuation; explicit false disables it. Only a single primary candidate
 with real thought, normal `STOP` and no visible text, media, tool call, refusal or
 error qualifies. Multicandidate streams and interrupted streams cannot qualify.
 
-The gateway clones the original request and appends one user message, `继续。` when
+The gateway clones the original request and adds one continuation cue, `继续。` when
 the latest user text contains Han characters and `Continue.` otherwise. It uses a
-new child request ID with the same account, model, endpoint, proxy and header
+new child request ID with the same account, model, thinking configuration, tools, endpoint, proxy and header
 snapshot. It reapplies signature wire encoding without replaying newly captured
 thought. This request is temporary and does not write a fabricated assistant turn.
+If the final message already has the user role, the cue becomes an additional text part;
+otherwise it becomes a new user message. This preserves Gemini role alternation and any
+existing tool-result parts. The failed attempt's thought is not appended to the request.
 Continuation has one physical send, no endpoint/account/signature/session recovery
 chain, and uses the shared remaining request deadline and retained-output budget.
+If the optional recovery snapshot cannot obtain its memory reservation, the original request
+still runs without continuation. The provider must actually return an empty result before
+an empty-generation error is reported.
 
 The first eligible finish and usage are withheld until the continuation. Real
 second-attempt output flows through the existing mapper with continuous response
@@ -123,6 +133,10 @@ there is no task-ready fallback. Latest usage snapshots are added once across th
 two attempts, with Interactions aliases normalized. Unknown operands remain absent
 in the combined metadata, and the first attempt's usage is not presented as the
 combined total. Existing protocol-required usage defaults remain adapter-owned.
+The recovery wrapper preserves SSE comments, event IDs, event names, retry fields and
+framing. Data rewrites retain those fields. Once visible output disqualifies recovery,
+ordinary progress usage is forwarded. Thought-only progress usage remains withheld until
+its terminal result is known.
 
 Each physical attempt keeps its own audit entry. Empty or incomplete output and
 embedded errors have a failed generation outcome while retaining the actual HTTP

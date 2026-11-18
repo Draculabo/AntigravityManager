@@ -63,8 +63,9 @@ function restoreOpenAIEffortAfterVariant(
   return request;
 }
 
-export function resolveOpenAIRequestEffort(request: OpenAIChatRequest): string | undefined {
-  return request.reasoning_effort ?? request.reasoning?.effort ?? request.thinking?.effort;
+export function resolveOpenAIRoutingEffort(request: OpenAIChatRequest): string | undefined {
+  const effort = request.reasoning_effort ?? request.reasoning?.effort ?? request.thinking?.effort;
+  return isDisabledThinkingEffort(effort) ? undefined : effort;
 }
 
 function removeAuthoritativeAnthropicThinkingControls(
@@ -143,7 +144,8 @@ export function applyAnthropicModelVariant(
   const routeEffort =
     clientControlled && isDisabledThinkingEffort(requestedEffort) ? undefined : requestedEffort;
   assertSupportedModelEffort(routeEffort);
-  const usesAuthoritativeBudget = !clientControlled && usesAuthoritativeThinkingBudget(request.model);
+  const usesAuthoritativeBudget =
+    !clientControlled && usesAuthoritativeThinkingBudget(request.model);
   const sanitizedRequest = usesAuthoritativeBudget
     ? removeAuthoritativeAnthropicThinkingControls(request)
     : request;
@@ -219,12 +221,14 @@ export interface AppliedOpenAIModelVariant {
   variant: ReturnType<typeof resolveModelVariant>;
 }
 
-export function applyOpenAIModelVariant(request: OpenAIChatRequest, physicalTarget = false): AppliedOpenAIModelVariant {
+export function applyOpenAIModelVariant(
+  request: OpenAIChatRequest,
+  physicalTarget = false,
+): AppliedOpenAIModelVariant {
   const clientControlled = getServerConfig()?.thinking_budget?.control_source === 'client';
-  const usesAuthoritativeBudget = !clientControlled && usesAuthoritativeThinkingBudget(request.model);
-  const requestedEffort = resolveOpenAIRequestEffort(request);
-  const routeEffort =
-    clientControlled && isDisabledThinkingEffort(requestedEffort) ? undefined : requestedEffort;
+  const usesAuthoritativeBudget =
+    !clientControlled && usesAuthoritativeThinkingBudget(request.model);
+  const routeEffort = resolveOpenAIRoutingEffort(request);
   assertSupportedModelEffort(routeEffort);
   const variantEffort =
     request.reasoning_effort ??
@@ -304,7 +308,7 @@ export function rebindOpenAIModelVariant(
       {
         ...applied.request,
         model: variant.model,
-          thinking:
+        thinking:
           variant.thinkingBudget === 0
             ? undefined
             : {

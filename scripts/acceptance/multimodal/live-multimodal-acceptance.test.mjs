@@ -39,3 +39,19 @@ test('video recognition checks color order and image recognition checks the fixt
     false,
   );
 });
+
+test('recognition rejects token-limited responses even when they contain the expected colors', async () => {
+  const text = 'red, blue';
+  const truncated = [
+    ['chat-video', { choices: [{ message: { content: text }, finish_reason: 'length' }] }],
+    ['responses-image', { status: 'incomplete', output: [{ content: [{ text }] }] }],
+    [
+      'gemini-video',
+      { candidates: [{ content: { parts: [{ text }] }, finishReason: 'MAX_TOKENS' }] },
+    ],
+    ['anthropic-video', { content: [{ text }], stop_reason: 'max_tokens' }],
+  ];
+  for (const [caseId, body] of truncated) {
+    assert.equal((await evaluateMedia(caseId, body)).valid, false, caseId);
+  }
+});

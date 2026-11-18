@@ -10,6 +10,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ipc } from '@/ipc/manager';
 import { useMemo, useState, type ReactNode } from 'react';
 import { useAppConfig } from '@/modules/config/hooks/useAppConfig';
+import { ProxyConfigSchema } from '@/modules/config/types';
 import { useCloudAccounts } from '@/modules/cloud-account/hooks/useCloudAccounts';
 import type { ServiceConfigSnapshot } from '@/modules/config/service-config.schema';
 type ProxyConfig = ServiceConfigSnapshot['proxy'];
@@ -503,13 +504,21 @@ print(response.choices[0].message.content)`;
               <Input
                 id="gateway-timeout"
                 type="number"
-                value={proxyConfig.request_timeout}
-                onChange={(e) =>
+                value={proxyConfig.generation_timeout}
+                min={1}
+                max={3600}
+                onChange={(e) => {
+                  const parsed = ProxyConfigSchema.shape.generation_timeout.safeParse(
+                    Number(e.target.value),
+                  );
+                  if (!parsed.success) {
+                    return;
+                  }
                   updateProxyConfig({
                     ...proxyConfig,
-                    request_timeout: parseInt(e.target.value) || 120,
-                  })
-                }
+                    generation_timeout: parsed.data,
+                  });
+                }}
               />
             </div>
           </div>

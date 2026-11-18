@@ -40,6 +40,8 @@ Run all nine cases for each platform and owner:
 Anthropic video is a gateway extension, not a claim about the official Anthropic API.
 The input model defaults to `gemini-3.8-flash-high`; generation/editing default to
 `gemini-3.1-flash-image`. `--model` explicitly selects another available model.
+Recognition requests allow 1,024 output tokens for reasoning and the visible answer.
+The runner rejects responses that report truncation even when they name the expected colors.
 
 ```powershell
 pnpm run test:acceptance multimodal request --case chat-video --owner cli --gateway http://127.0.0.1:PORT --profile-home C:\path\to\isolated-profile --output C:\path\to\results

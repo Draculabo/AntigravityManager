@@ -1,4 +1,5 @@
-import { createOverloadThinkingRecovery } from '../../common/overload-thinking-recovery';
+import { getGenerationTimeoutMs } from '../../common/generation-timeout-policy';
+import { OverloadThinkingRecovery } from '../../common/overload-thinking-recovery';
 import { MediaWindowLimitError } from '../../common/media-send-window';
 import { classifyMissingImage, type ImageOutputFailure } from './media/image-output-failure';
 import type { CloudAccount } from '@/modules/cloud-account/types';
@@ -76,7 +77,7 @@ import {
 import { resolveRequestUserAgent } from '@/modules/proxy-gateway/server/common/utils/request-user-agent';
 import {
   applyOpenAIModelVariant,
-  resolveOpenAIRequestEffort,
+  resolveOpenAIRoutingEffort,
   rebindOpenAIModelVariant,
 } from '@/modules/proxy-gateway/server/shared/services/model-variant-request.service';
 import { safeStringifyPacket } from '@/shared/security/sensitiveDataMasking';
@@ -154,7 +155,7 @@ export class OpenAIService extends BaseProxyService {
     observeImageOutput?: (failure: ImageOutputFailure | undefined) => void,
   ): Promise<OpenAIChatResponse | Observable<string>> {
     return runGenerationWithDeadline(
-      (getServerConfig()?.request_timeout ?? 300) * 1000,
+      getGenerationTimeoutMs(),
       signal,
       async (boundedSignal, owner) => {
         const result = await this.executeChatCompletions(
@@ -208,7 +209,7 @@ export class OpenAIService extends BaseProxyService {
       : request.model;
     const routeResolution = this.resolveRequestModelRoute(
       routingModel,
-      resolveOpenAIRequestEffort(request),
+      resolveOpenAIRoutingEffort(request),
       readTargetAccountHeader(requestContext?.headers),
     );
     const explicitPhysicalTarget =
@@ -218,15 +219,7 @@ export class OpenAIService extends BaseProxyService {
       explicitPhysicalTarget,
     );
     const routedRequest = appliedVariantRequest.request;
-    const overloadThinkingRecovery = createOverloadThinkingRecovery({
-      model: request.model,
-      explicitThinking:
-        request.thinking !== undefined ||
-        request.reasoning_effort !== undefined ||
-        request.reasoning !== undefined,
-      physicalTarget: explicitPhysicalTarget,
-      registeredBudget: appliedVariantRequest.variant?.thinkingBudget,
-    });
+    const overloadThinkingRecovery = new OverloadThinkingRecovery();
     const toolCallIdentity = new ResponseToolCallIdentity(() =>
       hashSessionAnchor([
         'openai-response:v1',
@@ -265,7 +258,7 @@ export class OpenAIService extends BaseProxyService {
         : scope.cacheKey;
     const targetAccountId = readTargetAccountHeader(requestContext?.headers);
     const targetModel = routedRequest.model;
-    const effort = resolveOpenAIRequestEffort(routedRequest);
+    const effort = resolveOpenAIRoutingEffort(routedRequest);
     const enforceAuthoritativeThinkingBudget = usesAuthoritativeThinkingBudget(
       routeResolution.resolvedModel,
     );

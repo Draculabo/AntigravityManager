@@ -118,6 +118,13 @@ They preserve ordinary tool names and arguments; malformed generation retains va
 adds an explicit assistant explanation and records an upstream audit diagnostic without
 turning the signal into a transport retry.
 
+Generation ingress owns one configured `generation_timeout` deadline through preparation,
+physical sends, recovery and final consumption. The shared policy separates it from
+non-generation `request_timeout` operations and owns initial-output, activity and transition
+windows. Cancellation wrappers retain the same owner and replay admission count. See the
+[timeout contract](modules/proxy-gateway/compatibility.md) and
+[configuration upgrade](upgrade-guides/next/generation-timeout-policy.md).
+
 Error reporting uses runtime-specific Electron and Node SDK adapters. The logger submits one
 isolated bounded Schema summary per preparation, subject to consent and an available DSN.
 Desktop preference effects are serialized and forwarded to the selected core through a typed

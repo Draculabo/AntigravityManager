@@ -29,7 +29,10 @@ export class GeminiHttpTransport {
   async post<T>(
     url: string,
     body: unknown,
-    options: AxiosRequestConfig & { signal?: AbortSignal },
+    options: AxiosRequestConfig & {
+      signal?: AbortSignal;
+      streamTimeoutOwner?: 'generation' | 'transport';
+    },
     onAdmitted?: () => void,
     observeRequest?: (request: ClientRequest) => void,
   ): Promise<AxiosResponse<T>> {
@@ -41,16 +44,19 @@ export class GeminiHttpTransport {
       ? AbortSignal.any([options.signal, deadline.signal])
       : deadline.signal;
     const timer =
-      options.timeout && options.timeout > 0
+      options.streamTimeoutOwner !== 'generation' && options.timeout && options.timeout > 0
         ? setTimeout(() => deadline.abort(), options.timeout)
         : undefined;
     timer?.unref();
     let responseBody: unknown;
     try {
       onAdmitted?.();
+      const { streamTimeoutOwner, ...requestOptions } = options;
       const response = await withGeminiConnectionSignal({ signal, observeRequest }, () =>
         axios.post<T>(url, body, {
-          ...options,
+          ...requestOptions,
+          // The owned timer bounds headers; body silence belongs to the generation phase owner.
+          ...(streamTimeoutOwner ? { timeout: 0 } : {}),
           proxy: false,
           signal,
           httpAgent: lease.httpAgent,

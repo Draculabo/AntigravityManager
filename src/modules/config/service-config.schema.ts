@@ -50,6 +50,7 @@ export const ServiceProxySchema = ProxyConfigSchema.omit({ api_key: true, upstre
     port: z.number().int().min(1024).max(65535),
     preferred_account_id: z.string().max(256),
     request_timeout: z.number().finite().min(1).max(3600),
+    generation_timeout: ProxyConfigSchema.shape.generation_timeout.removeDefault(),
     max_wait_seconds: z.number().finite().min(0).max(3600),
     parity_no_go_mismatch_rate: z.number().finite().min(0).max(1),
     parity_no_go_error_rate: z.number().finite().min(0).max(1),

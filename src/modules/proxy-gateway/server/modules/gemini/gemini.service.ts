@@ -1,7 +1,9 @@
-import { createOverloadThinkingRecovery } from '../../common/overload-thinking-recovery';
+import { getGenerationTimeoutMs } from '../../common/generation-timeout-policy';
+import { OverloadThinkingRecovery } from '../../common/overload-thinking-recovery';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { runGenerationWithDeadline } from '../../common/generation-deadline';
 import { isUpstreamStreamInterruption } from '../../common/stream-interruption';
+import { UpstreamGenerationError } from '../../../antigravity/UpstreamGenerationError';
 import { normalizeObjectJsonSchema } from '../../../antigravity/JsonSchemaUtils';
 import {
   SchemaConversionBatch,
@@ -177,19 +179,16 @@ export class GeminiService extends BaseProxyService {
     requestContext?: SignatureScopeContext,
     observeResponse?: (response: GeminiResponse | undefined) => void,
   ): Promise<GeminiResponse> {
-    return runGenerationWithDeadline(
-      (getServerConfig()?.request_timeout ?? 300) * 1000,
-      signal,
-      (boundedSignal) =>
-        this.executeGeminiGenerateContent(
-          model,
-          request,
-          requestType,
-          boundedSignal,
-          imageRetryPenaltyMode,
-          requestContext,
-          observeResponse,
-        ),
+    return runGenerationWithDeadline(getGenerationTimeoutMs(), signal, (boundedSignal) =>
+      this.executeGeminiGenerateContent(
+        model,
+        request,
+        requestType,
+        boundedSignal,
+        imageRetryPenaltyMode,
+        requestContext,
+        observeResponse,
+      ),
     );
   }
 
@@ -233,12 +232,7 @@ export class GeminiService extends BaseProxyService {
     const enforceAuthoritativeThinkingBudget = usesAuthoritativeThinkingBudget(
       routeResolution.resolvedModel,
     );
-    const overloadThinkingRecovery = createOverloadThinkingRecovery({
-      model,
-      explicitThinking: request.generationConfig?.thinkingConfig !== undefined,
-      physicalTarget: explicitPhysicalTarget,
-      registeredBudget: variantRequest.variant?.thinkingBudget,
-    });
+    const overloadThinkingRecovery = new OverloadThinkingRecovery();
     const targetModel = variantRequest.model;
     const effort = request.generationConfig?.thinkingConfig?.thinkingLevel;
     const contents = this.modelSwitchHistory.prepare(
@@ -469,7 +463,7 @@ export class GeminiService extends BaseProxyService {
     requestContext?: SignatureScopeContext,
   ): Promise<Observable<string>> {
     return runGenerationWithDeadline(
-      (getServerConfig()?.request_timeout ?? 300) * 1000,
+      getGenerationTimeoutMs(),
       signal,
       async (boundedSignal, owner) => {
         const result = await this.executeGeminiStreamGenerateContent(
@@ -520,12 +514,7 @@ export class GeminiService extends BaseProxyService {
     const enforceAuthoritativeThinkingBudget = usesAuthoritativeThinkingBudget(
       routeResolution.resolvedModel,
     );
-    const overloadThinkingRecovery = createOverloadThinkingRecovery({
-      model,
-      explicitThinking: request.generationConfig?.thinkingConfig !== undefined,
-      physicalTarget: explicitPhysicalTarget,
-      registeredBudget: variantRequest.variant?.thinkingBudget,
-    });
+    const overloadThinkingRecovery = new OverloadThinkingRecovery();
     const targetModel = variantRequest.model;
     const effort = request.generationConfig?.thinkingConfig?.thinkingLevel;
     const contents = this.modelSwitchHistory.prepare(
@@ -1007,6 +996,10 @@ export class GeminiService extends BaseProxyService {
 
       upstreamStream.on('error', (err: unknown) => {
         if (terminated) {
+          return;
+        }
+        if (err instanceof UpstreamGenerationError && err.code === 'invalid_upstream_response') {
+          fail('Invalid upstream SSE event.', err);
           return;
         }
         if (isUpstreamStreamInterruption(err) && finishInterrupted()) {

@@ -9,7 +9,6 @@ onlyBuiltDependencies:
   - '@nestjs/core'
   - '@sentry/cli'
   - '@swc/core'
-  - better-sqlite3
   - electron
   - electron-winstaller
   - esbuild
@@ -23,6 +22,8 @@ onlyBuiltDependencies:
   - sharp
 
 overrides:
+  # A single compatible version keeps the hoisted tree from shipping nested copies in ASAR.
+  '@opentelemetry/semantic-conventions': '1.45.0'
   handlebars: '^4.7.9'
   tar: '^7.5.22'
 

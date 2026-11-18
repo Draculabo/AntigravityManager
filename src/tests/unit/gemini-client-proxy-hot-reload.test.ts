@@ -703,7 +703,7 @@ describe('GeminiClient internal endpoint selection', () => {
     const client = new GeminiClient(new Upstream4xxCaptureService());
     let now = 1000;
     const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
-    setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, request_timeout: 10 });
+    setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, generation_timeout: 10 });
     axiosMock.post.mockImplementationOnce(async () => {
       now += 4000;
       throw { response: { status: 503, headers: {}, data: {} } };
@@ -722,7 +722,7 @@ describe('GeminiClient internal endpoint selection', () => {
 
   it('records a timed-out physical stream as timeout rather than a client disconnect', async () => {
     vi.useFakeTimers();
-    setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, request_timeout: 1 });
+    setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, generation_timeout: 1 });
     const capture = vi.spyOn(errorProcessOwner, 'capture');
     const source = new PassThrough();
     const client = new GeminiClient(new Upstream4xxCaptureService());
@@ -755,7 +755,7 @@ describe('GeminiClient internal endpoint selection', () => {
   it('does not dispatch another endpoint after the logical deadline has been spent', async () => {
     let now = 1000;
     const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
-    setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, request_timeout: 1 });
+    setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, generation_timeout: 1 });
     axiosMock.post.mockImplementationOnce(async () => {
       now += 1001;
       throw { response: { status: 503, headers: {}, data: {} } };

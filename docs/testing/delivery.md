@@ -18,9 +18,15 @@ verification build, set `AGM_PACKAGE_OUTPUT` to an isolated output directory and
 Preparation requires the target platform and architecture to match the native build host.
 
 `node --test scripts/build/trace-standalone-runtime.test.mjs` checks exclusion of host assets and retention
-of required native entries through the actual dependency tracer.
+of required native entries through the actual dependency tracer. SQLite uses the published Node-API
+binary for the bundled Node target.
 
 ### Native installed runtime
+
+To exercise worker teardown with the packaged Node binary, launch
+`scripts/acceptance/runtime/diagnostics-terminal-native.mjs --smoke --runtime-root <packaged-resources>/standalone`
+with that binary. The smoke check runs Thought Store first in a fresh process, with SQLite loaded by
+the worker. It waits for worker termination following the shutdown response.
 
 Run `pnpm run test:acceptance runtime installed <packaged-resources>/standalone` against the actual resources.
 The check copies them outside the repository and removes Node search-path overrides. It verifies

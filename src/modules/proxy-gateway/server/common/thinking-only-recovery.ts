@@ -2,7 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { Readable } from 'node:stream';
 import { GenerationOutputState } from '../../antigravity/GenerationOutputState';
-import { decodeInternalSseData, IncrementalSseDataParser } from '../../antigravity/internal-sse';
+import {
+  decodeInternalSseData,
+  IncrementalSseDataParser,
+  MAX_SSE_EVENT_BYTES,
+} from '../../antigravity/internal-sse';
 import {
   markTerminalGenerationFailure,
   UpstreamGenerationError,
@@ -15,6 +19,7 @@ import { awaitRequestOperation, throwIfRequestAborted } from './request-cancella
 import { estimateRetainedJsonBytes } from './retained-json-size';
 import { StreamOutputBudget } from './stream-output-budget';
 import { IncrementalSseLines } from './incremental-sse-lines';
+import { inheritGenerationDeadline } from './generation-deadline';
 
 type Send<T> = (
   body: GeminiInternalRequest,
@@ -23,7 +28,7 @@ type Send<T> = (
   signal?: AbortSignal,
 ) => Promise<T>;
 
-/** One opt-in continuation with the original request/transport snapshot and logical deadline. */
+/** One continuation with the original request/transport snapshot and logical deadline. */
 export class ThinkingOnlyRecovery {
   private readonly memory = new StreamOutputBudget(128 * 1024 * 1024);
   private readonly request: GeminiInternalRequest;
@@ -59,10 +64,13 @@ export class ThinkingOnlyRecovery {
       const chinese = lastUser?.parts.some(
         (part) => typeof part.text === 'string' && /\p{Script=Han}/u.test(part.text),
       );
-      this.request.request.contents.push({
-        role: 'user',
-        parts: [{ text: chinese ? '继续。' : 'Continue.' }],
-      });
+      const cue = { text: chinese ? '继续。' : 'Continue.' };
+      const tail = this.request.request.contents.at(-1);
+      if (tail?.role === 'user') {
+        tail.parts.push(cue);
+      } else {
+        this.request.request.contents.push({ role: 'user', parts: [cue] });
+      }
       this.inFlight = true;
       return await send(this.request, timeoutMs, this.transport.current, signal);
     } catch (error) {
@@ -117,15 +125,38 @@ export function combineRecoveryUsage(
   };
 }
 
-async function* events(source: Readable): AsyncGenerator<string> {
+interface SseEvent {
+  data: string | null;
+  lines: string[];
+}
+
+async function* events(source: Readable): AsyncGenerator<SseEvent> {
   const decoder = new TextDecoder('utf8', { fatal: true });
   const lines = new IncrementalSseLines();
   const parser = new IncrementalSseDataParser();
-  const decode = function* (text: string) {
+  let frameLines: string[] = [];
+  let frameBytes = 0;
+  const takeFrame = (data: SseEvent['data']): SseEvent => {
+    const frame = { data, lines: frameLines };
+    frameLines = [];
+    frameBytes = 0;
+    return frame;
+  };
+  const decode = function* (text: string, newline = '\n') {
     for (const line of lines.push(text)) {
-      const event = parser.pushLine(line);
-      if (event !== null) {
-        yield event;
+      const data = parser.pushLine(line);
+      const separator = line === '' || line === '\r';
+      if (data !== null && !separator) {
+        // A new data line may dispatch the previous record when upstream omits its separator.
+        yield takeFrame(data);
+      }
+      frameBytes += (line.length + newline.length) * 2 + 64;
+      if (frameBytes > MAX_SSE_EVENT_BYTES * 2) {
+        throw new UpstreamGenerationError('invalid_upstream_response');
+      }
+      frameLines.push(line + newline);
+      if (separator) {
+        yield takeFrame(data);
       }
     }
   };
@@ -136,15 +167,46 @@ async function* events(source: Readable): AsyncGenerator<string> {
       }
       yield* decode(typeof chunk === 'string' ? chunk : decoder.decode(chunk, { stream: true }));
     }
-    yield* decode(decoder.decode() + '\n\n');
+    yield* decode(decoder.decode());
+    if (lines.estimatedRetainedBytes > 0) {
+      yield* decode('\n', '');
+    }
     const tail = parser.finish();
-    if (tail !== null) {
-      yield tail;
+    if (frameLines.length > 0) {
+      yield takeFrame(tail);
     }
   } finally {
     lines.clear();
     parser.clear();
   }
+}
+
+function missingEventSeparator(tail: string): string {
+  if (tail.endsWith('\n\n') || tail.endsWith('\n\r\n')) {
+    return '';
+  }
+  return tail.endsWith('\n') ? '\n' : '\n\n';
+}
+
+/** Edit the data field while preserving all other SSE lines in their original order. */
+function rewriteEvent(event: SseEvent, data: string | null): string {
+  let pendingData = data;
+  const raw = event.lines
+    .map((line) => {
+      if (!line.startsWith('data:')) {
+        return line;
+      }
+      if (pendingData === null) {
+        return '';
+      }
+      const prefix = line.startsWith('data: ') ? 'data: ' : 'data:';
+      const newline = line.endsWith('\r\n') ? '\r\n' : '\n';
+      const replaced = prefix + pendingData + newline;
+      pendingData = null;
+      return replaced;
+    })
+    .join('');
+  return data === null ? raw : raw + missingEventSeparator(raw);
 }
 
 function readable(source: NodeJS.ReadableStream): Readable {
@@ -162,8 +224,8 @@ export function recoverThinkingOnlyStream(
   const signal = cancellation
     ? AbortSignal.any([cancellation, controller.signal])
     : controller.signal;
+  inheritGenerationDeadline(cancellation, signal);
   let active = readable(source);
-  const frame = (response: GeminiResponse) => `data: ${JSON.stringify({ response })}\n\n`;
   const output = Readable.from(
     (async function* () {
       let firstUsage: GeminiUsageMetadata | undefined;
@@ -172,27 +234,43 @@ export function recoverThinkingOnlyStream(
           const state = new GenerationOutputState();
           let pending = false;
           let lastUsage: GeminiUsageMetadata | undefined;
+          let wireTail = '';
+          const forward = (frame: string): string => {
+            wireTail = (wireTail + frame.slice(-3)).slice(-3);
+            return frame;
+          };
           for await (const event of events(active)) {
             throwIfRequestAborted(signal);
-            const decoded = decodeInternalSseData(event);
+            if (event.data === null) {
+              yield forward(event.lines.join(''));
+              continue;
+            }
+            const decoded = decodeInternalSseData(event.data);
             if (decoded.kind === 'ignored') {
+              yield forward(pending ? rewriteEvent(event, null) : event.lines.join(''));
               continue;
             }
             if (decoded.kind === 'invalid') {
               throw new UpstreamGenerationError('invalid_upstream_response');
             }
             if (decoded.kind === 'error') {
-              yield `data: ${event}\n\n`;
+              yield event.lines.join('');
               return;
             }
             const response = decoded.response;
+            const rewriteResponse = (replacement: GeminiResponse) =>
+              rewriteEvent(
+                event,
+                JSON.stringify(decoded.wrapped ? { response: replacement } : replacement),
+              );
             if (response.usageMetadata) {
               lastUsage = response.usageMetadata;
             }
             if (pending) {
-              if (response.candidates?.some((candidate) => candidate.content?.parts?.length)) {
+              if (response.promptFeedback || response.candidates?.length) {
                 throw new UpstreamGenerationError('invalid_upstream_response');
               }
+              yield forward(rewriteEvent(event, null));
               continue;
             }
             state.observe(response);
@@ -204,24 +282,31 @@ export function recoverThinkingOnlyStream(
                 state.recoveryEligible
               ) {
                 pending = true;
-                yield frame({
-                  ...response,
-                  usageMetadata: undefined,
-                  candidates: response.candidates?.map(
-                    ({ finishReason: _finish, ...candidate }) => candidate,
-                  ),
-                });
+                yield forward(
+                  rewriteResponse({
+                    ...response,
+                    usageMetadata: undefined,
+                    candidates: response.candidates?.map(
+                      ({ finishReason: _finish, ...candidate }) => candidate,
+                    ),
+                  }),
+                );
                 continue;
               }
               throw failure;
             }
-            yield frame(
-              attempt === 0
-                ? { ...response, usageMetadata: state.terminal ? lastUsage : undefined }
-                : {
-                    ...response,
-                    usageMetadata: combineRecoveryUsage(firstUsage, response.usageMetadata),
-                  },
+            let usageMetadata = response.usageMetadata;
+            if (attempt > 0) {
+              usageMetadata = combineRecoveryUsage(firstUsage, usageMetadata);
+            } else if (state.terminal) {
+              usageMetadata = lastUsage;
+            } else if (state.streamPhase !== 'output_started') {
+              usageMetadata = undefined;
+            }
+            yield forward(
+              usageMetadata === response.usageMetadata
+                ? event.lines.join('')
+                : rewriteResponse({ ...response, usageMetadata }),
             );
           }
           if (!pending) {
@@ -238,6 +323,11 @@ export function recoverThinkingOnlyStream(
             () => undefined,
           );
           active = readable(await awaitRequestOperation(pendingStream, signal));
+          // An EOF metadata line may be unterminated. Finish it before the next physical stream.
+          const separator = missingEventSeparator(wireTail);
+          if (separator) {
+            yield separator;
+          }
         }
       } finally {
         active.destroy();

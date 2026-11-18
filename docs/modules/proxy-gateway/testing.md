@@ -12,11 +12,10 @@ mapper/cache compatibility and Responses WebSocket tests. Runtime reporting adds
 core shutdown/startup and RPC coverage. Read-only audit replay and live coding-client/provider
 calls are separate gates. See [Schema conversion](schema-conversion.md#diagnostics-and-acceptance).
 
-`scripts/acceptance/schema/check-history-evidence.mjs` checks controlled missing-result failures
-and anonymous audit-attempt grouping using Node SQLite fixtures. Live history/resubmission and
-signature-recovery checks use the [live Schema workflow](schema-conversion.md#live-schema-acceptance).
-The local history evidence (`artifacts/schema-work-package/history-verification.md`) distinguishes
-client resubmission, observed internal recovery and remaining retry coverage.
+`scripts/acceptance/schema/check-history-evidence.mjs` checks missing tool results, malformed
+signature rejection and anonymous audit-attempt grouping using Node SQLite fixtures. The
+[live Schema workflow](schema-conversion.md#live-schema-acceptance) verifies real
+history resubmission and a single upstream rejection of a corrupted signature.
 
 `node --test scripts/acceptance/schema/check-client-matrix.mjs` checks actual-client declaration
 shapes, read-only forwarding guards, fixed-file MCP behavior, final-answer/result-continuation

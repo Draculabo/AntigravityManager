@@ -60,6 +60,13 @@ export async function traceRuntime(root) {
     }
   }
   const require = createRequire(path.join(root, 'package.json'));
+  const sqliteRoot = path.dirname(require.resolve('better-sqlite3/package.json'));
+  // The bundled official Node distribution uses glibc on Linux.
+  const sqlitePrebuilds = path.join(sqliteRoot, 'prebuilds');
+  const sqliteBinary = path.join(sqlitePrebuilds, `${process.platform}-${process.arch}.node`);
+  const sqliteFallbacks = new Set(
+    ['Debug', 'Release'].map((type) => path.join(sqliteRoot, 'build', type, 'better_sqlite3.node')),
+  );
   const nativeLoaders = [
     'better-sqlite3',
     'keytar',
@@ -71,7 +78,7 @@ export async function traceRuntime(root) {
   const koffiTarget = `@koromix/koffi-${process.platform}-${process.arch}`;
   const sysinfoTarget = `@draculabo/sysinfo-process-enhanced-${process.platform}-${process.arch}${process.platform === 'win32' ? '-msvc' : process.platform === 'linux' ? '-gnu' : ''}`;
   const binaries = [
-    path.join(root, 'node_modules/better-sqlite3/build/Release/better_sqlite3.node'),
+    sqliteBinary,
     path.join(root, 'node_modules/keytar/build/Release/keytar.node'),
     require.resolve(keyringTarget),
     require.resolve(sysinfoTarget),
@@ -111,7 +118,14 @@ export async function traceRuntime(root) {
       fileIOConcurrency: 128,
       // Windows relative() returns an absolute path when a reference crosses drives.
       // NFT's default ../ filter alone does not exclude those host paths before globbing.
-      ignore: (file) => path.isAbsolute(file) || file === '..' || file.startsWith(`..${path.sep}`),
+      ignore: (file) => {
+        if (path.isAbsolute(file) || file === '..' || file.startsWith(`..${path.sep}`)) {
+          return true;
+        }
+        const target = path.resolve(root, file);
+        // The SQLite loader can resolve any of its prebuilds. This runtime has one target.
+        return path.dirname(target) === sqlitePrebuilds && target !== sqliteBinary;
+      },
       stat: (file) => withinRoot(file, stat),
       readlink: (file) => withinRoot(file, readlink),
       readFile: (file) =>
@@ -131,6 +145,10 @@ export async function traceRuntime(root) {
       warning.includes(
         `loaded from ${path.join(root, 'node_modules/@electron/asar/lib/wrapped-fs.js')}`,
       );
+    // The explicit target prebuild is mandatory. The SQLite loader probes these only without it.
+    const sqliteFallback =
+      sqliteFallbacks.has(missing) &&
+      warning.endsWith(`loaded from ${path.join(sqliteRoot, 'lib', 'binding.js')}`);
     // The generated napi-rs loader probes unpublished platforms too. Its target is mandatory above.
     const napiAlternative =
       missing &&
@@ -155,6 +173,7 @@ export async function traceRuntime(root) {
     assert(
       license ||
         electronAsarBuiltin ||
+        sqliteFallback ||
         (missing &&
           (optionalFrameworkImports.has(missing) ||
             optionalNativeImports.has(missing) ||

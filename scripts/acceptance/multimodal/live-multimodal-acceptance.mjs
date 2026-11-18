@@ -17,6 +17,7 @@ const cases = new Set([
   'image-generate',
   'image-edit',
 ]);
+const recognitionOutputTokens = 1024;
 const fixtureDir = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   '../fixtures',
@@ -154,25 +155,36 @@ export async function evaluateMedia(caseId, body) {
     }
   }
   let text = '';
+  let incomplete = false;
   if (caseId.startsWith('chat-')) {
-    text = body?.choices?.[0]?.message?.content ?? '';
+    const choice = body?.choices?.[0];
+    text = choice?.message?.content ?? '';
+    incomplete = choice?.finish_reason === 'length';
   } else if (caseId.startsWith('responses-')) {
     text = (body?.output ?? [])
       .flatMap((item) => item.content ?? [])
       .map((item) => item.text ?? '')
       .join(' ');
+    incomplete = body?.status === 'incomplete';
   } else if (caseId.startsWith('gemini-')) {
-    text = (body?.candidates?.[0]?.content?.parts ?? []).map((part) => part.text ?? '').join(' ');
+    const candidate = body?.candidates?.[0];
+    text = (candidate?.content?.parts ?? []).map((part) => part.text ?? '').join(' ');
+    incomplete = candidate?.finishReason === 'MAX_TOKENS';
   } else {
     text = (body?.content ?? []).map((item) => item.text ?? '').join(' ');
+    incomplete = body?.stop_reason === 'max_tokens';
   }
   const normalized = typeof text === 'string' ? text.toLowerCase() : '';
+  const outputBytes = Buffer.byteLength(normalized);
+  if (incomplete) {
+    return { valid: false, outputBytes, observation: 'recognition response was incomplete' };
+  }
   const valid = caseId.endsWith('video')
     ? /red[\s\S]*blue/.test(normalized)
     : /red/.test(normalized);
   return {
     valid,
-    outputBytes: Buffer.byteLength(normalized),
+    outputBytes,
     observation: valid
       ? 'expected colors identified'
       : `expected colors missing (${normalized.slice(0, 120)})`,
@@ -194,7 +206,7 @@ async function requestFor(caseId, model) {
       route: '/v1/chat/completions',
       body: {
         model,
-        max_tokens: 100,
+        max_tokens: recognitionOutputTokens,
         messages: [
           {
             role: 'user',
@@ -215,7 +227,7 @@ async function requestFor(caseId, model) {
       body: {
         model,
         store: false,
-        max_output_tokens: 100,
+        max_output_tokens: recognitionOutputTokens,
         input: [
           {
             role: 'user',
@@ -246,7 +258,7 @@ async function requestFor(caseId, model) {
             ],
           },
         ],
-        generationConfig: { maxOutputTokens: 100 },
+        generationConfig: { maxOutputTokens: recognitionOutputTokens },
       },
     };
   }
@@ -255,7 +267,7 @@ async function requestFor(caseId, model) {
       route: '/v1/messages',
       body: {
         model,
-        max_tokens: 100,
+        max_tokens: recognitionOutputTokens,
         messages: [
           {
             role: 'user',

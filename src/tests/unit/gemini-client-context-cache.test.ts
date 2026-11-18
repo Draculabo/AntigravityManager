@@ -15,7 +15,7 @@ describe('GeminiClient explicit context cache', () => {
     vi.stubEnv('PROXY_INTERNAL_BASE_URLS', 'http://cache-deadline.invalid/v1internal');
     vi.stubEnv('PROXY_CONTEXT_CACHE_ENABLED', 'true');
     vi.stubEnv('PROXY_CONTEXT_CACHE_MIN_CHARACTERS', '1');
-    setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, request_timeout: 10 });
+    setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, request_timeout: 10, generation_timeout: 10 });
     const post = vi
       .spyOn(axios, 'post')
       .mockImplementationOnce(async () => {

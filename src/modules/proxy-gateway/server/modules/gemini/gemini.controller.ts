@@ -1,3 +1,4 @@
+import { getGenerationTimeoutMs } from '../../common/generation-timeout-policy';
 import {
   BadRequestException,
   Body,
@@ -50,6 +51,7 @@ import { setProxyResponseTimingHeaders } from '../../common/proxy-response-timin
 import { GenerationDeadlineScope } from '../../common/generation-deadline';
 import { awaitRequestOperation } from '../../common/request-cancellation';
 import { writeProxySseResponse } from '../../common/proxy-sse-response';
+import { GenerationDeadlineExceededError } from '../../common/exceptions/generation-deadline.exception';
 
 type GeminiModelMetadata = {
   name: string;
@@ -146,10 +148,7 @@ export class GeminiController {
     const abortScope = createProxyRequestAbortScope(req, res);
     const deadline =
       action === 'generateContent' || action === 'streamGenerateContent'
-        ? new GenerationDeadlineScope(
-            (getServerConfig()?.request_timeout ?? 300) * 1000,
-            abortScope.signal,
-          )
+        ? new GenerationDeadlineScope(getGenerationTimeoutMs(), abortScope.signal)
         : undefined;
     const signal = deadline?.signal ?? abortScope.signal;
     try {
@@ -200,6 +199,13 @@ export class GeminiController {
           writeProxySseResponse(res, deadline ? deadline.retainObservable(stream) : stream, {
             includeTiming: true,
             request: req,
+            formatUnstartedError: (error) => {
+              if (error instanceof GenerationDeadlineExceededError) {
+                const status = HttpStatus.GATEWAY_TIMEOUT;
+                return { status, body: this.buildErrorResponse(status, error) };
+              }
+              return undefined;
+            },
           });
           return;
         }
@@ -243,30 +249,34 @@ export class GeminiController {
         return;
       }
 
-      const message = error instanceof Error ? error.message : 'Internal Server Error';
       const status =
         error instanceof HttpException
           ? (error.getStatus() as HttpStatus)
           : (resolveUpstreamErrorHttpStatus(error) ?? HttpStatus.INTERNAL_SERVER_ERROR);
       applyProxyRetryAfterHeader(res, error);
-      const details =
-        error instanceof UpstreamRequestError ? publicGoogleErrorDetails(error.details) : undefined;
-      res.status(status).send({
-        error: {
-          code: status,
-          message: publicProxyErrorMessage(message),
-          status:
-            (error instanceof UpstreamRequestError ? error.upstreamStatus : undefined) ??
-            this.resolveGeminiErrorStatus(status),
-          ...(details ? { details } : {}),
-        },
-      });
+      res.status(status).send(this.buildErrorResponse(status, error));
     } finally {
       abortScope.dispose();
       if (deadline && (!deadline.retained || deadline.signal.aborted)) {
         deadline.dispose();
       }
     }
+  }
+
+  private buildErrorResponse(status: HttpStatus, error: unknown) {
+    const message = error instanceof Error ? error.message : 'Internal Server Error';
+    const details =
+      error instanceof UpstreamRequestError ? publicGoogleErrorDetails(error.details) : undefined;
+    return {
+      error: {
+        code: status,
+        message: publicProxyErrorMessage(message),
+        status:
+          (error instanceof UpstreamRequestError ? error.upstreamStatus : undefined) ??
+          this.resolveGeminiErrorStatus(status),
+        ...(details ? { details } : {}),
+      },
+    };
   }
 
   private resolveGeminiErrorStatus(status: HttpStatus): string {

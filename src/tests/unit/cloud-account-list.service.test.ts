@@ -38,6 +38,8 @@ function dependencies(
     getCurrentAccountInfo: vi.fn(() => ({ isAuthenticated: false, email: '' })),
     usesCredentialStore: vi.fn(() => false),
     readAgyAccountToken: vi.fn(async () => null),
+    readSystemAccountToken: vi.fn(async () => null),
+    isClientInstalled: vi.fn(() => false),
     getActiveAccountId: vi.fn(() => ''),
     warn: vi.fn(),
     ...overrides,
@@ -160,6 +162,42 @@ describe('cloud account list service', () => {
       ['agy', false, false, false],
     ]);
     expect(deps.getActiveAccountId).not.toHaveBeenCalledWith('agy');
+  });
+
+  it('marks a newly imported keyring login when the CLI is the only installed keyring client', async () => {
+    const deps = dependencies(accounts, {
+      usesCredentialStore: (target) => target === 'classic',
+      readSystemAccountToken: async () => ({ refreshToken: 'secret-refresh-agy' }),
+      isClientInstalled: (target) => target === 'agy' || target === 'ide',
+    });
+
+    const views = await createCloudAccountListService(deps).listViews();
+    expect(views.filter((view) => view.is_active_agy).map((view) => view.id)).toEqual(['agy']);
+  });
+
+  it.each(['classic', 'ide'] as const)(
+    'does not treat the shared keyring as a CLI login when %s also uses it',
+    async (desktop) => {
+      const deps = dependencies(accounts, {
+        usesCredentialStore: (target) => target === desktop,
+        readSystemAccountToken: async () => ({ refreshToken: 'secret-refresh-agy' }),
+        isClientInstalled: (target) => target === 'agy' || target === desktop,
+      });
+
+      const views = await createCloudAccountListService(deps).listViews();
+      expect(views.filter((view) => view.is_active_agy)).toEqual([]);
+    },
+  );
+
+  it('does not show a stale CLI badge for an unmatched login on a CLI-only installation', async () => {
+    const deps = dependencies(accounts, {
+      readSystemAccountToken: async () => ({ refreshToken: 'synthetic-unimported' }),
+      isClientInstalled: (target) => target === 'agy',
+      getActiveAccountId: (target) => (target === 'agy' ? 'agy' : ''),
+    });
+
+    const views = await createCloudAccountListService(deps).listViews();
+    expect(views.filter((view) => view.is_active_agy)).toEqual([]);
   });
 
   it.each([

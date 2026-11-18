@@ -26,9 +26,9 @@ import { getManagementEndpoint } from '../../../src/core/management/endpoint';
 import type { CoreHandshake } from '../../../src/core/management/handshake';
 import { verifyInstalledWebSocket } from './installed-websocket';
 import {
+  expectedLargeThoughtTransfer,
   LARGE_THOUGHT_BYTES,
   LARGE_THOUGHT_SESSION,
-  LARGE_THOUGHT_SIGNATURE,
 } from './fixtures/thought-capacity';
 
 async function verifyPackagedCli(entry: string, home: string): Promise<void> {
@@ -324,15 +324,7 @@ async function check(): Promise<void> {
       const page = await client.thought.records({ sessionKey: LARGE_THOUGHT_SESSION });
       assert.equal(page.records.length, 1);
       assert.equal(page.complete, true);
-      const expected = createHash('sha256');
-      let remaining = LARGE_THOUGHT_BYTES;
-      const block = Buffer.alloc(64 * 1024, 'T');
-      while (remaining > 0) {
-        const count = Math.min(remaining, block.length);
-        expected.update(block.subarray(0, count));
-        remaining -= count;
-      }
-      const digest = expected.update(LARGE_THOUGHT_SIGNATURE).digest('hex');
+      const { signatureBytes, totalBytes, digest } = expectedLargeThoughtTransfer();
       for (let repeat = 0; repeat < 3; repeat += 1) {
         const opened = await client.thought.openRecord({
           sessionKey: LARGE_THOUGHT_SESSION,
@@ -340,6 +332,9 @@ async function check(): Promise<void> {
         });
         assert(opened);
         assert.equal(opened.thoughtBytes, LARGE_THOUGHT_BYTES);
+        assert.equal(opened.visibleBytes, 0);
+        assert.equal(opened.signatureBytes, signatureBytes);
+        assert.equal(opened.transfer.totalBytes, totalBytes);
         const { kind, epoch, capabilityId, resourceId } = opened.transfer;
         const identity = { kind, epoch, capabilityId, resourceId };
         const actual = createHash('sha256');

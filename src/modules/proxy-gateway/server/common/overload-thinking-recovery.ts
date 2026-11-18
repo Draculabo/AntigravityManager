@@ -8,73 +8,69 @@ import { throwIfRequestAborted } from './request-cancellation';
 
 const RECOVERY_THINKING_BUDGET = 4_000;
 const OUTPUT_RESERVE = 1_024;
-const ERROR_INFO_TYPE = 'type.googleapis.com/google.rpc.ErrorInfo';
-const OVERLOAD_ERROR_DOMAINS = new Set([
+const GOOGLE_OVERLOAD_DOMAINS = new Set([
   'cloudcode-pa.googleapis.com',
   'staging-cloudcode-pa.googleapis.com',
   'autopush-cloudcode-pa.googleapis.com',
   'generativelanguage.googleapis.com',
 ]);
+const CAPACITY_REASON = 'MODEL_CAPACITY_EXHAUSTED';
+const LIMIT_REASONS = [CAPACITY_REASON, 'QUOTA_EXHAUSTED', 'RESOURCE_EXHAUSTED'];
 
-function isExplicitOverload(error: unknown): error is UpstreamRequestError {
-  if (
-    !(error instanceof UpstreamRequestError) ||
-    error.status === undefined ||
-    !((error.status >= 500 && error.status <= 599) || error.status === 408)
-  ) {
-    return false;
+type RecoveryKind = 'promote_capacity' | 'degrade_thinking';
+
+function classify(error: UpstreamRequestError): RecoveryKind | undefined {
+  const { status } = error;
+  if (status === undefined || (status !== 408 && (status < 500 || status > 599))) {
+    return undefined;
   }
-
   const text = `${error.message}\n${error.body ?? ''}`;
+  const hasReason = (reason: string) => error.details?.some((detail) => detail.reason === reason);
   if (
+    (status === 503 || status === 504) &&
+    (hasReason(CAPACITY_REASON) ||
+      /MODEL_CAPACITY_EXHAUSTED|no capacity available for model/iu.test(text))
+  ) {
+    return 'promote_capacity';
+  }
+  if (
+    LIMIT_REASONS.some(hasReason) ||
     /\b(?:quota[_ -]?exhausted|quota exceeded|(?:model[_ -]?)?capacity[_ -]?exhausted|resource[_ -]?exhausted)\b/iu.test(
       text,
-    ) ||
-    error.details?.some((detail) =>
-      ['QUOTA_EXHAUSTED', 'MODEL_CAPACITY_EXHAUSTED', 'RESOURCE_EXHAUSTED'].includes(
-        detail.reason ?? '',
-      ),
     )
   ) {
-    return false;
+    return undefined;
   }
-
-  return (
+  if (
+    status === 503 ||
+    status === 529 ||
     /\boverloaded\b/iu.test(text) ||
     error.details?.some(
       (detail) =>
-        detail.type === ERROR_INFO_TYPE &&
+        detail.type === 'type.googleapis.com/google.rpc.ErrorInfo' &&
         detail.reason === 'MODEL_OVERLOADED' &&
-        OVERLOAD_ERROR_DOMAINS.has(detail.domain ?? ''),
-    ) === true
-  );
+        GOOGLE_OVERLOAD_DOMAINS.has(detail.domain ?? ''),
+    )
+  ) {
+    return 'degrade_thinking';
+  }
+  return undefined;
 }
 
-export function createOverloadThinkingRecovery(options: {
-  model: string;
-  explicitThinking: boolean;
-  physicalTarget: boolean;
-  registeredBudget?: number;
-}): OverloadThinkingRecovery {
-  // Bare families acquire a recipe during routing; their final wire budget owns automatic mode.
-  const model = options.model.trim().replace(/^models\//iu, '');
-  const bareGeminiFamily = /^gemini-\d+(?:\.\d+)*-(?:flash|pro)$/iu.test(model);
-  return new OverloadThinkingRecovery(
-    !options.explicitThinking &&
-      !options.physicalTarget &&
-      !/(?:^|[-_.])(?:low|medium|high)(?:$|[-_.])/iu.test(model) &&
-      !model.toLowerCase().includes('image') &&
-      (options.registeredBudget === undefined ||
-        options.registeredBudget === -1 ||
-        bareGeminiFamily),
-  );
+function capacityTarget(model: string): string {
+  if (/-high$/iu.test(model)) {
+    return model;
+  }
+  const promoted = model.replace(/-(?:low|medium|tiered)$/iu, '-high');
+  if (promoted !== model || !/^gemini-[\d.]+-(?:flash|pro)$/iu.test(model)) {
+    return promoted;
+  }
+  return `${model}-high`;
 }
 
-/** One additional send per logical request; protocol owners preserve original client intent. */
+/** Each transformation has one allowance across the logical request and its account fallbacks. */
 export class OverloadThinkingRecovery {
-  private attempted = false;
-
-  public constructor(private readonly eligible: boolean) {}
+  private readonly attempted = new Set<RecoveryKind>();
 
   public admit(
     error: unknown,
@@ -82,46 +78,85 @@ export class OverloadThinkingRecovery {
     signal?: AbortSignal,
     canRecover?: () => boolean,
     deadlineAt?: number,
-  ): GeminiInternalRequest | undefined {
+    canRecoverWithModel?: (model: string) => boolean,
+  ): { kind: RecoveryKind; body: GeminiInternalRequest; delayMs: number } | undefined {
     throwIfRequestAborted(signal);
-    const signalDeadline = generationDeadlineAt(signal);
-    const deadline = Math.min(deadlineAt ?? Infinity, signalDeadline ?? Infinity);
+    const deadline = Math.min(deadlineAt ?? Infinity, generationDeadlineAt(signal) ?? Infinity);
     if (deadline <= performance.now()) {
       throw new GenerationDeadlineExceededError();
     }
-    if (
-      !this.eligible ||
-      this.attempted ||
-      !isExplicitOverload(error) ||
-      canRecover?.() === false
-    ) {
+    if (!(error instanceof UpstreamRequestError) || canRecover?.() === false) {
       return undefined;
     }
-
+    const kind = classify(error);
     const config = body.request.generationConfig;
     if (
+      kind === undefined ||
+      this.attempted.has(kind) ||
       body.requestType === 'image_gen' ||
-      config?.responseModalities?.some((modality) => modality.toLowerCase() === 'image') ||
-      config?.thinkingConfig?.thinkingBudget !== -1 ||
-      config.thinkingConfig.thinkingLevel !== undefined ||
-      config.maxOutputTokens === undefined ||
-      config.maxOutputTokens < RECOVERY_THINKING_BUDGET + OUTPUT_RESERVE
+      /(?:^|-)image(?:-|$)/iu.test(body.model) ||
+      config?.responseModalities?.some((modality) => modality.toLowerCase() === 'image')
     ) {
       return undefined;
     }
 
-    this.attempted = true;
+    const originalThinking = config?.thinkingConfig;
+    const thinkingConfig = originalThinking ? { ...originalThinking } : undefined;
+    let model = body.model;
+    let thinkingChanged = false;
+    if (kind === 'promote_capacity') {
+      if (/^gemini-/iu.test(model)) {
+        model = capacityTarget(model);
+        if (model !== body.model && thinkingConfig && thinkingConfig.thinkingBudget !== 0) {
+          thinkingChanged =
+            thinkingConfig.thinkingLevel !== 'HIGH' || thinkingConfig.thinkingBudget !== undefined;
+          delete thinkingConfig.thinkingBudget;
+          thinkingConfig.thinkingLevel = 'HIGH';
+        }
+      }
+    } else {
+      if (thinkingConfig?.thinkingLevel?.toUpperCase() === 'HIGH') {
+        thinkingConfig.thinkingLevel = 'MEDIUM';
+        thinkingChanged = true;
+      } else if (
+        thinkingConfig &&
+        !thinkingConfig.thinkingLevel &&
+        (thinkingConfig.thinkingBudget === -1 ||
+          (thinkingConfig.thinkingBudget ?? 0) > RECOVERY_THINKING_BUDGET ||
+          (thinkingConfig.thinkingBudget === undefined &&
+            thinkingConfig.includeThoughts === true)) &&
+        (config?.maxOutputTokens ?? 0) >= RECOVERY_THINKING_BUDGET + OUTPUT_RESERVE
+      ) {
+        thinkingConfig.thinkingBudget = RECOVERY_THINKING_BUDGET;
+        thinkingChanged = true;
+      }
+      if (/^gemini-/iu.test(model)) {
+        model = model.replace(/-high$/iu, '-medium');
+      }
+    }
+    // A provider context-cache resource is tied to the physical model that created it.
+    if (
+      model !== body.model &&
+      (body.request.cachedContent || canRecoverWithModel?.(model) === false)
+    ) {
+      return undefined;
+    }
+    if (model === body.model && !thinkingChanged) {
+      return undefined;
+    }
+    this.attempted.add(kind);
     return {
-      ...body,
-      request: {
-        ...body.request,
-        generationConfig: {
-          ...config,
-          thinkingConfig: {
-            ...config.thinkingConfig,
-            thinkingBudget: RECOVERY_THINKING_BUDGET,
-          },
-        },
+      kind,
+      delayMs: kind === 'promote_capacity' ? 50 : 150,
+      body: {
+        ...body,
+        model,
+        request: thinkingConfig
+          ? {
+              ...body.request,
+              generationConfig: { ...config, thinkingConfig },
+            }
+          : body.request,
       },
     };
   }

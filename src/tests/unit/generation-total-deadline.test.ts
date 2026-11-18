@@ -14,7 +14,7 @@ import {
 
 beforeEach(() => {
   vi.useFakeTimers();
-  setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, request_timeout: 1 });
+  setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, generation_timeout: 1 });
 });
 afterEach(() => {
   setServerConfig(DEFAULT_APP_CONFIG.proxy);

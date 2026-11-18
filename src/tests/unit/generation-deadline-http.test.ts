@@ -1,12 +1,26 @@
 import { createServer } from 'node:http';
 import { Readable } from 'node:stream';
+import { setTimeout as wait } from 'node:timers/promises';
+import { Module } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
+import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import axios from 'axios';
+import { fetch } from 'undici';
 import { afterEach, expect, it, vi } from 'vitest';
+import { ProxyGuard } from '@/modules/proxy-gateway/server/guards/proxy.guard';
 import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
+import { GeminiController } from '@/modules/proxy-gateway/server/modules/gemini/gemini.controller';
+import { GeminiService } from '@/modules/proxy-gateway/server/modules/gemini/gemini.service';
 import { Upstream4xxCaptureService } from '@/modules/proxy-gateway/server/common/upstream-4xx-capture.service';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { setServerConfig } from '@/server/server-config';
 import { logger } from '@/shared/logging/logger';
+import {
+  createAccount,
+  createGateway,
+  createLease,
+  createUpstream,
+} from './proxy-real-path.harness';
 
 vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', async (original) => ({
   ...(await original<
@@ -21,6 +35,118 @@ afterEach(() => {
   vi.unstubAllEnvs();
   setServerConfig(DEFAULT_APP_CONFIG.proxy);
 });
+
+it.each([false, true])(
+  'projects a Gemini stream deadline at the downstream header boundary (output started: %s)',
+  async (outputStarted) => {
+    const closed = Promise.withResolvers<void>();
+    const requests: string[] = [];
+    const candidate = { content: { role: 'model', parts: [{ text: 'Already delivered' }] } };
+    const provider = createServer((request, response) => {
+      requests.push(request.url ?? '');
+      request.resume();
+      response.once('close', closed.resolve);
+      response.writeHead(200, { 'content-type': 'text/event-stream' });
+      response.flushHeaders();
+      if (outputStarted) {
+        response.write(`data: ${JSON.stringify({ response: { candidates: [candidate] } })}\n\n`);
+      }
+    });
+    const client = new GeminiClient(new Upstream4xxCaptureService());
+    const upstream = createUpstream({});
+    upstream.streamGenerateInternal.mockImplementation(async (...args) => {
+      const stream = await client.streamGenerateInternal(...args);
+      if (!(stream instanceof Readable)) {
+        throw new Error('Expected a Node upstream stream');
+      }
+      return stream;
+    });
+    const gateway = createGateway(upstream, createLease([createAccount('gemini-deadline-http')]));
+    @Module({
+      controllers: [GeminiController],
+      providers: [ProxyGuard, { provide: GeminiService, useValue: gateway.geminiService }],
+    })
+    class GeminiDeadlineModule {}
+
+    let app: NestFastifyApplication | undefined;
+    try {
+      await new Promise<void>((resolve) => provider.listen(0, '127.0.0.1', resolve));
+      const address = provider.address();
+      if (!address || typeof address === 'string') {
+        throw new Error('Expected isolated loopback listener');
+      }
+      vi.stubEnv('PROXY_INTERNAL_BASE_URLS', `http://127.0.0.1:${address.port}`);
+      vi.stubEnv('PROXY_CONTEXT_CACHE_ENABLED', 'false');
+      for (const name of [
+        'HTTP_PROXY',
+        'HTTPS_PROXY',
+        'ALL_PROXY',
+        'http_proxy',
+        'https_proxy',
+        'all_proxy',
+      ]) {
+        vi.stubEnv(name, '');
+      }
+      const post = axios.post.bind(axios);
+      vi.spyOn(axios, 'post').mockImplementation((url, data, config) =>
+        post(url, data, { ...config, adapter: 'http' }),
+      );
+      const key = 'synthetic-deadline-key';
+      setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, api_key: key, generation_timeout: 1 });
+      app = await NestFactory.create<NestFastifyApplication>(
+        GeminiDeadlineModule,
+        new FastifyAdapter(),
+        { logger: false },
+      );
+      await app.listen(0, '127.0.0.1');
+
+      const response = await fetch(
+        `${await app.getUrl()}/v1beta/models/gemini-3-flash:streamGenerateContent`,
+        {
+          method: 'POST',
+          headers: { 'x-goog-api-key': key, 'content-type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: 'Exercise the request deadline.' }] }],
+          }),
+          signal: AbortSignal.timeout(5_000),
+        },
+      );
+      const body = await response.text();
+      await Promise.race([
+        closed.promise,
+        wait(2_000, undefined, { ref: false }).then(() => {
+          throw new Error('The upstream response stayed open after the deadline');
+        }),
+      ]);
+      expect(requests).toEqual(['/:streamGenerateContent?alt=sse']);
+      if (outputStarted) {
+        expect(response.status).toBe(200);
+        expect(response.headers.get('content-type')).toContain('text/event-stream');
+        expect(body).toBe(
+          `data: ${JSON.stringify({ candidates: [candidate] })}\n\n` +
+            'data: {"error":{"message":"Generation request deadline exceeded.","type":"server_error"}}\n\n',
+        );
+      } else {
+        expect(response.status).toBe(504);
+        expect(response.headers.get('content-type')).toContain('application/json');
+        expect(JSON.parse(body)).toEqual({
+          error: {
+            code: 504,
+            status: 'DEADLINE_EXCEEDED',
+            message: 'Generation request deadline exceeded.',
+          },
+        });
+      }
+    } finally {
+      provider.closeAllConnections();
+      await Promise.all([
+        app?.close(),
+        new Promise<void>((resolve) => provider.close(() => resolve())),
+      ]);
+    }
+  },
+  15_000,
+);
 
 it('cancels a real HTTP attempt with only the remaining endpoint budget', async () => {
   const received: string[] = [];
@@ -68,7 +194,7 @@ it('cancels a real HTTP attempt with only the remaining endpoint budget', async 
   ]) {
     vi.stubEnv(name, '');
   }
-  setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, request_timeout: 1 });
+  setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, generation_timeout: 1 });
   let watchdog: ReturnType<typeof setTimeout> | undefined;
   try {
     await expect(
@@ -153,7 +279,7 @@ it.each([
       ]) {
         vi.stubEnv(name, '');
       }
-      setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, request_timeout: 1 });
+      setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, generation_timeout: 1 });
       const stream = await client.streamGenerateInternal(
         {
           model: 'gemini-3-flash',

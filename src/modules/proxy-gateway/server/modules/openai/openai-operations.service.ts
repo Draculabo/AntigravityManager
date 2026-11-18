@@ -1,3 +1,4 @@
+import { getGenerationTimeoutMs } from '../../common/generation-timeout-policy';
 import { FlowControlledSseStream } from '../../common/flow-controlled-sse-stream';
 import { UpstreamGenerationError } from '../../../antigravity/UpstreamGenerationError';
 import { GeminiStreamCompletionError } from '../../common/collect-gemini-stream';
@@ -304,10 +305,7 @@ export class OpenAIOperations extends BaseProxyController {
       stream: body.stream,
     };
     const abortScope = this.createRequestAbortScope(req, res);
-    const deadline = new GenerationDeadlineScope(
-      (getServerConfig()?.request_timeout ?? 300) * 1000,
-      abortScope.signal,
-    );
+    const deadline = new GenerationDeadlineScope(getGenerationTimeoutMs(), abortScope.signal);
     try {
       const result = await awaitRequestOperation(
         this.proxyService.handleChatCompletions(
@@ -340,10 +338,7 @@ export class OpenAIOperations extends BaseProxyController {
 
   async responses(body: ResponsesRequestBody, res: FastifyReply, req?: FastifyRequest) {
     const abortScope = this.createRequestAbortScope(req, res);
-    const deadline = new GenerationDeadlineScope(
-      (getServerConfig()?.request_timeout ?? 300) * 1000,
-      abortScope.signal,
-    );
+    const deadline = new GenerationDeadlineScope(getGenerationTimeoutMs(), abortScope.signal);
     try {
       let expanded: ResponsesRequestBody;
       try {
@@ -632,10 +627,7 @@ export class OpenAIOperations extends BaseProxyController {
     req?: FastifyRequest,
   ) {
     const abortScope = this.createRequestAbortScope(req, res);
-    const deadline = new GenerationDeadlineScope(
-      (getServerConfig()?.request_timeout ?? 300) * 1000,
-      abortScope.signal,
-    );
+    const deadline = new GenerationDeadlineScope(getGenerationTimeoutMs(), abortScope.signal);
     try {
       const compatibility = parseChatResponsesCompatibility(body);
       const chatMaxTokens = compatibility ? undefined : resolveOutputTokenLimit(body);
@@ -1101,10 +1093,7 @@ export class OpenAIOperations extends BaseProxyController {
     req?: FastifyRequest,
   ): Promise<void> {
     const abortScope = this.createRequestAbortScope(req, res);
-    const deadline = new GenerationDeadlineScope(
-      (getServerConfig()?.request_timeout ?? 300) * 1000,
-      abortScope.signal,
-    );
+    const deadline = new GenerationDeadlineScope(getGenerationTimeoutMs(), abortScope.signal);
     let upstreamImageFailure: ImageOutputFailure | undefined;
     try {
       const result = await awaitRequestOperation(

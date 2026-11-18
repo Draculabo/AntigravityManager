@@ -155,8 +155,8 @@ const config: ForgeConfig = {
     ignore: packageIgnorePatterns,
     prune: true,
   },
-  // Standalone Node builds can replace a binary while Electron rebuild metadata stays cached.
-  rebuildConfig: { force: true },
+  // SQLite ships Node-API prebuilds shared by Electron and standalone Node.
+  rebuildConfig: { force: true, ignoreModules: ['better-sqlite3'] },
   hooks: {
     prePackage: async (_config, platform, arch) => {
       const pnpmCli = process.env.npm_execpath;

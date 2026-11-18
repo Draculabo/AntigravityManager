@@ -43,6 +43,8 @@ test('runtime tracing excludes host assets while retaining all explicit native e
     const keyring = `@napi-rs/keyring-${process.platform}-${process.arch}${process.platform === 'win32' ? '-msvc' : process.platform === 'linux' ? '-gnu' : ''}`;
     const koffi = `@koromix/koffi-${process.platform}-${process.arch}`;
     const sysinfo = `@draculabo/sysinfo-process-enhanced-${process.platform}-${process.arch}${process.platform === 'win32' ? '-msvc' : process.platform === 'linux' ? '-gnu' : ''}`;
+    const sqliteDirectory = 'node_modules/better-sqlite3/prebuilds';
+    const otherSqliteBinary = `${sqliteDirectory}/other-target.node`;
     for (const name of [
       'better-sqlite3',
       'keytar',
@@ -55,8 +57,17 @@ test('runtime tracing excludes host assets while retaining all explicit native e
     }
     await file(`node_modules/${keyring}/package.json`, '{"main":"keyring.node"}');
     await file(`node_modules/${sysinfo}/package.json`, '{"main":"sysinfo.node"}');
+    await file(otherSqliteBinary, Buffer.alloc(0));
+    await file('node_modules/better-sqlite3/index.js', "require('./lib/binding');");
+    await file(
+      'node_modules/better-sqlite3/lib/binding.js',
+      `const path = require('node:path');
+       require('../prebuilds/other-target.node');
+       require(path.join(__dirname, '..', 'build', 'Debug', 'better_sqlite3.node'));
+       require(path.join(__dirname, '..', 'build', 'Release', 'better_sqlite3.node'));`,
+    );
     const binaries = [
-      'node_modules/better-sqlite3/build/Release/better_sqlite3.node',
+      `${sqliteDirectory}/${process.platform}-${process.arch}.node`,
       'node_modules/keytar/build/Release/keytar.node',
       `node_modules/${keyring}/keyring.node`,
       `node_modules/${sysinfo}/sysinfo.node`,
@@ -87,10 +98,15 @@ test('runtime tracing excludes host assets while retaining all explicit native e
     const core = await readFile(path.join(root, 'core/main.cjs'), 'utf8');
     await file('core/main.cjs', core + declarations.join(''));
     const trace = await traceRuntime(root);
-    assert.equal(trace.warnings.length, 1);
-    assert.match(trace.warnings[0], /Failed to resolve dependency "original-fs"/);
+    assert.equal(trace.warnings.length, 3);
+    assert(trace.warnings.some((warning) => warning.includes('dependency "original-fs"')));
+    assert.equal(
+      trace.warnings.filter((warning) => warning.includes('better_sqlite3.node')).length,
+      2,
+    );
     assert(trace.files.includes(path.normalize('node_modules/@electron/asar/lib/wrapped-fs.js')));
     assert(!trace.files.some((entry) => entry.includes('host-only-marker')));
+    assert(!trace.files.includes(path.normalize(otherSqliteBinary)));
     for (const binary of binaries) {
       assert(trace.files.includes(path.normalize(binary)), `Missing native entry: ${binary}`);
     }

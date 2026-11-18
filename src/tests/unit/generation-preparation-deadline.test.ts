@@ -31,7 +31,7 @@ vi.mock(
 );
 beforeEach(() => {
   vi.useFakeTimers();
-  setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, request_timeout: 1 });
+  setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, generation_timeout: 1 });
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -238,7 +238,7 @@ it.each([
 );
 
 it('retains one project recovery allowance across real Chat and image protocol execution', async () => {
-  setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, request_timeout: 10 });
+  setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, generation_timeout: 10 });
   const upstream = createUpstream({
     generate: () => {
       throw new UpstreamRequestError({

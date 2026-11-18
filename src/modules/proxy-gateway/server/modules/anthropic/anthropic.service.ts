@@ -1,7 +1,8 @@
-import { createOverloadThinkingRecovery } from '../../common/overload-thinking-recovery';
+import { getGenerationTimeoutMs } from '../../common/generation-timeout-policy';
+import { OverloadThinkingRecovery } from '../../common/overload-thinking-recovery';
 import { AggregationAdmissionError } from '../../common/aggregation-admission';
 import { captureCurrentAuditSession } from '../../../audit/traffic-audit-context';
-import { runGenerationWithDeadline } from '../../common/generation-deadline';
+import { runGenerationWithDeadline, generationDeadlineAt } from '../../common/generation-deadline';
 import { assertAnthropicGenerationHistory } from '../../common/generation-history';
 import { publicProxyErrorMessage } from '../../common/public-error-message';
 import { GenerationOutputState } from '../../../antigravity/GenerationOutputState';
@@ -178,7 +179,7 @@ export class AnthropicService extends BaseProxyService {
     signal?: AbortSignal,
   ): Promise<AnthropicChatResponse | Observable<string>> {
     return runGenerationWithDeadline(
-      (getServerConfig()?.request_timeout ?? 300) * 1000,
+      getGenerationTimeoutMs(),
       signal,
       async (boundedSignal, owner) => {
         const compaction = createCoworkCompactionRequest(request, requestContext, boundedSignal);
@@ -243,13 +244,7 @@ export class AnthropicService extends BaseProxyService {
       explicitPhysicalTarget,
     );
     const routedRequest = appliedVariantRequest.request;
-    const overloadThinkingRecovery = createOverloadThinkingRecovery({
-      model: request.model,
-      explicitThinking:
-        request.thinking !== undefined || request.output_config?.effort !== undefined,
-      physicalTarget: explicitPhysicalTarget,
-      registeredBudget: appliedVariantRequest.variant?.thinkingBudget,
-    });
+    const overloadThinkingRecovery = new OverloadThinkingRecovery();
     const effort = routedRequest.output_config?.effort;
     const toolCallIdentity = new ResponseToolCallIdentity(() =>
       hashSessionAnchor([
@@ -375,6 +370,7 @@ export class AnthropicService extends BaseProxyService {
             registeredToolNames,
             () => this.markUpstreamSuccess(token, execution.body.model),
             toolCallIdentity,
+            signal,
           );
           return preparedStream;
         }
@@ -443,6 +439,7 @@ export class AnthropicService extends BaseProxyService {
                 registeredToolNames,
                 () => this.markUpstreamSuccess(token, execution.body.model),
                 toolCallIdentity,
+                signal,
               );
               return preparedStream;
             }
@@ -538,6 +535,7 @@ export class AnthropicService extends BaseProxyService {
                 registeredToolNames,
                 () => this.markUpstreamSuccess(token, execution.body.model),
                 toolCallIdentity,
+                signal,
               );
               return preparedStream;
             }
@@ -715,7 +713,9 @@ export class AnthropicService extends BaseProxyService {
     registeredToolNames: readonly string[] = [],
     toolCallIdentity?: ResponseToolCallIdentity,
     onInterrupted?: () => void,
+    signal?: AbortSignal,
   ): FlowControlledSseStream<string> {
+    const phaseOwned = generationDeadlineAt(signal) !== undefined;
     const observable = new FlowControlledSseStream(upstreamStream, (subscriber) => {
       const decoder = new TextDecoder('utf-8', { fatal: true });
       const lineReader = new IncrementalSseLines();
@@ -796,6 +796,7 @@ export class AnthropicService extends BaseProxyService {
           }
         },
         ANTHROPIC_STREAM_IDLE_TIMEOUT_MS,
+        signal,
       );
 
       const emitMappedChunk = (chunk: string): void => {
@@ -811,7 +812,7 @@ export class AnthropicService extends BaseProxyService {
         clearPingTimer();
         pingTimer = setTimeout(() => {
           consecutiveIdlePings += 1;
-          if (consecutiveIdlePings >= ANTHROPIC_STREAM_MAX_CONSECUTIVE_PINGS) {
+          if (!phaseOwned && consecutiveIdlePings >= ANTHROPIC_STREAM_MAX_CONSECUTIVE_PINGS) {
             this.logger.error(
               `[Claude-SSE] Stream idle for ${(consecutiveIdlePings * ANTHROPIC_STREAM_PING_INTERVAL_MS) / 1000}s (${consecutiveIdlePings}x ${ANTHROPIC_STREAM_PING_INTERVAL_MS / 1000}s timeout), terminating`,
             );
@@ -820,9 +821,7 @@ export class AnthropicService extends BaseProxyService {
             }
             return;
           }
-          this.logger.debug(
-            `[Claude-SSE] SSE idle ping #${consecutiveIdlePings}/${ANTHROPIC_STREAM_MAX_CONSECUTIVE_PINGS}`,
-          );
+          this.logger.debug(`[Claude-SSE] SSE idle ping #${consecutiveIdlePings}`);
           if (!observable.isPaused) {
             subscriber.next(ANTHROPIC_STREAM_PING_FRAME);
           }
@@ -1001,6 +1000,7 @@ export class AnthropicService extends BaseProxyService {
     registeredToolNames: readonly string[] = [],
     onSuccessfulCompletion?: () => void,
     toolCallIdentity?: ResponseToolCallIdentity,
+    signal?: AbortSignal,
   ): Promise<Observable<string>> {
     let streamInterrupted = false;
     const mappedStream = this.processAnthropicInternalStream(
@@ -1015,6 +1015,7 @@ export class AnthropicService extends BaseProxyService {
       () => {
         streamInterrupted = true;
       },
+      signal,
     );
 
     return new Promise((resolve, reject) => {
@@ -1057,13 +1058,16 @@ export class AnthropicService extends BaseProxyService {
       });
       registerObservableFlowControl(preparedStream, preparedStream);
 
-      const firstEventTimer = setTimeout(() => {
-        if (ready) {
-          return;
-        }
-        sourceSubscription?.unsubscribe();
-        reject(new Error('Timeout waiting for first Anthropic stream event (30s)'));
-      }, ANTHROPIC_STREAM_FIRST_EVENT_TIMEOUT_MS);
+      const firstEventTimer =
+        generationDeadlineAt(signal) === undefined
+          ? setTimeout(() => {
+              if (ready) {
+                return;
+              }
+              sourceSubscription?.unsubscribe();
+              reject(new Error('Timeout waiting for first Anthropic stream event (30s)'));
+            }, ANTHROPIC_STREAM_FIRST_EVENT_TIMEOUT_MS)
+          : undefined;
 
       sourceSubscription = mappedStream.subscribe({
         next: (chunk) => {

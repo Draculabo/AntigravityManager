@@ -8,6 +8,9 @@ Run commands from the repository root unless a step specifies another directory.
 
 Native process queries use `@draculabo/sysinfo-process-enhanced`. pnpm installs the matching prebuilt platform package; keep optional dependencies enabled. For a different packaging architecture, install dependencies on the target runner as the release workflow does.
 
+SQLite uses the `better-sqlite3` Node-API prebuild in both Electron and standalone Node. Standalone
+dependency tracing keeps the prebuild for its target.
+
 `pnpm install --frozen-lockfile` applies the [Forge 7.11.1 patch](../../patches/@electron-forge__core@7.11.1.patch) through `patchedDependencies`. Forge's package-bin cleanup uses a relative glob with the package directory as `cwd`, so Windows path separators cannot make it scan unrelated workspace profiles. The patch is also applied when lifecycle scripts are disabled. Remove it when the installed Forge version includes this scoped scan and Windows packaging passes with inaccessible directories elsewhere in the workspace.
 
 ## Build and package
@@ -18,7 +21,8 @@ does not establish installer, native keyring or live-provider behavior.
 - `pnpm run package` creates an unpacked application bundle.
 - `pnpm run make` creates platform distributables and is slower and more environment-sensitive than packaging.
 - `pnpm run audit:size:win32:x64` checks the default Forge output: Squirrel EXE/NuGet and WiX MSI installers have a 200 MiB budget including the standalone runtime; `app.asar` and the uncompressed standalone tree each have an independent 120 MiB budget. The audit selects packaged resources directly and does not scan acceptance profiles elsewhere in `out`. Vite dependency caches under `node_modules/.vite` are excluded from packaging; the production bundles under the root `.vite` remain required.
-- Packaging prepares standalone runtime dependencies in an isolated directory. Its `pnpm install --prod --frozen-lockfile --ignore-scripts` uses the same lockfile, pnpm settings and native-build allowlist as development. Native dependencies are rebuilt only in that isolated tree with its bundled Node version; desktop dependencies remain untouched.
+- The initial Electron package copy excludes dependency TypeScript declarations. Native modules copied in a later packaging step retain their package contents.
+- Packaging prepares standalone runtime dependencies in an isolated directory. Its `pnpm install --prod --frozen-lockfile --ignore-scripts` uses the same lockfile, pnpm settings and native-build allowlist as development. Required rebuilds in that tree use its bundled Node version.
 - Runtime installation and dependency tracing use separate staging directories. Native-module and command checks run against the traced output before publication. On Windows, publication copies the validated tree after backing up any existing generated runtime, avoiding populated-directory rename failures. A failed copy restores the backup; failed recovery retains its staging directory and reports the recovery path. Forge consumes the output only after publication completes. Other platforms publish by directory rename.
 
 Core, CLI and worker builds embed the JavaScript dependencies listed in

@@ -162,4 +162,60 @@ describe('bounded request-local transformation metadata', () => {
       });
     });
   });
+
+  it('normalizes the installed OpenCode opening on the outgoing tool request', () => {
+    const opening =
+      'You are opencode, an interactive CLI agent specializing in software engineering tasks.';
+    const instruction = '\n\nUse the OpenAI SDK for this task.';
+    const tool = {
+      type: 'function' as const,
+      function: {
+        name: 'read_file',
+        description: 'Read a documented OpenCode fixture.',
+        parameters: { type: 'object', properties: { path: { type: 'string' } } },
+      },
+    };
+    const request = {
+      model: 'gemini-3-flash',
+      messages: [
+        { role: 'system', content: opening + instruction },
+        { role: 'user', content: opening },
+      ],
+      tools: [tool],
+    };
+    const map = (content: string) =>
+      transformClaudeRequestIn(
+        convertOpenAIToClaude({
+          ...request,
+          messages: [{ role: 'system', content }, request.messages[1]],
+        }),
+        'controlled-project',
+        'controlled-agent',
+        'gemini-3-flash',
+      ).request;
+
+    const neutral = map('You are an AI Agent.' + instruction);
+    const actual = map(opening + instruction);
+    expect(actual.systemInstruction).toEqual(neutral.systemInstruction);
+    expect(actual.contents).toEqual(neutral.contents);
+    expect(actual.contents[0].parts[0].text).toBe(opening);
+    expect(actual.tools).toEqual(neutral.tools);
+    expect(actual.tools?.[0].functionDeclarations?.[0].name).toBe('read_file');
+  });
+
+  it('recognizes the OpenCode CLI tool opening and preserves quotations and later references', () => {
+    const opening =
+      'You are OpenCode, an interactive CLI tool that helps users with software engineering tasks.';
+    expect(normalizeSystemPrompt(opening + '\r\n\r\nKeep the exact instructions.')).toBe(
+      'You are an AI Agent.\r\n\r\nKeep the exact instructions.',
+    );
+    for (const text of [
+      '> ' + opening,
+      '<example>\n' + opening + '\n</example>',
+      'Explain this example.\n' + opening,
+      'You are OpenCode, a maintainer role whose name is OpenCode.',
+    ]) {
+      expect(normalizeSystemPrompt(text)).toBe(text);
+    }
+  });
 });

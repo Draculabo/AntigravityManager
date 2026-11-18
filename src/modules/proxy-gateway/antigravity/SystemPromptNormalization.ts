@@ -11,6 +11,10 @@ const SDK_CLI_IDENTITY =
 const CODE_IDENTITY = "You are Claude Code, Anthropic's official CLI for Claude.";
 const NEUTRAL_IDENTITY = 'You are an AI Agent';
 const MAX_HEAD_CHARACTERS = 8192;
+const OPENCODE_SYSTEM_OPENING =
+  /^You are OpenCode, an interactive CLI (?:agent specializing in|tool that helps users with) software engineering tasks\.(?=[\t \r\n]|$)/iu;
+const CODEX_SYSTEM_OPENING =
+  /^You are a coding agent running in the Codex CLI, a terminal-based coding assistant\.(?= Codex CLI is an open source project led by OpenAI\. You are expected to be precise, safe, and helpful\.(?:\r?\n|$))/u;
 const CLIENT_SECURITY_POLICY = new RegExp(
   [
     '^ {0,3}IMPORTANT: Assist with (?:authorized )?security testing, defensive security, CTF challenges, and educational contexts\\.',
@@ -76,26 +80,35 @@ export function normalizeSystemPrompt(
   const protectedRegions = promptProtectedRegions(cleaned);
   const declaration =
     /(?:^|(?<=[.!?。！？\n]))([\t ]*)(?:you[\t ]+are|you're|i[\t ]+am|i'm)[\t ]+(?:an?[\t ]+)?(?:[\w'’-]+[\t ,，]+){0,8}(?:agent|assistant|ai)\b[^.!?。！？;；\r\n<>]{0,8}?(?:(?:created|built|made|developed|designed|trained|powered|maintained|published|released|provided)[\t ]+(?:by|on|upon|at)|based[\t ]+on)[\t ]+(?:[^.,，。!?！？;；\r\n<>]|(?<=\d)\.(?=\d)){1,80}([.,，。!?！？;；]|(?=$|[\r\n]))/gimu;
-  return (
-    head.replace(
-      declaration,
-      (match: string, indentation: string, punctuation: string, offset: number) => {
-        const start = offset + indentation.length;
-        if (overlapsPromptProtection(protectedRegions, start, offset + match.length)) {
-          return match;
-        }
-        if (offset + match.length === headEnd && headEnd < cleaned.length && !punctuation) {
-          return match;
-        }
-        const trailingWhitespace = /[\t ]+$/u.exec(match)?.[0] ?? '';
+  const normalized =
+    head
+      .replace(
+        declaration,
+        (match: string, indentation: string, punctuation: string, offset: number) => {
+          const start = offset + indentation.length;
+          if (overlapsPromptProtection(protectedRegions, start, offset + match.length)) {
+            return match;
+          }
+          if (offset + match.length === headEnd && headEnd < cleaned.length && !punctuation) {
+            return match;
+          }
+          const trailingWhitespace = /[\t ]+$/u.exec(match)?.[0] ?? '';
+          onChange?.('identity-normalized');
+          return (
+            indentation +
+            NEUTRAL_IDENTITY +
+            (/^[,，;；]$/u.test(punctuation) ? punctuation : '.') +
+            trailingWhitespace
+          );
+        },
+      )
+      .replace(OPENCODE_SYSTEM_OPENING, () => {
         onChange?.('identity-normalized');
-        return (
-          indentation +
-          NEUTRAL_IDENTITY +
-          (/^[,，;；]$/u.test(punctuation) ? punctuation : '.') +
-          trailingWhitespace
-        );
-      },
-    ) + cleaned.slice(headEnd)
-  );
+        return `${NEUTRAL_IDENTITY}.`;
+      }) + cleaned.slice(headEnd);
+  // The complete first line identifies the default client template without matching custom roles.
+  return normalized.replace(CODEX_SYSTEM_OPENING, () => {
+    onChange?.('identity-normalized');
+    return 'You are a coding assistant.';
+  });
 }

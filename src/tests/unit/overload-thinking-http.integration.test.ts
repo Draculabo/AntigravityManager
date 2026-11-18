@@ -63,7 +63,10 @@ const WireBody = z
         generationConfig: z
           .object({
             maxOutputTokens: z.number(),
-            thinkingConfig: z.object({ thinkingBudget: z.number() }).passthrough(),
+            thinkingConfig: z.object({
+              thinkingBudget: z.number().optional(),
+              thinkingLevel: z.string().optional(),
+            }).passthrough(),
           })
           .passthrough(),
       })
@@ -87,6 +90,9 @@ afterEach(async () => {
 async function createSurface(
   options: {
     failureMessage?: string;
+    failures?: Array<{ status: number; message: string }>;
+    secondEndpoint?: boolean;
+    unavailableRecoveryTier?: boolean;
     revokeOnError?: boolean;
     alwaysOverloadedOnFirstAccount?: boolean;
     holdRecovery?: { started(): void; closed(): void };
@@ -96,6 +102,13 @@ async function createSurface(
 ) {
   const accounts = [createAccount('overload-a'), createAccount('overload-b')];
   const lease = createLease(accounts);
+  if (options.unavailableRecoveryTier) {
+    const available = lease.getOrdinaryRetryWaitMs.getMockImplementation();
+    lease.getOrdinaryRetryWaitMs.mockImplementation(
+      (route: { accountId?: string; model?: string }) =>
+        route.model === 'gemini-3.8-flash-medium' ? null : (available?.(route) ?? null),
+    );
+  }
   const seen: Array<{ path: string; authorization: string | undefined; body: WireBody }> = [];
   const server = createServer(async (request, response) => {
     try {
@@ -114,20 +127,22 @@ async function createSurface(
         );
         return;
       }
-      if (
-        seen.length === 1 ||
-        (options.alwaysOverloadedOnFirstAccount && authorization === 'Bearer access-overload-a')
-      ) {
+      const failure = options.failures?.[seen.length - 1] ??
+        ((!options.failures && seen.length === 1) ||
+          (options.alwaysOverloadedOnFirstAccount && authorization === 'Bearer access-overload-a')
+          ? { status: 503, message: options.failureMessage ?? 'The model is overloaded.' }
+          : undefined);
+      if (failure) {
         if (options.revokeOnError) {
           lease.isLeaseEligible.mockReturnValue(false);
         }
-        response.writeHead(503, { 'content-type': 'application/json' });
+        response.writeHead(failure.status, { 'content-type': 'application/json' });
         response.end(
           JSON.stringify({
             error: {
-              code: 503,
-              status: 'UNAVAILABLE',
-              message: options.failureMessage ?? 'The model is overloaded.',
+              code: failure.status,
+              status: failure.status === 429 ? 'RESOURCE_EXHAUSTED' : 'UNAVAILABLE',
+              message: failure.message,
             },
           }),
         );
@@ -173,12 +188,17 @@ async function createSurface(
   if (!address || typeof address === 'string') {
     throw new Error('Expected an allocated loopback port');
   }
-  vi.stubEnv('PROXY_INTERNAL_BASE_URLS', `http://127.0.0.1:${address.port}/v1internal`);
+  const origin = `http://127.0.0.1:${address.port}`;
+  vi.stubEnv(
+    'PROXY_INTERNAL_BASE_URLS',
+    options.secondEndpoint ? `${origin}/v1internal,${origin}/secondary/v1internal` : `${origin}/v1internal`,
+  );
   vi.stubEnv('PROXY_CONTEXT_CACHE_ENABLED', 'false');
   setServerConfig({
     ...DEFAULT_APP_CONFIG.proxy,
     api_key: 'synthetic-overload-key',
-    request_timeout: options.requestTimeoutSeconds ?? DEFAULT_APP_CONFIG.proxy.request_timeout,
+    generation_timeout:
+      options.requestTimeoutSeconds ?? DEFAULT_APP_CONFIG.proxy.generation_timeout,
     experimental: {
       ...DEFAULT_APP_CONFIG.proxy.experimental,
       context_cache_enabled: false,
@@ -373,30 +393,97 @@ describe('Automatic thinking overload recovery over HTTP', () => {
     },
     { protocol: 'chat', extra: { model: 'gemini-3.1-pro-low' } },
   ] satisfies Array<{ protocol: Protocol; extra: RequestExtra }>)(
-    '$protocol preserves explicit thinking controls $extra',
+    '$protocol applies recovery to final thinking controls $extra',
     async ({ protocol, extra }) => {
       const { base, seen } = await createSurface();
       const reply = await send(base, protocol, false, extra);
       expect(reply.status, reply.body).toBe(200);
       expect(reply.body).toContain('Recovered');
       expect(seen.length).toBeGreaterThanOrEqual(2);
-      const budgets = seen.map(
-        (attempt) => attempt.body.request.generationConfig.thinkingConfig.thinkingBudget,
-      );
-      expect(budgets).toEqual(budgets.map(() => budgets[0]));
-      expect(budgets).not.toContain(4000);
+      const first = seen[0].body.request.generationConfig.thinkingConfig;
+      const second = seen[1].body.request.generationConfig.thinkingConfig;
+      if ((first.thinkingBudget ?? 0) > 4000 || first.thinkingBudget === -1) {
+        expect(second.thinkingBudget).toBe(4000);
+      } else if (first.thinkingLevel?.toUpperCase() === 'HIGH') {
+        expect(second.thinkingLevel).toBe('MEDIUM');
+      } else {
+        expect(second).toEqual(first);
+      }
     },
   );
 
-  it('keeps a plain 503 on the ordinary retry path without changing thinking', async () => {
-    const { base, seen } = await createSurface({
+  it('handles a plain 503 on the failed endpoint before regional failover', async () => {
+    const { base, seen, lease } = await createSurface({
       failureMessage: 'Service temporarily unavailable.',
+      secondEndpoint: true,
     });
     const reply = await send(base, 'gemini');
     expect(reply.status, reply.body).toBe(200);
     expect(
       seen.map((attempt) => attempt.body.request.generationConfig.thinkingConfig.thinkingBudget),
-    ).toEqual([-1, -1]);
+    ).toEqual([-1, 4000]);
+    expect(seen[1].path).toBe(seen[0].path);
+    expect(seen[1].authorization).toBe(seen[0].authorization);
+    expect(lease.getNextToken).toHaveBeenCalledOnce();
+  });
+
+  it('promotes an exhausted Gemini tier and then degrades a subsequent plain overload', async () => {
+    const { base, seen, lease } = await createSurface({
+      failures: [
+        { status: 503, message: 'No capacity available for model' },
+        { status: 503, message: 'Service temporarily unavailable.' },
+      ],
+      secondEndpoint: true,
+    });
+    const reply = await send(base, 'chat', false, {
+      model: 'gemini-3.8-flash-medium',
+      max_tokens: 16000,
+    });
+    expect(reply.status, reply.body).toBe(200);
+    expect(seen.map(({body}) => body.model)).toEqual([
+      'gemini-3.8-flash-medium', 'gemini-3.8-flash-high', 'gemini-3.8-flash-medium',
+    ]);
+    expect(seen.slice(1).map(({body}) => body.request.generationConfig.thinkingConfig.thinkingLevel))
+      .toEqual(['HIGH', 'MEDIUM']);
+    expect(new Set(seen.map(({authorization, path}) => `${authorization}:${path}`)).size).toBe(1);
+    expect(lease.getNextToken).toHaveBeenCalledOnce();
+  });
+
+  it('keeps regional failover available when the sibling model cannot be leased', async () => {
+    const { base, seen } = await createSurface({
+      secondEndpoint: true,
+      unavailableRecoveryTier: true,
+    });
+    const reply = await send(base, 'chat', false, {
+      model: 'gemini-3.8-flash-high',
+      max_tokens: 16000,
+    });
+    expect(reply.status, reply.body).toBe(200);
+    expect(seen.map(({body}) => body.model)).toEqual([
+      'gemini-3.8-flash-high', 'gemini-3.8-flash-high',
+    ]);
+    expect(seen[1].path).not.toBe(seen[0].path);
+  });
+
+  it('does not substitute an alternate model error for the original overload', async () => {
+    const { base, seen, lease } = await createSurface({
+      failures: [
+        { status: 503, message: 'Service temporarily unavailable.' },
+        { status: 404, message: 'The lower tier is not available.' },
+      ],
+      secondEndpoint: true,
+    });
+    const reply = await send(base, 'chat', false, {
+      model: 'gemini-3.8-flash-high',
+      max_tokens: 16000,
+    });
+    expect(reply.status, reply.body).toBe(200);
+    expect(seen.map(({body}) => body.model)).toEqual([
+      'gemini-3.8-flash-high', 'gemini-3.8-flash-medium', 'gemini-3.8-flash-high',
+    ]);
+    expect(seen[1].path).toBe(seen[0].path);
+    expect(seen[2].path).not.toBe(seen[0].path);
+    expect(lease.penalties).toEqual([]);
   });
 
   it('spends only one degradation across a failed recovery and ordinary account rotation', async () => {

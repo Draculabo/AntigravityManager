@@ -139,6 +139,9 @@ Explicit effort is normalized for surrounding whitespace, case and underscores:
 HTTP 400 before account selection. Explicit physical tier IDs are not changed by
 request effort.
 
+OpenAI's `reasoning_effort: "none"` leaves the routing tier unspecified. The
+selected thinking budget follows the configured gateway or client control policy.
+
 Account availability and physical binding preserve explicit tiers. A missing
 explicit tier does not select another tier merely because the account advertises
 it. Registered public presets retain their defined physical recipes, including
@@ -166,27 +169,28 @@ or account-validation responses do not create a capability denial.
 
 ## Account Scheduling and Stream Completion
 
-Automatically controlled thinking requests can recover once from an explicitly
-overloaded upstream generation response on the same account. Admission requires
-HTTP 408 or a server-error status with explicit `overloaded` text, or trusted
-Google ErrorInfo `MODEL_OVERLOADED` evidence. Quota and capacity-exhaustion
-diagnostics retain their existing owners. The final wire budget must be adaptive
-`-1`, with at least 5024 output tokens available for a 4000-token thinking budget
-and the existing 1024-token output reserve.
+Chat, Responses, Anthropic and Gemini evaluate the actual generation request
+before regional failover. On an upstream 503 or 529, or a 408 or other 5xx with
+explicit overload evidence, the gateway can reduce `HIGH` to `MEDIUM` and a
+Gemini `-high` model to its `-medium` sibling. Adaptive or greater-than-4000
+thinking budgets and unbounded thought options become 4000 when the existing
+output limit leaves at least 1024 tokens for output. These rules also apply to
+explicit client thinking controls. Quota errors and 429 retain their rate-limit
+behavior.
 
-Chat, Responses, Anthropic and Gemini capture explicit thinking intent before
-variant/default processing. Explicit client controls, configured physical routes,
-fixed-tier names/recipes and image generation are excluded. Bare Gemini families
-may acquire a registered recipe during routing; their final adaptive wire budget
-determines eligibility. Configured positive budgets retain their selected value.
+A 503 or 504 that reports model capacity exhaustion can promote a bare Gemini
+Flash or Pro family or a low, medium or tiered Gemini route to its high target.
+An eligible capacity promotion takes precedence over thinking reduction. Image
+requests are excluded. A physical model change requires an available target on
+the current account and a request without a model-bound cached resource.
 
-The additional send uses an immutable copy of the failed wire body with thinking
-budget 4000 and the captured account, session, endpoint, proxy and headers. The
-allowance belongs to one logical request across account/project/protocol fallbacks.
-Its admission rechecks cancellation, the existing total deadline and account lease.
-Failure returns to the existing retry policy. A returned stream is never replayed
-by this recovery path. The structured `overload_thinking_retry` diagnostic carries
-the model, budget, local account ID and audit request ID when available.
+Each transformation is allowed once per logical request across account,
+endpoint and protocol fallbacks. The additional send uses the affected account,
+session, endpoint, proxy and headers. Admission checks account eligibility,
+cancellation and the original deadline. A failed retry returns to the existing
+failure policy. A returned stream is never replayed by this recovery path.
+The `overload_thinking_retry` diagnostic records the transformation and actual
+wire model and thinking setting.
 
 Anthropic `messages/count_tokens` uses the admitted mapped input for a complete local
 estimate by default, with source `estimated` and reason `anthropic-local`. It does not
@@ -248,7 +252,8 @@ The initial selection retains its existing behavior; credential hydration and
 initial selection waits can still add latency. This is a retry-wait deadline,
 not a replacement for transport or hydration timeouts.
 
-Generation services additionally enforce one `request_timeout` budget across service
+Generation services additionally enforce one `generation_timeout` budget, defaulting to
+270 seconds, across service
 preparation, account/endpoint waits, cache/session/thinking recovery and returned stream
 lifetime. Internal physical sends receive only the remaining timeout. A business deadline
 is terminal 504 and does not rotate or penalize another account. Pausing output or sending
@@ -258,6 +263,20 @@ Once a streaming upstream attempt starts, deadline diagnostics record the furthe
 output phase. The phases are `waiting_for_output`, `thinking_only` and `output_started`.
 Heartbeats and usage metadata do not advance the phase. The diagnostic records the phase
 and the audit request ID when available.
+
+The existing `request_timeout` remains the transport limit for non-generation operations,
+including account maintenance. It does not shorten generation. The gateway timeout control
+edits `generation_timeout`. Custom limits accept whole seconds from 1 through 3600; see the
+[upgrade guide](../../upgrade-guides/next/generation-timeout-policy.md) when preserving an
+older custom generation limit.
+
+Each physical upstream SSE send starts a 180-second initial output window. HTTP headers,
+heartbeat comments and usage-only frames do not satisfy or renew it. Meaningful thought,
+text, tool calls or inline media starts the 120-second activity window. Silence then receives
+one 180-second transition window. All windows and retries remain capped by the original
+absolute deadline. HTTP streaming and WebSocket messages share this policy. A streaming
+transport's header wait ends at response headers; its socket timer does not preempt these
+body-phase windows. Recovery cancellation retains the same deadline and send counter.
 
 The same logical request counts admitted internal generation sends across account and endpoint
 changes, aggregation fallback, and recovery. Once three sends have been admitted, an attempt
@@ -461,6 +480,14 @@ UTF-16 code units of each system block; version decimal points do not count as
 sentence endings. Comma and semicolon continuations retain their delimiters and
 surrounding text.
 Ordinary business roles, quoted identities and later mentions are preserved.
+
+The OpenCode interactive CLI agent and CLI tool identity templates also become
+`You are an AI Agent.` when they open a system block. The gateway keeps the
+following instructions and maps tool declarations as usual.
+
+When the complete Codex CLI default first line opens a system block, its first
+sentence becomes `You are a coding assistant.`. The remaining sentences, project
+rules, skill descriptions and tool declarations follow their existing mapping.
 
 Billing cleanup removes complete `x-anthropic-billing-header:` lines from
 unprotected system text. The complete client security-testing template from the Antigravity
@@ -842,11 +869,8 @@ Each executing message is captured as an independent `WS` audit request with its
 upstream attempts and redacted event stream. Failed terminal events, deadlines
 and client disconnects retain their failure outcomes.
 
-WebSocket streaming waits up to 180 seconds for its initial content phase.
-After thinking or output activity, 120 seconds of silence starts one 180-second
-transition interval. New content resets the activity interval. Heartbeats and
-metadata do not reset it. Every interval is capped by the existing total request
-deadline, including account selection and request preparation.
+WebSocket streaming uses the shared generation timeout policy above, including account
+selection and request preparation in each message's absolute budget.
 
 Chat Completions also accepts a Responses request body when `messages` is absent and
 `input`, `instructions` or `previous_response_id` is present. This compatibility entry

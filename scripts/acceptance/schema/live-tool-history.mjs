@@ -10,7 +10,7 @@ export async function verifyLiveToolHistory({
   model,
   result,
   extended = false,
-  recovery = false,
+  verifySignatureRejection = false,
 }) {
   const files = ['left', 'right'].map((side) => {
     const file = path.join(workspace, `${side}.txt`);
@@ -119,7 +119,7 @@ export async function verifyLiveToolHistory({
       ['crossModelResubmitted', split, responses, continuationModel],
     );
   }
-  if (recovery) {
+  if (verifySignatureRejection) {
     const corrupted = first.content.map((block) => {
       if (typeof block.signature !== 'string' || block.signature.length < 10) {
         return block;
@@ -132,16 +132,16 @@ export async function verifyLiveToolHistory({
       };
     });
     const omitSignatures = (blocks) => blocks.map(({ signature: _signature, ...block }) => block);
-    result.toolHistory.signatureRecovery = {
+    result.toolHistory.signatureRejection = {
       signatureChanged: JSON.stringify(corrupted) !== JSON.stringify(first.content),
       otherBlocksUnchanged:
         JSON.stringify(omitSignatures(corrupted)) === JSON.stringify(omitSignatures(first.content)),
-      resultMatched: false,
-      upstreamRetryVerified: false,
+      downstreamRejected: false,
+      singleUpstreamRejection: false,
     };
     if (
-      !result.toolHistory.signatureRecovery.signatureChanged ||
-      !result.toolHistory.signatureRecovery.otherBlocksUnchanged
+      !result.toolHistory.signatureRejection.signatureChanged ||
+      !result.toolHistory.signatureRejection.otherBlocksUnchanged
     ) {
       throw new Error('Controlled signature corruption could not preserve the tool history');
     }
@@ -179,6 +179,13 @@ export async function verifyLiveToolHistory({
       }
     }
     try {
+      if (label === 'corruptedSignature') {
+        z.object({ error: z.object({ type: z.literal('invalid_request_error') }) }).parse(
+          await http('/v1/messages', body, 'history-corruptedSignature-result', 400),
+        );
+        result.toolHistory.signatureRejection.downstreamRejected = true;
+        continue;
+      }
       const reply = z
         .object({ content: z.array(Block) })
         .parse(await http('/v1/messages', body, `history-${label}-result`));
@@ -188,9 +195,6 @@ export async function verifyLiveToolHistory({
         .join('');
       const matched = files.every((file) => text.includes(file.marker));
       result.toolHistory[label] = matched;
-      if (label === 'corruptedSignature') {
-        result.toolHistory.signatureRecovery.resultMatched = matched;
-      }
       if (!matched) {
         result.toolHistory.failures.push({ variant: label, reason: 'result-markers-missing' });
       }

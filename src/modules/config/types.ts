@@ -118,7 +118,8 @@ export const ProxyConfigSchema = z.object({
   // migration on the first load or save.
   custom_mapping: z.record(z.string(), z.string()).default({}),
   anthropic_mapping: z.record(z.string(), z.string()), // Mapping table
-  request_timeout: z.number().default(120), // Timeout in seconds
+  request_timeout: z.number().default(120), // Non-generation transport timeout in seconds
+  generation_timeout: z.number().finite().int().min(1).max(3600).default(270),
   global_system_prompt: GlobalSystemPromptConfigSchema.default({
     enabled: false,
     content: '',
@@ -176,6 +177,7 @@ export const ProxyConfigSchema = z.object({
   }),
   upstream_proxy: UpstreamProxyConfigSchema,
   experimental: ProxyExperimentalConfigSchema.default({
+    thinking_only_recovery: true,
     enable_cloud_code_meta: false,
     allow_local_video_paths: false,
     context_cache_enabled: true,
@@ -282,6 +284,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
     custom_mapping: {},
     anthropic_mapping: {},
     request_timeout: 120,
+    generation_timeout: 270,
     global_system_prompt: {
       enabled: false,
       content: '',
@@ -342,6 +345,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
       url: '',
     },
     experimental: {
+      thinking_only_recovery: true,
       enable_cloud_code_meta: false,
       allow_local_video_paths: false,
       context_cache_enabled: true,

@@ -111,7 +111,7 @@ beforeEach(() => {
   vi.stubEnv('PROXY_INTERNAL_BASE_URLS', '');
   vi.stubEnv('ANTIGRAVITY_INTERNAL_BASE_URLS', '');
   vi.stubEnv('PROXY_CONTEXT_CACHE_ENABLED', 'false');
-  setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, request_timeout: 1 });
+  setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, generation_timeout: 1 });
   vi.spyOn(thoughtStoreService, 'prepareInternalRequest').mockResolvedValue();
 });
 afterEach(() => {

@@ -220,7 +220,7 @@ describe('ordinary request rounds through protocol services', () => {
   );
 
   it('does not renew the request deadline when a wait would cross it', async () => {
-    setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, request_timeout: 1 });
+    setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, generation_timeout: 1 });
     const upstream = createUpstream({
       generate: () => {
         throw limited('12');
@@ -235,6 +235,27 @@ describe('ordinary request rounds through protocol services', () => {
     expect(upstream.calls).toHaveLength(1);
     expect(Date.now()).toBe(0);
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('keeps countTokens retries on the maintenance budget when generation has a short cap', async () => {
+    setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, request_timeout: 120, generation_timeout: 1 });
+    const upstream = createUpstream({
+      countTokens: () => {
+        if (upstream.countTokensCalls.length <= 3) {
+          throw limited('12');
+        }
+        return { totalTokens: 19 };
+      },
+    });
+    const gateway = createGateway(upstream, createLease([createAccount('round-a')]));
+    const pending = gateway.geminiService.handleGeminiCountTokens(model, {
+      contents: [{ role: 'user', parts: [{ text: 'controlled' }] }],
+    });
+    const completed = expect(pending).resolves.toBe(19);
+    await vi.runAllTimersAsync();
+    await completed;
+    expect(upstream.countTokensCalls).toHaveLength(4);
+    expect(Date.now()).toBeGreaterThan(1000);
   });
 
   it('cancels a single-account wait without another send or an abandoned timer', async () => {

@@ -9,6 +9,7 @@ import { inheritObservableFlowControl } from './observable-flow-control';
 import { awaitRequestOperation, throwIfRequestAborted } from './request-cancellation';
 import { GenerationDeadlineExceededError } from './exceptions/generation-deadline.exception';
 import { GenerationReplayLimitError } from './exceptions/generation-replay-limit.exception';
+import { GENERATION_STREAM_TIMEOUTS } from './generation-timeout-policy';
 import {
   GenerationStreamTimeout,
   type GenerationStreamTimeouts,
@@ -40,7 +41,7 @@ export class GenerationDeadlineScope {
   constructor(
     timeoutMs: number,
     private readonly parent?: AbortSignal,
-    streamTimeouts?: GenerationStreamTimeouts,
+    streamTimeouts: GenerationStreamTimeouts = GENERATION_STREAM_TIMEOUTS,
   ) {
     this.signal = this.controller.signal;
     this.deadlineAt = performance.now() + timeoutMs;
@@ -63,6 +64,11 @@ export class GenerationDeadlineScope {
   private readonly cancel = (): void => {
     this.controller.abort(this.parent?.reason);
   };
+
+  startStreamAttempt(): void {
+    this.streamPhase = 'waiting_for_output';
+    this.streamTimeout?.startAttempt();
+  }
 
   observeStreamProgress(phase: GenerationStreamPhase): void {
     if (!this.streamPhase || streamProgressOrder[phase] > streamProgressOrder[this.streamPhase]) {
@@ -207,6 +213,17 @@ export function generationDeadlineAt(signal?: AbortSignal): number | undefined {
   return signal ? scopes.get(signal)?.deadlineAt : undefined;
 }
 
+/** A cancellation wrapper retains the same deadline, stream phase and physical-send admission. */
+export function inheritGenerationDeadline(
+  parent: AbortSignal | undefined,
+  signal: AbortSignal,
+): void {
+  const scope = parent && scopes.get(parent);
+  if (scope) {
+    scopes.set(signal, scope);
+  }
+}
+
 export function admitUpstreamGenerationSend(signal: AbortSignal, serializedBytes: number): void {
   scopes.get(signal)?.admitUpstreamSend(serializedBytes);
 }
@@ -217,6 +234,12 @@ export function observeGenerationStreamProgress(
 ): void {
   if (signal && !signal.aborted) {
     scopes.get(signal)?.observeStreamProgress(phase);
+  }
+}
+
+export function startGenerationStreamAttempt(signal?: AbortSignal): void {
+  if (signal && !signal.aborted) {
+    scopes.get(signal)?.startStreamAttempt();
   }
 }
 

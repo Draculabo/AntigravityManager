@@ -1,3 +1,4 @@
+import { getGenerationTimeoutMs } from './generation-timeout-policy';
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { awaitRequestOperation, throwIfRequestAborted } from './request-cancellation';
 import type { OverloadThinkingRecovery } from './overload-thinking-recovery';
@@ -36,7 +37,10 @@ import {
 import { GeminiResponse } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
 import { decodeInternalSseData } from '@/modules/proxy-gateway/antigravity/internal-sse';
 import { UnsupportedGeminiFinishReasonError } from '@/modules/proxy-gateway/antigravity/GeminiFinishReason';
-import { isTerminalGenerationFailure } from '../../antigravity/UpstreamGenerationError';
+import {
+  isTerminalGenerationFailure,
+  UpstreamGenerationError,
+} from '../../antigravity/UpstreamGenerationError';
 import { performance } from 'node:perf_hooks';
 import { ThinkingOnlyRecovery, recoverThinkingOnlyStream } from './thinking-only-recovery';
 import { setCurrentAuditAccountId } from '@/modules/proxy-gateway/audit/traffic-audit-context';
@@ -186,15 +190,20 @@ export abstract class BaseProxyService {
     overloadThinkingRecovery?: OverloadThinkingRecovery,
   ): InternalGenerationOptions {
     recoveryBudget.deadlineAt ??=
-      generationDeadlineAt(signal) ??
-      performance.now() + (getServerConfig()?.request_timeout ?? 300) * 1000;
+      generationDeadlineAt(signal) ?? performance.now() + getGenerationTimeoutMs();
     recoveryBudget.thinkingOnlyEnabled ??=
-      getServerConfig()?.experimental?.thinking_only_recovery ?? false;
+      getServerConfig()?.experimental?.thinking_only_recovery ?? true;
     return {
       recoveryAccountId: token.id,
       recoveryBudget,
       upstreamSession: createUpstreamSessionIdentity(token.id, storeKey),
       canRecoverUpstreamSession: () => this.accountLeaseService.isLeaseEligible(token),
+      canRecoverWithModel: (model) =>
+        this.accountLeaseService.getOrdinaryRetryWaitMs({
+          model,
+          accountId: token.id,
+          physicalTarget: true,
+        }) === 0,
       overloadThinkingRecovery,
     };
   }
@@ -229,6 +238,7 @@ export abstract class BaseProxyService {
     label: string,
     onTimeout: () => void,
     timeoutMs = this.streamIdleTimeoutMs,
+    signal?: AbortSignal,
   ): StreamIdleTimer {
     let idleTimer: NodeJS.Timeout | undefined;
 
@@ -241,6 +251,9 @@ export abstract class BaseProxyService {
 
     const reset = (): void => {
       clear();
+      if (generationDeadlineAt(signal) !== undefined) {
+        return;
+      }
       idleTimer = setTimeout(() => {
         this.logger.error(
           `[${label}] Idle timeout after ${Math.round(timeoutMs / 1000)}s, terminating stream`,
@@ -261,11 +274,7 @@ export abstract class BaseProxyService {
   }
 
   protected createTokenRetryState(effort?: string, physicalTarget = false): ProxyTokenRetryState {
-    return this.retryPolicy.createTokenRetryState(
-      (getServerConfig()?.request_timeout ?? 300) * 1000,
-      effort,
-      physicalTarget,
-    );
+    return this.retryPolicy.createTokenRetryState(getGenerationTimeoutMs(), effort, physicalTarget);
   }
 
   protected async getMaxRetryAttempts(
@@ -582,7 +591,11 @@ export abstract class BaseProxyService {
     const physicalTarget =
       resolvedTarget?.physicalTarget ?? (applied?.variant != null || explicitPhysicalTarget);
     const extraHeaders = this.createModelSpecificHeaders(targetModel);
-    const retryState = this.createTokenRetryState(effort, physicalTarget);
+    const retryState = this.retryPolicy.createTokenRetryState(
+      (getServerConfig()?.request_timeout ?? 300) * 1000,
+      effort,
+      physicalTarget,
+    );
     const maxRetries = await this.getMaxRetryAttempts(
       retryState,
       targetModel,
@@ -784,16 +797,27 @@ export abstract class BaseProxyService {
     options?: InternalGenerationOptions,
   ): { options: InternalGenerationOptions; recovery?: ThinkingOnlyRecovery } {
     const budget = options?.recoveryBudget ?? { attempted: false };
-    budget.deadlineAt ??= performance.now() + (getServerConfig()?.request_timeout ?? 300) * 1000;
-    budget.thinkingOnlyEnabled ??= getServerConfig()?.experimental?.thinking_only_recovery ?? false;
+    budget.deadlineAt ??= performance.now() + getGenerationTimeoutMs();
+    budget.thinkingOnlyEnabled ??= getServerConfig()?.experimental?.thinking_only_recovery ?? true;
     if (!budget.thinkingOnlyEnabled) {
       return { options: options ?? {} };
     }
     const transportCapture: NonNullable<InternalGenerationOptions['transportCapture']> = {};
-    return {
-      options: { ...options, recoveryBudget: budget, transportCapture },
-      recovery: new ThinkingOnlyRecovery(body, budget, transportCapture),
-    };
+    try {
+      return {
+        options: { ...options, recoveryBudget: budget, transportCapture },
+        recovery: new ThinkingOnlyRecovery(body, budget, transportCapture),
+      };
+    } catch (error) {
+      if (error instanceof UpstreamGenerationError && error.code === 'empty_thinking_response') {
+        // Optional replay storage must not prevent the original request from being sent.
+        this.logger.debug(
+          '[ThinkingRecovery] Capture budget unavailable; replay disabled for this request.',
+        );
+        return { options: options ?? {} };
+      }
+      throw error;
+    }
   }
 
   protected async streamGenerateInternalWithRecovery(

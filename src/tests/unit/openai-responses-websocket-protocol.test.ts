@@ -27,7 +27,7 @@ describe('OpenAIResponsesWebSocketProtocol', () => {
       streamRequest,
       validateRequest,
     });
-    setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, request_timeout: 1 });
+    setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, generation_timeout: 1 });
     let socket: WebSocket | undefined;
     try {
       server.listen(0, '127.0.0.1');

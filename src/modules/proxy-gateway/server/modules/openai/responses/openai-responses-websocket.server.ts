@@ -1,3 +1,4 @@
+import { getGenerationTimeoutMs } from '../../../common/generation-timeout-policy';
 import type { IncomingMessage, Server } from 'node:http';
 import { SchemaInputError } from '@/modules/proxy-gateway/antigravity/schema/SchemaConversion';
 import type { Duplex } from 'node:stream';
@@ -7,7 +8,6 @@ import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import { FlowControlledSseStream } from '../../../common/flow-controlled-sse-stream';
 import { awaitRequestOperation, throwIfRequestAborted } from '../../../common/request-cancellation';
 import { GenerationDeadlineScope } from '../../../common/generation-deadline';
-import { getServerConfig } from '@/server/server-config';
 import { DEFAULT_PROXY_JSON_BODY_LIMIT_BYTES } from '../../../proxy.constants';
 import { logger } from '@/shared/logging/logger';
 import { ResponsesWebSocketOutput } from './responses-websocket-output';
@@ -134,11 +134,7 @@ function handleConnection(
         return thoughtContext.run(payload, context, async () => {
           const audit = dependencies.createAudit?.(payload, context);
           let frameError: unknown;
-          const deadline = new GenerationDeadlineScope(
-            (getServerConfig()?.request_timeout ?? 300) * 1000,
-            abort.signal,
-            { initialMs: 180_000, activityMs: 120_000, transitionMs: 180_000 },
-          );
+          const deadline = new GenerationDeadlineScope(getGenerationTimeoutMs(), abort.signal);
           const signal = deadline.signal;
           try {
             const action = await protocol.accept(payload, signal);

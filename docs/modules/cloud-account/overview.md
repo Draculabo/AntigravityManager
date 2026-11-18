@@ -6,17 +6,19 @@ surfaces live under `src/modules/cloud-account/`.
 
 ## Local Antigravity CLI sign-in
 
-Local account import can discover the Google sign-in saved by `agy` in
-`~/.gemini/antigravity-cli/antigravity-oauth-token` in the selected owner's operating system
-environment. It appears as **Antigravity CLI saved sign-in** in the import preview. The existing
-validation and deduplication apply before confirmation. The preview carries source and account
-information. Credentials stay in the process that owns the import. A missing CLI sign-in file is
-skipped. Read and format errors appear in the preview.
+Local account import discovers credentials in the selected owner's operating system environment.
+An `agy` login in the shared system keyring appears under the system credential source. A login
+in `~/.gemini/antigravity-cli/antigravity-oauth-token` appears as **Antigravity CLI saved sign-in**.
+Validation and deduplication apply before confirmation. The preview carries source and account
+information, while credentials stay with the import owner. A missing CLI file is skipped.
+Read and format errors appear in the preview.
 
-When the account list refreshes, a valid file marks the managed Google account with the uniquely
+When the account list refreshes, a valid dedicated CLI file takes precedence. If that file is
+unavailable, Manager checks the system keyring when it detects `agy` and no installed Classic or
+IDE client using that store. A credential marks the managed Google account with the uniquely
 matching refresh token as active for CLI. An unmatched or ambiguous credential leaves the CLI badge
-unset. A missing, unreadable or malformed file uses the last CLI selection recorded by Manager.
-Checking this file is read-only and does not affect the Classic or IDE badge.
+unset. When Manager cannot attribute a readable credential to the CLI, it uses its last recorded
+CLI selection. These reads leave credentials, stored selections and desktop badges unchanged.
 
 ## Account pool and quota
 

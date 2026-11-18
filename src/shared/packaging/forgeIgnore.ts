@@ -86,6 +86,7 @@ export const packageIgnorePatterns = [
   /^\/dist\/\.runtime(?:\/|$)/,
   // Source maps are uploaded to Sentry during build and should not ship in the app payload.
   /^\/.*\.map$/,
+  /^\/node_modules\/.*\.d\.(?:ts|mts|cts)$/,
   packagePruneNodeModulesPattern,
 ];
 

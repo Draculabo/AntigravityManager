@@ -193,7 +193,7 @@ it('finalizes a disconnected in-flight message exactly once', async () => {
 });
 
 it('preserves the total deadline and records a silent stream as a timeout', async () => {
-  setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, request_timeout: 0.04 });
+  setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, generation_timeout: 0.04 });
   const unsubscribed = vi.fn();
   const test = await fixture(async () => new Observable(() => unsubscribed));
   try {

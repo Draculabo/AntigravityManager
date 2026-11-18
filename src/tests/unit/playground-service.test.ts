@@ -43,7 +43,8 @@ describe('PlaygroundService', () => {
     runningGateway();
     vi.spyOn(serverConfig, 'getServerConfig').mockReturnValue({
       ...DEFAULT_APP_CONFIG.proxy,
-      request_timeout: 37,
+      request_timeout: 120,
+      generation_timeout: 37,
     });
     let markStarted!: () => void;
     const started = new Promise<void>((resolve) => {
@@ -67,7 +68,7 @@ describe('PlaygroundService', () => {
     );
     await started;
     expect(post.mock.calls[0][2]).toMatchObject({
-      timeout: 37000,
+      timeout: 42000,
       proxy: false,
       responseType: 'stream',
     });

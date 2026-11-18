@@ -23,6 +23,7 @@ import { publicProxyRequestId } from './public-request-id';
 interface SseResponseOptions {
   includeTiming?: boolean;
   request?: FastifyRequest;
+  formatUnstartedError?: (error: unknown) => { status: HttpStatus; body: object } | undefined;
 }
 
 // Observable producers cannot be paused by this transport. Bound pending output and fail explicitly.
@@ -164,6 +165,22 @@ export function writeProxySseResponse(
     },
     error: (error: unknown) => {
       if (terminal || reply.raw.writableEnded || reply.raw.destroyed) {
+        return;
+      }
+      const response =
+        !headerState.written && !reply.raw.headersSent
+          ? options.formatUnstartedError?.(error)
+          : undefined;
+      if (response) {
+        terminal = true;
+        pump?.stop();
+        const requestId = publicProxyRequestId(request);
+        reply.raw.writeHead(response.status, {
+          ...(requestId ? { 'X-Request-Id': requestId } : {}),
+          'Content-Type': 'application/json; charset=utf-8',
+        });
+        completeHijackedHttpResponse(request, reply, { error, body: response.body });
+        reply.raw.end(JSON.stringify(response.body));
         return;
       }
       writeHeadersOnce(reply, request, includeTiming, headerState);

@@ -18,7 +18,7 @@ import { verifyLiveToolHistory } from './live-tool-history.mjs';
 import { readLiveConfiguration } from './live-configuration.mjs';
 import {
   readLiveUpstreamEvidence,
-  hasVerifiedSignatureRecovery,
+  hasSingleUpstreamSignatureRejection,
 } from './live-upstream-evidence.mjs';
 import { waitForOwnedCore } from './live-startup.mjs';
 
@@ -32,7 +32,7 @@ const clientOnly = ['client', 'client-mcp'].includes(process.argv[3]);
 const configuredClient = process.argv[3] === 'client-mcp';
 const historyOnly = process.argv[3] === 'history';
 const historyVariant = historyOnly
-  ? z.enum(['extended', 'recovery']).optional().parse(process.argv[4])
+  ? z.enum(['extended', 'rejection']).optional().parse(process.argv[4])
   : undefined;
 const extendedHistory = historyVariant === 'extended';
 const experimentalUserAgentVersion =
@@ -102,7 +102,10 @@ async function http(route, body, label, expectedStatus = 200) {
   }
   const metadata = { label, status: response.status };
   result.calls.push(metadata);
-  if (response.status === expectedStatus && expectedStatus === 400) {
+  if (expectedStatus === 400) {
+    if (response.status !== 400) {
+      throw new Error(`Live request failed: ${label} status=${response.status}`);
+    }
     const error = z
       .object({ error: z.object({ type: z.literal('invalid_request_error') }) })
       .parse(value);
@@ -331,7 +334,7 @@ try {
       model: openAIModel,
       result,
       extended: extendedHistory,
-      recovery: historyVariant === 'recovery',
+      verifySignatureRejection: historyVariant === 'rejection',
     });
   }
   progress('tool-cycles-complete');
@@ -468,11 +471,11 @@ try {
   } catch {
     result.auditModelEvidenceAvailable = false;
   }
-  if (result.toolHistory?.signatureRecovery) {
-    result.toolHistory.signatureRecovery.upstreamRetryVerified =
+  if (result.toolHistory?.signatureRejection) {
+    result.toolHistory.signatureRejection.singleUpstreamRejection =
       result.auditModelEvidenceAvailable !== false &&
-      hasVerifiedSignatureRecovery(result.upstreamModels ?? []);
-    if (!result.toolHistory.signatureRecovery.upstreamRetryVerified) {
+      hasSingleUpstreamSignatureRejection(result.upstreamModels ?? []);
+    if (!result.toolHistory.signatureRejection.singleUpstreamRejection) {
       process.exitCode = 1;
     }
   }

@@ -56,6 +56,29 @@ function mount() {
 }
 
 describe('service settings in the renderer', () => {
+  it('saves the generation deadline without overwriting the maintenance timeout', async () => {
+    const { result } = mount();
+    await waitFor(() => expect(result.current.serviceAvailable).toBe(true));
+    const before = serviceConfigPlaceholder();
+    api.updateService.mockImplementation(async (patch: ServiceConfigUpdate) => ({
+      state: 'applied',
+      snapshot: { ...before, proxy: { ...before.proxy, ...patch.proxy } },
+    }));
+    await act(async () => {
+      await result.current.saveConfig({
+        ...result.current.config!,
+        proxy: { ...result.current.config!.proxy, generation_timeout: 75 },
+      });
+    });
+    expect(api.updateService).toHaveBeenCalledExactlyOnceWith({
+      proxy: { generation_timeout: 75 },
+    });
+    expect(result.current.config?.proxy).toMatchObject({
+      generation_timeout: 75,
+      request_timeout: before.proxy.request_timeout,
+    });
+  });
+
   it('edits desktop preferences when service configuration and policy reads are unavailable', async () => {
     api.readService.mockRejectedValue(
       new Error('Settings are unavailable right now. Please try again.'),

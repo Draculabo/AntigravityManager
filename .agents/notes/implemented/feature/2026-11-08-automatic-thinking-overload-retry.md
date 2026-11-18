@@ -1,4 +1,4 @@
-# Agent Note: Automatic thinking overload recovery
+# Agent Note: Same-account generation overload recovery
 
 Status: implemented
 
@@ -7,29 +7,30 @@ Status: implemented
 An upstream model-overload response previously entered account or protocol
 fallback without an opportunity to reduce automatically selected thinking work
 on the same account.
-The user approved a restricted policy on 2026-11-08 that preserves explicit choices.
+The 2026-11-08 implementation preserved explicit choices. A subsequent live
+probe showed a bare Gemini family produced a final `HIGH` wire level, so that
+path could not use adaptive-budget recovery. The user approved extending recovery to these requests.
 
 ## Decision
 
-The protocol service captures original thinking intent once, before variants and
-defaults. A request-local recovery owner is passed to the common upstream client.
-Admission requires explicit overload evidence, an adaptive final budget, sufficient
-output headroom, a current account lease and the existing request deadline.
-The owner permits one additional same-account send and is shared across ordinary
-account/project/protocol fallbacks. Named fixed recipes, explicit controls,
-configured physical targets and image generation remain excluded.
+Keep the existing request-local recovery owner and evaluate the final failed wire
+body before regional failover, where a later 429 could otherwise hide a prior
+503. Recognize plain 503 and 529 for thinking reduction and marked 503/504
+capacity failures for promotion. Each transformation gets one allowance across
+ordinary fallbacks, and the retry reuses the failed transport and live account
+lease. Tier selection applies to explicit as well as automatic requests. The
+physical sibling must be eligible on the account, and model-bound cached content
+prevents a model change.
 
-The upstream client captures the actual failed wire body and transport. It sends
-one immutable budget-adjusted copy with endpoint/project fallover disabled for
-that additional send. Content, model, output allowance and session are preserved.
-The subsequent failure returns to existing account/error ownership. Returned
-streams retain their established lifecycle. No persisted recovery state is added.
+Keep the original output allowance, stream replay boundary, cancellation and
+deadline. Preserve audit attribution for the actual retried model and leave
+ordinary quota handling in place. See the [current compatibility
+contract](../../../../docs/modules/proxy-gateway/compatibility.md#account-scheduling-and-stream-completion).
 
 ## Alternatives considered
 
-- Broad 503 classification and model-name replacement would
-  override user-selected High tiers and treat unrelated service failures as
-  evidence for changing generation policy.
+- Retaining only the original adaptive-budget rule leaves tiered Gemini requests
+  in the general regional failover path even when lowering work could recover them.
 - Wrapping each protocol's account loop would repeat preparation and risk divergent
   replay rules. The common client owns the final wire representation and transport.
 - A global allowance would couple unrelated requests; a per-account allowance
@@ -37,9 +38,9 @@ streams retain their established lifecycle. No persisted recovery state is added
 
 ## Consequences
 
-Automatic requests may recover with less thinking work. Recovery probability and
-provider prefix-cache benefits depend on the live service and are unmeasured.
-One additional send consumes request time and possible provider quota. The
+Explicit and automatic requests may recover at a different physical tier or with
+less thinking work. Recovery probability and provider prefix-cache benefits
+depend on the live service. Additional sends consume request time and possible provider quota. The
 original deadline and cancellation still own the complete request lifecycle.
 The structured decision log excludes payloads and credentials. Removing the
 task-owned source changes restores the earlier policy without a data migration.

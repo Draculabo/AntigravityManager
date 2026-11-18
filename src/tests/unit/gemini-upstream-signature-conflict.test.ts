@@ -167,7 +167,7 @@ describe('Gemini upstream signature alias conflicts', () => {
       const warning = vi.spyOn(logger, 'warn').mockImplementation(() => {});
       const client = new GeminiClient(new Upstream4xxCaptureService());
       try {
-        setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, request_timeout: 1 });
+        setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, generation_timeout: 1 });
         axiosMock.post.mockResolvedValue({ status: 200, headers: {}, data: source });
         const stream = await client.streamGenerateInternal(request, 'synthetic-token');
         const error = vi.fn();
@@ -207,7 +207,7 @@ describe('Gemini upstream signature alias conflicts', () => {
       const client = new GeminiClient(new Upstream4xxCaptureService());
       const caller = new AbortController();
       try {
-        setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, request_timeout: 1 });
+        setServerConfig({ ...DEFAULT_APP_CONFIG.proxy, generation_timeout: 1 });
         let dispatched = () => {};
         const started = new Promise<void>((resolve) => {
           dispatched = resolve;

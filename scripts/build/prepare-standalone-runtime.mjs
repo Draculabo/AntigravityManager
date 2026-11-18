@@ -132,7 +132,7 @@ try {
   delete environment.npm_config_ignore_scripts;
   delete environment.npm_config_registry;
   environment.npm_config_registry = 'https://registry.npmjs.org/';
-  // Install from the same frozen lockfile, then rebuild only this isolated Node tree.
+  // Install from the same frozen lockfile, then prepare host-native dependencies in this tree.
   await cp(path.join(project, 'package.json'), path.join(installRoot, 'package.json'));
   for (const file of ['pnpm-lock.yaml', 'pnpm-workspace.yaml']) {
     await cp(path.join(project, file), path.join(installRoot, file));
@@ -155,7 +155,7 @@ try {
   );
   await runPnpm(
     nodeExecutable,
-    ['rebuild', 'better-sqlite3', 'keytar', 'koffi', '@napi-rs/keyring'],
+    ['rebuild', 'keytar', 'koffi', '@napi-rs/keyring'],
     installRoot,
     environment,
   );

@@ -144,7 +144,7 @@ export function captureHijackedHttpResponseChunk(
 export function completeHijackedHttpResponse(
   request: FastifyRequest | null | undefined,
   reply: FastifyReply,
-  options: { error?: unknown; partial?: boolean } = {},
+  options: { error?: unknown; partial?: boolean; body?: unknown } = {},
 ): void {
   const state = ensureHttpState(request);
   if (!state || state.completed) {
@@ -161,6 +161,9 @@ export function completeHijackedHttpResponse(
   state.responsePartial = state.responsePartial || transportPartial;
   if (options.error) {
     state.error = options.error;
+  }
+  if (options.body !== undefined) {
+    state.responseBody = options.body;
   }
   state.responseCapture = state.sseWriter?.finish({
     errorSummary: final?.result.errorSummary,

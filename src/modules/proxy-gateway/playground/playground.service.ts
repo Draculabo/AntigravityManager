@@ -1,3 +1,4 @@
+import { getGenerationTimeoutMs } from '../server/common/generation-timeout-policy';
 import { StringDecoder } from 'node:string_decoder';
 import axios from 'axios';
 import { z } from 'zod';
@@ -117,7 +118,8 @@ export class PlaygroundService {
     try {
       const response = await axios.post(`${status.base_url}/v1/chat/completions`, body, {
         headers,
-        timeout: Math.max(1, config?.request_timeout ?? 120) * 1000,
+        // Leave time for the gateway's terminal error after its absolute deadline.
+        timeout: getGenerationTimeoutMs() + 5_000,
         signal,
         proxy: false,
         responseType: 'stream',

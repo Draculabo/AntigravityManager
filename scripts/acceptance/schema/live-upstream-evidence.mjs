@@ -1,15 +1,10 @@
 import { z } from 'zod';
 
-export function hasVerifiedSignatureRecovery(upstreamModels) {
+export function hasSingleUpstreamSignatureRejection(upstreamModels) {
   const attempts = upstreamModels.filter(
     (attempt) => attempt.label === 'history-corruptedSignature-result',
   );
-  return (
-    attempts.length === 2 &&
-    attempts[0].status === 400 &&
-    attempts[1].status === 200 &&
-    attempts.every((attempt) => attempt.attemptCount === 2)
-  );
+  return attempts.length === 1 && attempts[0].status === 400 && attempts[0].attemptCount === 1;
 }
 
 /** Correlate attempt counts in memory; never export parent IDs or request headers. */
