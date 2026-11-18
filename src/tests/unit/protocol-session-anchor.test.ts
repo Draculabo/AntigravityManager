@@ -3,12 +3,12 @@ import {
   resolveAnthropicSessionScope,
   resolveGeminiSessionScope,
   resolveOpenAISessionScope,
-} from '@/modules/proxy-gateway/server/common/signature-session-scope';
+} from '@/server/gateway/common/signature-session-scope';
 import type {
   AnthropicChatRequest,
   GeminiRequest,
   OpenAIChatRequest,
-} from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+} from '@/server/gateway/common/interfaces/request-interfaces';
 
 const schema = { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] };
 const fn = { name: 'read', description: 'Read a file', parameters: schema };

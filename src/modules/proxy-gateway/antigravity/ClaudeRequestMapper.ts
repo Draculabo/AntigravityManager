@@ -1,6 +1,6 @@
-import { isDisabledThinkingEffort } from '../server/common/model-effort';
+import { isDisabledThinkingEffort } from '../../../server/gateway/common/model-effort';
 import { createHash } from 'node:crypto';
-import { prepareGoogleGenerationContents } from '../server/common/generation-history';
+import { prepareGoogleGenerationContents } from '../../../server/gateway/common/generation-history';
 import type { ImageSchedulerConfig } from '@/modules/config/types';
 import { v4 as uuidv4 } from 'uuid';
 import { isEmpty, isString, sortBy } from 'lodash-es';
@@ -13,7 +13,7 @@ import { SignatureStore } from './SignatureStore';
 import { recordThoughtRestoreOutcome } from '../thought-store/thought-restore-diagnostics';
 import { isGeminiFlashModel, modelKeepsThinkingWithoutSignature } from './ThoughtSignatureCompat';
 import { normalizeSystemPrompt } from './SystemPromptNormalization';
-import { recordPromptTransformation } from '../server/common/prompt-transformation-diagnostics';
+import { recordPromptTransformation } from '../../../server/gateway/common/prompt-transformation-diagnostics';
 import { resolveGlobalSystemPrompt } from './GlobalSystemPrompt';
 import { extractToolResultImages, parseMarkdownImagesToGeminiParts } from './MarkdownImageParts';
 import { hasExplicitAssistantSignature } from './signed-assistant-history';
@@ -47,7 +47,7 @@ import {
   buildUserAgent,
   FALLBACK_VERSION,
   resolveLocalInstalledVersion,
-} from '@/modules/proxy-gateway/server/common/utils/request-user-agent';
+} from '@/server/gateway/common/utils/request-user-agent';
 import { requiresToolQuotaRoute } from './ToolQuotaRoute';
 import { getServerConfig } from '@/server/server-config';
 

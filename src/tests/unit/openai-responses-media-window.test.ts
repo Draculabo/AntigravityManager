@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyResponsesImageSendWindow,
   ResponsesMediaWindowLimitError,
-} from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-media-window';
+} from '@/server/gateway/modules/openai/responses/openai-responses-media-window';
 
 const image = (data: string, id?: string) => ({
   ...(id ? { id } : {}),

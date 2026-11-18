@@ -2,8 +2,8 @@ import axios, { AxiosError, AxiosHeaders } from 'axios';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { setServerConfig } from '@/server/server-config';
-import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
-import { Upstream4xxCaptureService } from '@/modules/proxy-gateway/server/common/upstream-4xx-capture.service';
+import { GeminiClient } from '@/server/gateway/modules/gemini/gemini-client.service';
+import { Upstream4xxCaptureService } from '@/server/gateway/common/upstream-4xx-capture.service';
 
 function denial(reason = 'USER_PROJECT_DENIED', consumer = 'projects/project-a') {
   return {

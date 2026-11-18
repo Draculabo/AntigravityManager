@@ -7,8 +7,8 @@ import {
   runGenerationWithDeadline,
   generationAttemptTimeout,
   GenerationDeadlineScope,
-} from '@/modules/proxy-gateway/server/common/generation-deadline';
-import { FlowControlledSseStream } from '@/modules/proxy-gateway/server/common/flow-controlled-sse-stream';
+} from '@/server/gateway/common/generation-deadline';
+import { FlowControlledSseStream } from '@/server/gateway/common/flow-controlled-sse-stream';
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => {

@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { OpenAIService as ProxyService } from '../../modules/proxy-gateway/server/modules/openai/openai.service';
-import { generateGeminiWithAggregationFallback } from '@/modules/proxy-gateway/server/common/aggregate-gemini-fallback';
-import type { GeminiResponse } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+import { OpenAIService as ProxyService } from '../../server/gateway/modules/openai/openai.service';
+import { generateGeminiWithAggregationFallback } from '@/server/gateway/common/aggregate-gemini-fallback';
+import type { GeminiResponse } from '@/server/gateway/common/interfaces/request-interfaces';
 
 describe('OpenAI tool mapper compatibility', () => {
   it('maps a Responses apply_patch custom tool to the upstream freeform input schema', () => {

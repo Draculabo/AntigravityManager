@@ -1,13 +1,13 @@
 import { expect, it } from 'vitest';
-import { ResponsesThoughtContext } from '@/modules/proxy-gateway/server/modules/openai/responses/responses-thought-context';
-import { OpenAIResponsesWebSocketProtocol } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.protocol';
-import { deleteResponsesRecoveryScope } from '@/modules/proxy-gateway/server/modules/openai/responses/responses-thought-recovery';
+import { ResponsesThoughtContext } from '@/server/gateway/modules/openai/responses/responses-thought-context';
+import { OpenAIResponsesWebSocketProtocol } from '@/server/gateway/modules/openai/responses/openai-responses-websocket.protocol';
+import { deleteResponsesRecoveryScope } from '@/server/gateway/modules/openai/responses/responses-thought-recovery';
 import {
   captureCurrentAuditSession,
   getTrafficAuditRequestContext,
 } from '@/modules/proxy-gateway/audit/traffic-audit-context';
 import { thoughtCaptureLeases } from '@/modules/proxy-gateway/thought-store/thought-capture-leases';
-import { resolveOpenAISessionScope } from '@/modules/proxy-gateway/server/common/signature-session-scope';
+import { resolveOpenAISessionScope } from '@/server/gateway/common/signature-session-scope';
 import { createThoughtSessionKey } from '@/modules/proxy-gateway/audit/traffic-audit-http-metadata';
 const noDurableRows = async () => ({ removed: 0, unknown: 0 });
 const payload = { type: 'response.create', model: 'fixture', input: [] };

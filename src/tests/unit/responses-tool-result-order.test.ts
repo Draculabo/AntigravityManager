@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildResponsesChatRequest } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-request';
+import { buildResponsesChatRequest } from '@/server/gateway/modules/openai/responses/openai-responses-request';
 import {
   mergeOpenAIResponsesInputItems,
   prepareOpenAIResponsesSessionInput,
-} from '@/modules/proxy-gateway/server/modules/openai/responses/responses-session-input';
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
+} from '@/server/gateway/modules/openai/responses/responses-session-input';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
 import {
   OpenAIResponsesSessionStore,
   OpenAIResponsesSessionStoreImpl,
-} from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
+} from '@/server/gateway/modules/openai/responses/openai-responses-session.store';
 import { responsesIdentityFixture } from './responses-identity.fixture';
 import {
   createAccount,
@@ -20,7 +20,7 @@ import {
 } from './proxy-real-path.harness';
 
 vi.mock(
-  '@/modules/proxy-gateway/server/common/utils/request-user-agent',
+  '@/server/gateway/common/utils/request-user-agent',
   async (importOriginal) => ({
     ...(await importOriginal()),
     resolveRequestUserAgent: async () => 'responses-tool-order-test',

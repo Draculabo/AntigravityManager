@@ -9,20 +9,20 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { getServerConfig, setServerConfig } from '@/server/server-config';
-import { ProxyGuard } from '@/modules/proxy-gateway/server/guards/proxy.guard';
-import { OpenAIChatController } from '@/modules/proxy-gateway/server/modules/openai/openai-chat.controller';
-import { OpenAIModelsController } from '@/modules/proxy-gateway/server/modules/openai/openai-models.controller';
-import { OpenAIProbesController } from '@/modules/proxy-gateway/server/modules/openai/openai-probes.controller';
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
-import { OpenAIService } from '@/modules/proxy-gateway/server/modules/openai/openai.service';
-import { GeminiController } from '@/modules/proxy-gateway/server/modules/gemini/gemini.controller';
-import { GeminiService } from '@/modules/proxy-gateway/server/modules/gemini/gemini.service';
-import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
-import { AnthropicController } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
-import { AnthropicService } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.service';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
-import { AccountLeaseModelPolicy } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-model.policy';
-import type { AccountLeaseTokenData } from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-token-types';
+import { ProxyGuard } from '@/server/gateway/guards/proxy.guard';
+import { OpenAIChatController } from '@/server/gateway/modules/openai/openai-chat.controller';
+import { OpenAIModelsController } from '@/server/gateway/modules/openai/openai-models.controller';
+import { OpenAIProbesController } from '@/server/gateway/modules/openai/openai-probes.controller';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
+import { OpenAIService } from '@/server/gateway/modules/openai/openai.service';
+import { GeminiController } from '@/server/gateway/modules/gemini/gemini.controller';
+import { GeminiService } from '@/server/gateway/modules/gemini/gemini.service';
+import { GeminiClient } from '@/server/gateway/modules/gemini/gemini-client.service';
+import { AnthropicController } from '@/server/gateway/modules/anthropic/anthropic.controller';
+import { AnthropicService } from '@/server/gateway/modules/anthropic/anthropic.service';
+import { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
+import { AccountLeaseModelPolicy } from '@/server/gateway/modules/account-lease/policies/account-lease-model.policy';
+import type { AccountLeaseTokenData } from '@/server/gateway/modules/account-lease/interfaces/account-lease-token-types';
 import { updateDynamicForwardingRules } from '@/modules/proxy-gateway/antigravity/ModelMapping';
 import {
   createAccount,
@@ -34,7 +34,7 @@ import {
 vi.mock('@/modules/proxy-gateway/opencode-sync/opencode-credentials', () => ({
   openCodeCredentialService: { matches: () => false },
 }));
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', async (original) => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
   ...(await original<object>()),
   resolveRequestUserAgent: async () => 'd08-test/1.0',
 }));

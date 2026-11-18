@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { transformClaudeRequestIn } from '@/modules/proxy-gateway/antigravity/ClaudeRequestMapper';
-import { createGeminiRequestEnvelope } from '@/modules/proxy-gateway/server/modules/gemini/gemini-request-envelope';
-import type { GeminiRequest } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+import { createGeminiRequestEnvelope } from '@/server/gateway/modules/gemini/gemini-request-envelope';
+import type { GeminiRequest } from '@/server/gateway/common/interfaces/request-interfaces';
 import { setServerConfig } from '@/server/server-config';
 
 const GLOBAL_PROMPT = 'Always answer in Simplified Chinese.';

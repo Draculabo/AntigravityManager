@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { SignatureStore } from './SignatureStore';
 import { ResponseToolCallIdentity } from './ResponseToolCallIdentity';
-import { hashSessionAnchor } from '../server/common/session-anchor-hash';
+import { hashSessionAnchor } from '../../../server/gateway/common/session-anchor-hash';
 import { readThoughtSignature } from './signature-utils';
 import { isDeclaredOpenAICustomTool, readCustomToolInput } from './CustomToolCall';
 import {
@@ -11,7 +11,7 @@ import {
 import { splitNamespaceToolName } from './ToolNamespace';
 import { toIncompleteReason, type ResponsesOutputStatus } from './openai-responses-incomplete';
 import type { OpenAIResponsesUsage } from './OpenAIUsageMapper';
-import type { OpenAITool } from '../server/common/interfaces/request-interfaces';
+import type { OpenAITool } from '../../../server/gateway/common/interfaces/request-interfaces';
 export interface GeminiResponsesStreamPart {
   functionCall?: {
     args: Record<string, unknown>;

@@ -2,13 +2,13 @@ import assert from 'node:assert/strict';
 import { isEmpty, isString } from 'lodash-es';
 
 import { transformClaudeRequestIn } from '../../modules/proxy-gateway/antigravity/ClaudeRequestMapper';
-import { AnthropicService } from '../../modules/proxy-gateway/server/modules/anthropic/anthropic.service';
-import { GenerationConstraintsService } from '@/modules/proxy-gateway/server/shared/services/generation-constraints.service';
-import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
-import { ProxyRetryService } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
-import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
-import { GeminiService as ProxyService } from '../../modules/proxy-gateway/server/modules/gemini/gemini.service';
-import { AccountLeaseService } from '../../modules/proxy-gateway/server/modules/account-lease/account-lease.service';
+import { AnthropicService } from '../../server/gateway/modules/anthropic/anthropic.service';
+import { GenerationConstraintsService } from '@/server/gateway/shared/services/generation-constraints.service';
+import { ModelRoutingService } from '@/server/gateway/shared/services/model-routing.service';
+import { ProxyRetryService } from '@/server/gateway/shared/services/proxy-retry.service';
+import { proxyModelAvailabilityStore } from '@/server/gateway/shared/services/model-availability.service';
+import { GeminiService as ProxyService } from '../../server/gateway/modules/gemini/gemini.service';
+import { AccountLeaseService } from '../../server/gateway/modules/account-lease/account-lease.service';
 
 const mockAccountLease: any = {
   getNextToken: async () => null,

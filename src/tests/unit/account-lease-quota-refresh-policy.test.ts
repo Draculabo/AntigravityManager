@@ -2,10 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import type {
   AccountLeaseAccountStore,
   AccountLeaseUpstream,
-} from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-adapters';
-import { AccountLeaseQuotaRefreshPolicy } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-quota-refresh.policy';
-import type { AccountLeaseTokenData } from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-token-types';
-import { RateLimitReason } from '@/modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
+} from '@/server/gateway/modules/account-lease/interfaces/account-lease-adapters';
+import { AccountLeaseQuotaRefreshPolicy } from '@/server/gateway/modules/account-lease/policies/account-lease-quota-refresh.policy';
+import type { AccountLeaseTokenData } from '@/server/gateway/modules/account-lease/interfaces/account-lease-token-types';
+import { RateLimitReason } from '@/server/gateway/shared/services/rate-limit-tracker.service';
 
 function createToken(overrides: Partial<AccountLeaseTokenData> = {}): AccountLeaseTokenData {
   return {

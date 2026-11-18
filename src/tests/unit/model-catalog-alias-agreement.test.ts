@@ -6,7 +6,7 @@ import {
   getAllDynamicModels,
   getOpenAICompatibleModels,
 } from '@/modules/proxy-gateway/antigravity/ModelMapping';
-import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
+import { ModelRoutingService } from '@/server/gateway/shared/services/model-routing.service';
 import { setServerConfig } from '@/server/server-config';
 
 /**

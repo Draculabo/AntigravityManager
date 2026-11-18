@@ -16,7 +16,7 @@ describe('hub client identity', () => {
 
   it('formats the identity sent by the Antigravity app language server', async () => {
     const { buildHubUserAgent, buildUserAgent } =
-      await import('@/modules/proxy-gateway/server/common/utils/request-user-agent');
+      await import('@/server/gateway/common/utils/request-user-agent');
 
     expect(buildHubUserAgent('2.26.0')).toMatch(
       /^antigravity\/hub\/2\.26\.0 \(aidev_client; os_type=(windows|darwin|linux); arch=[^)]+\)$/,
@@ -28,7 +28,7 @@ describe('hub client identity', () => {
 
   it('never reports a hub version below the floor and follows a newer confirmed install', async () => {
     const { HUB_CLIENT_MIN_VERSION, resolveHubClientVersion } =
-      await import('@/modules/proxy-gateway/server/common/utils/request-user-agent');
+      await import('@/server/gateway/common/utils/request-user-agent');
     const resolveWith = (shortVersion: string | undefined) => {
       mocks.cachedVersion.mockReturnValue(
         shortVersion === undefined ? undefined : { shortVersion, bundleVersion: shortVersion },

@@ -58,14 +58,14 @@ require provider credentials; live-account and installer checks have separate pr
 
 ## Find the owning module
 
-| Area                                    | Location and guidance                                                                               |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Feature UI, hooks and business logic    | `src/modules/<feature>`; use the [module index](docs/modules/README.md).                            |
-| Routes                                  | `src/routes`; do not edit generated `src/routeTree.gen.ts`.                                         |
-| Generic UI                              | `src/components`; follow the existing Radix and Tailwind patterns.                                  |
-| Cross-feature primitives                | `src/shared`; move code here only when it has a real second consumer.                               |
-| API gateway                             | `src/modules/proxy-gateway/server`; see the [gateway guides](docs/modules/proxy-gateway/README.md). |
-| IPC, runtime and persistence boundaries | Read [Architecture](docs/architecture.md) and the nearest `AGENTS.md` before editing.               |
+| Area                                    | Location and guidance                                                                 |
+| --------------------------------------- | ------------------------------------------------------------------------------------- |
+| Feature UI, hooks and business logic    | `src/modules/<feature>`; use the [module index](docs/modules/README.md).              |
+| Routes                                  | `src/routes`; do not edit generated `src/routeTree.gen.ts`.                           |
+| Generic UI                              | `src/components`; follow the existing Radix and Tailwind patterns.                    |
+| Cross-feature primitives                | `src/shared`; move code here only when it has a real second consumer.                 |
+| API gateway                             | `src/server/gateway`; see the [gateway guides](docs/modules/proxy-gateway/README.md). |
+| IPC, runtime and persistence boundaries | Read [Architecture](docs/architecture.md) and the nearest `AGENTS.md` before editing. |
 
 Keep renderer code separate from main-process, filesystem and database implementations. Use
 the existing typed preload/IPC/ORPC surface for cross-process operations. Place user-visible

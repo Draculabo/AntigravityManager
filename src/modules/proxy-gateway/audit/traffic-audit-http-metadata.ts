@@ -1,9 +1,9 @@
 import type { FastifyRequest } from 'fastify';
 import { createHash, randomUUID } from 'node:crypto';
 import { auditJsonObject } from './audit-json-object';
-import { resolveClientSessionHint } from '../server/common/client-session-hint';
-import { tenantIdentity } from '../server/common/signature-session-scope';
-import type { RequestHeaders } from '../server/guards/api-key-auth.util';
+import { resolveClientSessionHint } from '../../../server/gateway/common/client-session-hint';
+import { tenantIdentity } from '../../../server/gateway/common/signature-session-scope';
+import type { RequestHeaders } from '../../../server/gateway/guards/api-key-auth.util';
 
 export function resolveThoughtSession(
   request: Pick<FastifyRequest, 'headers' | 'url' | 'body'>,

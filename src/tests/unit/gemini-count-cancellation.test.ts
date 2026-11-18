@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
-import { GeminiController } from '@/modules/proxy-gateway/server/modules/gemini/gemini.controller';
-import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
+import { GeminiController } from '@/server/gateway/modules/gemini/gemini.controller';
+import { UpstreamRequestError } from '@/server/gateway/common/exceptions/upstream-request.exception';
 import {
   createAccount,
   createGateway,
@@ -10,9 +10,9 @@ import {
   createUpstream,
 } from './proxy-real-path.harness';
 
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', async (original) => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
   ...(await original<
-    typeof import('@/modules/proxy-gateway/server/common/utils/request-user-agent')
+    typeof import('@/server/gateway/common/utils/request-user-agent')
   >()),
   resolveRequestUserAgent: async () => 'antigravity-count-cancellation-fixture',
 }));

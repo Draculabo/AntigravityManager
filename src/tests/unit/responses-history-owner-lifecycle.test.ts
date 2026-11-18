@@ -4,10 +4,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
-import { OpenAIResponsesSessionStoreImpl } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
-import { OPENAI_RESPONSES_SESSION_FILENAME } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.service';
-import { resolveResponsesHistoryOwner } from '@/modules/proxy-gateway/server/modules/openai/responses/responses-history-owner';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
+import { OpenAIResponsesSessionStoreImpl } from '@/server/gateway/modules/openai/responses/openai-responses-session.store';
+import { OPENAI_RESPONSES_SESSION_FILENAME } from '@/server/gateway/modules/openai/responses/openai-responses-session.service';
+import { resolveResponsesHistoryOwner } from '@/server/gateway/modules/openai/responses/responses-history-owner';
 import * as atomic from '@/shared/persistence/atomic-json-file';
 import { logger } from '@/shared/logging/logger';
 

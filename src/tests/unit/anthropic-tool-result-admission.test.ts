@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Observable } from 'rxjs';
-import { AnthropicController } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
-import type { AnthropicChatRequest } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+import { AnthropicController } from '@/server/gateway/modules/anthropic/anthropic.controller';
+import type { AnthropicChatRequest } from '@/server/gateway/common/interfaces/request-interfaces';
 import {
   createAccount,
   createGateway,
@@ -14,7 +14,7 @@ import {
 } from './proxy-real-path.harness';
 
 vi.mock(
-  '@/modules/proxy-gateway/server/common/utils/request-user-agent',
+  '@/server/gateway/common/utils/request-user-agent',
   async (importOriginal) => ({
     ...(await importOriginal()),
     resolveRequestUserAgent: async () => 'tool-result-admission-test',

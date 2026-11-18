@@ -7,9 +7,9 @@ import {
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
-import type { PromptTransformationState } from '../server/common/prompt-transformation-diagnostics';
+import type { PromptTransformationState } from '../../../server/gateway/common/prompt-transformation-diagnostics';
 import type { ThoughtRestoreDiagnostics } from '../thought-store/thought-restore-diagnostics';
-import type { SignatureSessionScope } from '../server/common/signature-session-scope';
+import type { SignatureSessionScope } from '../../../server/gateway/common/signature-session-scope';
 import {
   thoughtCaptureLeases,
   type ThoughtCaptureLease,

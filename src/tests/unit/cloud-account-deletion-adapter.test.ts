@@ -14,7 +14,7 @@ import {
 } from '@/modules/cloud-account/services/cloud-account-list.service';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import type { CloudAccount } from '@/modules/cloud-account/types';
-import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
+import { proxyModelAvailabilityStore } from '@/server/gateway/shared/services/model-availability.service';
 import {
   createServiceConfigService,
   serviceConfigService,

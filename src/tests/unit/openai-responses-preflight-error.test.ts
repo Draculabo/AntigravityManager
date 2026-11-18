@@ -1,8 +1,8 @@
 import type { FastifyReply } from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
-import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
+import { proxyModelAvailabilityStore } from '@/server/gateway/shared/services/model-availability.service';
 import {
   createAccount,
   createGateway,

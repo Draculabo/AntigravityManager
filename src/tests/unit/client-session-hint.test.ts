@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveClientSessionHint } from '@/modules/proxy-gateway/server/common/client-session-hint';
+import { resolveClientSessionHint } from '@/server/gateway/common/client-session-hint';
 
 describe('bounded client session hint selection', () => {
   it('uses the fixed product priority independently of input insertion order', () => {

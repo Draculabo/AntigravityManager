@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ContextCompactionCoordinator } from '@/modules/proxy-gateway/server/common/context-compaction';
+import { ContextCompactionCoordinator } from '@/server/gateway/common/context-compaction';
 
 const request = {
   tenantId: 'tenant-a',

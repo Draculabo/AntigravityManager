@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   classifyForbiddenUpstreamError,
   extractGoogleErrorDetails,
-} from '@/modules/proxy-gateway/server/common/google-error-details';
-import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
+} from '@/server/gateway/common/google-error-details';
+import { UpstreamRequestError } from '@/server/gateway/common/exceptions/upstream-request.exception';
 
 const VALIDATION_PAYLOAD = {
   error: {

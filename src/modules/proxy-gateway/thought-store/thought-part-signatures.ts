@@ -10,7 +10,7 @@ export {
 } from './thought-part-signatures.schema';
 
 import { isThoughtSignaturePlaceholder } from '../antigravity/ThoughtSignatureCompat';
-import { hashSessionAnchor } from '../server/common/session-anchor-hash';
+import { hashSessionAnchor } from '../../../server/gateway/common/session-anchor-hash';
 import { areThoughtSignaturesEquivalent } from '../antigravity/thought-signature-format';
 
 /** Opaque values, including short ones, are retained byte for byte. */

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import * as serverConfig from '@/server/server-config';
 
-import { AnthropicController } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
+import { AnthropicController } from '@/server/gateway/modules/anthropic/anthropic.controller';
 afterEach(() => vi.restoreAllMocks());
 
 function createReply() {

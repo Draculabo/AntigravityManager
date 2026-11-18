@@ -2,8 +2,8 @@ import { createServer, type ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
 import axios from 'axios';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
-import { Upstream4xxCaptureService } from '@/modules/proxy-gateway/server/common/upstream-4xx-capture.service';
+import { GeminiClient } from '@/server/gateway/modules/gemini/gemini-client.service';
+import { Upstream4xxCaptureService } from '@/server/gateway/common/upstream-4xx-capture.service';
 import { UpstreamAttemptTimingSchema } from '@/modules/proxy-gateway/audit/upstream-attempt-timing';
 import type { CompleteUpstreamAttemptInput } from '@/modules/proxy-gateway/audit/traffic-audit.types';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
@@ -16,9 +16,9 @@ const audit = vi.hoisted(() => ({
 vi.mock('@/modules/proxy-gateway/audit/traffic-audit.service', () => ({
   trafficAuditService: audit,
 }));
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', async (original) => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
   ...(await original<
-    typeof import('@/modules/proxy-gateway/server/common/utils/request-user-agent')
+    typeof import('@/server/gateway/common/utils/request-user-agent')
   >()),
   resolveRequestUserAgent: async () => 'controlled-timing-fixture',
   buildContentRequestUserAgent: () => 'controlled-timing-fixture',

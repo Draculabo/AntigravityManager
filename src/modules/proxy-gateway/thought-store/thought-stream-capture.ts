@@ -1,6 +1,6 @@
 import type { GeminiPart, GeminiContent } from '../antigravity/types';
 import { decodeInternalGeminiPayload } from '../antigravity/internal-sse';
-import { estimateRetainedJsonBytes } from '../server/common/retained-json-size';
+import { estimateRetainedJsonBytes } from '../../../server/gateway/common/retained-json-size';
 
 const MAX_STREAM_BYTES = 64 * 1024 * 1024;
 const MAX_ALL_STREAM_BYTES = 256 * 1024 * 1024;

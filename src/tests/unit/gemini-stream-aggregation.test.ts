@@ -1,7 +1,7 @@
 import { Readable } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BaseProxyService } from '@/modules/proxy-gateway/server/common/base-proxy.service';
-import { type GeminiResponse } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+import { BaseProxyService } from '@/server/gateway/common/base-proxy.service';
+import { type GeminiResponse } from '@/server/gateway/common/interfaces/request-interfaces';
 
 class AggregationService extends BaseProxyService {
   constructor(stream: Readable) {

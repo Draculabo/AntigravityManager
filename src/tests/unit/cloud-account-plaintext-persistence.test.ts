@@ -13,11 +13,11 @@ import {
 import { CloudAccountSettingsStore } from '@/modules/cloud-account/persistence/cloud-account-settings-store';
 import { upsertCloudAccountsAtomically } from '@/modules/cloud-account/persistence/cloud-account-batch-writer';
 import type { CloudAccount } from '@/modules/cloud-account/types';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
+import { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
 import {
   cloudAccountStoreAdapter,
   type AccountLeaseUpstream,
-} from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-adapters';
+} from '@/server/gateway/modules/account-lease/interfaces/account-lease-adapters';
 import {
   CloudAccountRefreshWriteback,
   captureTokenWriteGuard,

@@ -1,9 +1,9 @@
 import type { FastifyReply } from 'fastify';
 import { BadRequestException, HttpException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
-import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
-import { GeminiController } from '@/modules/proxy-gateway/server/modules/gemini/gemini.controller';
-import type { GeminiService } from '@/modules/proxy-gateway/server/modules/gemini/gemini.service';
+import { UpstreamRequestError } from '@/server/gateway/common/exceptions/upstream-request.exception';
+import { GeminiController } from '@/server/gateway/modules/gemini/gemini.controller';
+import type { GeminiService } from '@/server/gateway/modules/gemini/gemini.service';
 
 async function requestFailure(action: string, error: Error) {
   const service = {

@@ -3,7 +3,7 @@ import {
   buildPlaygroundCurl,
   buildPlaygroundRequest,
 } from '@/modules/proxy-gateway/playground/playground-request';
-import { readTargetAccountHeader } from '@/modules/proxy-gateway/server/modules/openai/chat/target-account-header';
+import { readTargetAccountHeader } from '@/server/gateway/modules/openai/chat/target-account-header';
 
 describe('Playground reproduction', () => {
   it('preserves all request parameters and shell-quotes apostrophes', () => {

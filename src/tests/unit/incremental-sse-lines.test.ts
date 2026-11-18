@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { IncrementalSseLines } from '@/modules/proxy-gateway/server/common/incremental-sse-lines';
+import { IncrementalSseLines } from '@/server/gateway/common/incremental-sse-lines';
 
 describe('incremental SSE lines', () => {
   it('preserves complete lines across every split including CRLF and Unicode', () => {

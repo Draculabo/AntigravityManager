@@ -2,11 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Readable } from 'node:stream';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { getServerConfig, setServerConfig } from '@/server/server-config';
-import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
-import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
-import { Upstream4xxCaptureService } from '@/modules/proxy-gateway/server/common/upstream-4xx-capture.service';
+import { GeminiClient } from '@/server/gateway/modules/gemini/gemini-client.service';
+import { UpstreamRequestError } from '@/server/gateway/common/exceptions/upstream-request.exception';
+import { Upstream4xxCaptureService } from '@/server/gateway/common/upstream-4xx-capture.service';
 import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
-import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
+import { proxyModelAvailabilityStore } from '@/server/gateway/shared/services/model-availability.service';
 import {
   createAccount,
   createGateway,
@@ -20,7 +20,7 @@ const transport = vi.hoisted(() => ({
   isAxiosError: vi.fn(),
 }));
 vi.mock('axios', () => ({ default: transport, ...transport }));
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', async (original) => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
   ...(await original<object>()),
   resolveRequestUserAgent: async () => 'recovery-protocol-test/1.0',
 }));

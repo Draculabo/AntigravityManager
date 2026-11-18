@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CloudAccount, CloudQuotaData } from '@/modules/cloud-account/types';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
+import { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
 import type {
   AccountLeaseAccountStore,
   AccountLeaseUpstream,
-} from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-adapters';
+} from '@/server/gateway/modules/account-lease/interfaces/account-lease-adapters';
 import {
   RateLimitReason,
   RateLimitTrackerService,
-} from '@/modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
+} from '@/server/gateway/shared/services/rate-limit-tracker.service';
 import { createAccount } from './proxy-real-path.harness';
 
 const config = vi.hoisted(() => ({ strategy: 'balanced' as 'balanced' | 'account-first' }));

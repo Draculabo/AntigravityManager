@@ -1,10 +1,10 @@
 import { HttpException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
-import { ProxyRetryService } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
-import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
-import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
+import { ProxyRetryService } from '@/server/gateway/shared/services/proxy-retry.service';
+import { UpstreamRequestError } from '@/server/gateway/common/exceptions/upstream-request.exception';
+import { proxyModelAvailabilityStore } from '@/server/gateway/shared/services/model-availability.service';
 import type { CloudAccount } from '@/modules/cloud-account/types';
-import { ProxyAccountUnavailableError } from '@/modules/proxy-gateway/server/common/exceptions/proxy-account-unavailable.exception';
+import { ProxyAccountUnavailableError } from '@/server/gateway/common/exceptions/proxy-account-unavailable.exception';
 import { UpstreamProxyConfigurationError } from '@/modules/config/upstream-proxy.schema';
 
 function createToken(id: string): CloudAccount {

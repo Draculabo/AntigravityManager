@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { buildResponsesChatRequest } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-request';
+import { buildResponsesChatRequest } from '@/server/gateway/modules/openai/responses/openai-responses-request';
 import {
   collectResponsesToolCallItems,
   mergeOpenAIResponsesInputItems,
   prepareOpenAIResponsesSessionInput,
-} from '@/modules/proxy-gateway/server/modules/openai/responses/responses-session-input';
-import { OpenAIResponsesWebSocketProtocol } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.protocol';
+} from '@/server/gateway/modules/openai/responses/responses-session-input';
+import { OpenAIResponsesWebSocketProtocol } from '@/server/gateway/modules/openai/responses/openai-responses-websocket.protocol';
 
 const call = (name = 'read') => ({
   type: 'function_call',

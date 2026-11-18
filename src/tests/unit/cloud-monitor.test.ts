@@ -7,7 +7,7 @@ import { CloudAccountSettingsStore } from '@/modules/cloud-account/persistence/c
 import { WeeklyWarmupService } from '@/modules/cloud-account/services/WeeklyWarmupService';
 import { GoogleAPIService } from '@/modules/cloud-account/services/GoogleAPIService';
 import { AutoSwitchService } from '@/modules/cloud-account/services/AutoSwitchService';
-import { AccountLeaseService } from '../../modules/proxy-gateway/server/modules/account-lease/account-lease.service';
+import { AccountLeaseService } from '../../server/gateway/modules/account-lease/account-lease.service';
 import { logger } from '../../shared/logging/logger';
 import { getAntigravityStoragePaths } from '@/shared/platform/paths';
 import { detectAgyCliExecutablePath } from '@/modules/antigravity-runtime/binary-patch/agyCliPathDetection';

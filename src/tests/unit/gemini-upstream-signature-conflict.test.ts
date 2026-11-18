@@ -3,15 +3,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
-import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
-import { Upstream4xxCaptureService } from '@/modules/proxy-gateway/server/common/upstream-4xx-capture.service';
+import { GeminiClient } from '@/server/gateway/modules/gemini/gemini-client.service';
+import { Upstream4xxCaptureService } from '@/server/gateway/common/upstream-4xx-capture.service';
 import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
 import { setServerConfig } from '@/server/server-config';
 import {
   runWithTrafficAuditRequestContext,
   type TrafficAuditRequestContext,
 } from '@/modules/proxy-gateway/audit/traffic-audit-context';
-import { captureGeminiStreamResult } from '@/modules/proxy-gateway/server/modules/gemini/gemini-stream-capture';
+import { captureGeminiStreamResult } from '@/server/gateway/modules/gemini/gemini-stream-capture';
 import { logger } from '@/shared/logging/logger';
 
 const axiosMock = vi.hoisted(() => ({

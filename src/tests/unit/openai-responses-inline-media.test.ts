@@ -5,7 +5,7 @@ import {
   boundResponsesInputItems,
   omitMediaBeforeLatestUserTurn,
   validateResponsesInputImageLimits,
-} from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-inline-media';
+} from '@/server/gateway/modules/openai/responses/openai-responses-inline-media';
 
 function imageDataUrl(decodedBytes: number): string {
   return `data:image/png;base64,${pngWithBytes(decodedBytes).toString('base64')}`;

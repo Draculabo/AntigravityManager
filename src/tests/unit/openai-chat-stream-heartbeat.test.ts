@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Observable } from 'rxjs';
 
 import { MAX_SSE_EVENT_BYTES } from '@/modules/proxy-gateway/antigravity/internal-sse';
-import type { OpenAIService } from '@/modules/proxy-gateway/server/modules/openai/openai.service';
+import type { OpenAIService } from '@/server/gateway/modules/openai/openai.service';
 import {
   createAccount,
   createGateway,

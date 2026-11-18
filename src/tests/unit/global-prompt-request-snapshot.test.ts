@@ -11,7 +11,7 @@ import {
   geminiTextResponse,
 } from './proxy-real-path.harness';
 
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', () => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', () => ({
   resolveRequestUserAgent: async () => 'controlled-prompt-snapshot/0.0.0',
   buildContentRequestUserAgent: () => 'controlled-prompt-snapshot/0.0.0',
   resolveLocalInstalledVersion: () => '0.0.0',

@@ -2,7 +2,7 @@ import type { ExecutionContext } from '@nestjs/common';
 import { HttpStatus, UnauthorizedException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ProxyGuard } from '@/modules/proxy-gateway/server/guards/proxy.guard';
+import { ProxyGuard } from '@/server/gateway/guards/proxy.guard';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 
 const credentialMocks = vi.hoisted(() => ({

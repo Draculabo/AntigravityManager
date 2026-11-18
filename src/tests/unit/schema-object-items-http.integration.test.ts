@@ -6,11 +6,11 @@ import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fa
 import { expect, it, vi } from 'vitest';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { getServerConfig, setServerConfig } from '@/server/server-config';
-import { ProxyGuard } from '@/modules/proxy-gateway/server/guards/proxy.guard';
-import { GeminiController } from '@/modules/proxy-gateway/server/modules/gemini/gemini.controller';
-import { GeminiService } from '@/modules/proxy-gateway/server/modules/gemini/gemini.service';
-import { OpenAIChatController } from '@/modules/proxy-gateway/server/modules/openai/openai-chat.controller';
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
+import { ProxyGuard } from '@/server/gateway/guards/proxy.guard';
+import { GeminiController } from '@/server/gateway/modules/gemini/gemini.controller';
+import { GeminiService } from '@/server/gateway/modules/gemini/gemini.service';
+import { OpenAIChatController } from '@/server/gateway/modules/openai/openai-chat.controller';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
 import {
   createAccount,
   createGateway,
@@ -19,7 +19,7 @@ import {
   geminiTextResponse,
 } from './proxy-real-path.harness';
 
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', async (original) => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
   ...(await original<object>()),
   resolveRequestUserAgent: async () => 'schema-object-items-test/1.0',
 }));

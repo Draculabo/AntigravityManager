@@ -1,9 +1,9 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { getServerConfig, setServerConfig } from '@/server/server-config';
-import { GenerationConstraintsService } from '@/modules/proxy-gateway/server/shared/services/generation-constraints.service';
+import { GenerationConstraintsService } from '@/server/gateway/shared/services/generation-constraints.service';
 import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
-import type { ModelThinkingTransport } from '@/modules/proxy-gateway/server/common/model-thinking-transport';
+import type { ModelThinkingTransport } from '@/server/gateway/common/model-thinking-transport';
 
 const previous = getServerConfig() ?? DEFAULT_APP_CONFIG.proxy;
 afterEach(() => setServerConfig(previous));

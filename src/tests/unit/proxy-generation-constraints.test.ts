@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { GenerationConstraintsService } from '@/modules/proxy-gateway/server/shared/services/generation-constraints.service';
+import { GenerationConstraintsService } from '@/server/gateway/shared/services/generation-constraints.service';
 import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
 
 function createPolicy(overrides?: {

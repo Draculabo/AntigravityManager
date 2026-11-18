@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CloudAccount } from '@/modules/cloud-account/types';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
+import { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
 import type {
   AccountLeaseAccountStore,
   AccountLeaseUpstream,
-} from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-adapters';
+} from '@/server/gateway/modules/account-lease/interfaces/account-lease-adapters';
 
 function createAccount(nextProbeAtMs?: number): CloudAccount {
   return {

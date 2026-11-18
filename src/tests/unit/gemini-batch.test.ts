@@ -2,11 +2,11 @@ import { createBatchHttpApp, batchTestHeaders } from '../helpers/batch-http-app'
 import type { LightMyRequestResponse } from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
 
-import { BatchRunnerService } from '@/modules/proxy-gateway/server/modules/batch/batch-runner.service';
-import type { BatchExecutionTarget } from '@/modules/proxy-gateway/server/modules/batch/batch-request-executor';
-import { BatchService } from '@/modules/proxy-gateway/server/modules/batch/batch.service';
-import { respondGeminiBatchGenerateContent } from '@/modules/proxy-gateway/server/modules/batch/gemini-batch-submit';
-import { GeminiController } from '@/modules/proxy-gateway/server/modules/gemini/gemini.controller';
+import { BatchRunnerService } from '@/server/gateway/modules/batch/batch-runner.service';
+import type { BatchExecutionTarget } from '@/server/gateway/modules/batch/batch-request-executor';
+import { BatchService } from '@/server/gateway/modules/batch/batch.service';
+import { respondGeminiBatchGenerateContent } from '@/server/gateway/modules/batch/gemini-batch-submit';
+import { GeminiController } from '@/server/gateway/modules/gemini/gemini.controller';
 
 interface ReplyMock {
   status: ReturnType<typeof vi.fn>;

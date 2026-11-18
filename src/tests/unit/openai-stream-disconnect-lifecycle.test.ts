@@ -4,9 +4,9 @@ import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Observable, of } from 'rxjs';
 
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
-import { OpenAIService } from '@/modules/proxy-gateway/server/modules/openai/openai.service';
-import { OpenAIResponsesSessionStore } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
+import { OpenAIService } from '@/server/gateway/modules/openai/openai.service';
+import { OpenAIResponsesSessionStore } from '@/server/gateway/modules/openai/responses/openai-responses-session.store';
 
 interface RawReply extends EventEmitter {
   end: ReturnType<typeof vi.fn>;

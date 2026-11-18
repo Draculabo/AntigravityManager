@@ -16,7 +16,7 @@ vi.mock('@/modules/proxy-gateway/audit/traffic-audit-context', () => ({
   completeHijackedHttpResponse: mocks.complete,
   getProxyResponseTimingContext: () => ({ proxyTiming: {} }),
 }));
-vi.mock('@/modules/proxy-gateway/server/common/proxy-response-timing', () => ({
+vi.mock('@/server/gateway/common/proxy-response-timing', () => ({
   buildProxyResponseTimingHeaders: () => ({
     'X-Test-TTFT': mocks.events.includes('first-byte') ? 'ready' : 'missing',
   }),
@@ -24,9 +24,9 @@ vi.mock('@/modules/proxy-gateway/server/common/proxy-response-timing', () => ({
   setProxyResponseTimingHeaders: vi.fn(),
 }));
 
-import { writeProxySseResponse } from '@/modules/proxy-gateway/server/common/proxy-sse-response';
-import { registerObservableFlowControl } from '@/modules/proxy-gateway/server/common/observable-flow-control';
-import { FlowControlledSseStream } from '@/modules/proxy-gateway/server/common/flow-controlled-sse-stream';
+import { writeProxySseResponse } from '@/server/gateway/common/proxy-sse-response';
+import { registerObservableFlowControl } from '@/server/gateway/common/observable-flow-control';
+import { FlowControlledSseStream } from '@/server/gateway/common/flow-controlled-sse-stream';
 
 function createReply() {
   let onClose: (() => void) | undefined;

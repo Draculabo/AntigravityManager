@@ -10,7 +10,7 @@ import { MALFORMED_FUNCTION_CALL_RECOVERY_TEXT } from '@/modules/proxy-gateway/a
 import { toOpenAIResponsesResponse } from '@/modules/proxy-gateway/antigravity/OpenAIResponsesResponseMapper';
 import { OpenAIResponsesStreamingMapper } from '@/modules/proxy-gateway/antigravity/OpenAIResponsesStreamingMapper';
 import type { GeminiPart } from '@/modules/proxy-gateway/antigravity/types';
-import { convertClaudeToOpenAIResponse } from '@/modules/proxy-gateway/server/modules/openai/chat/openai-claude-conversion';
+import { convertClaudeToOpenAIResponse } from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
 
 const tool = {
   name: 'shell',

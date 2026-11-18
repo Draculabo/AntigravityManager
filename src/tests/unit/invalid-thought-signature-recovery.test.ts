@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
-import { classifyInvalidThoughtSignatureError } from '@/modules/proxy-gateway/server/modules/anthropic/invalid-thought-signature-error';
+import { UpstreamRequestError } from '@/server/gateway/common/exceptions/upstream-request.exception';
+import { classifyInvalidThoughtSignatureError } from '@/server/gateway/modules/anthropic/invalid-thought-signature-error';
 
 describe('invalid thought signature classifier', () => {
   it.each([

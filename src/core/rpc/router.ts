@@ -70,7 +70,7 @@ import { toCloudAccountFileORPCError } from '@/modules/cloud-account/services/cl
 import { os } from '@orpc/server';
 import { z } from 'zod';
 import { getNestServerStatus } from '@/server/main';
-import { explicitContextCacheManager } from '@/modules/proxy-gateway/server/modules/gemini/explicit-context-cache.store';
+import { explicitContextCacheManager } from '@/server/gateway/modules/gemini/explicit-context-cache.store';
 import { CloudAccountSummarySchema } from '@/modules/cloud-account/services/cloud-account-summary.schema';
 import { listCloudAccountSummaries } from '@/modules/cloud-account/services/cloud-account-summary.service';
 import {

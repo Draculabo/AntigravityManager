@@ -2,15 +2,15 @@ import { describe, expect, it } from 'vitest';
 import {
   OpenAIOperations,
   type PreparedResponsesRequest,
-} from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
-import { OpenAIResponsesSessionStoreImpl } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
-import { decodeResponsesInitialIdentity } from '@/modules/proxy-gateway/server/modules/openai/responses/responses-initial-identity';
+} from '@/server/gateway/modules/openai/openai-operations.service';
+import { OpenAIResponsesSessionStoreImpl } from '@/server/gateway/modules/openai/responses/openai-responses-session.store';
+import { decodeResponsesInitialIdentity } from '@/server/gateway/modules/openai/responses/responses-initial-identity';
 import {
   resolveOpenAISessionScope,
   resolveResponsesSessionScope,
   resolveAnthropicSessionScope,
   resolveGeminiSessionScope,
-} from '@/modules/proxy-gateway/server/common/signature-session-scope';
+} from '@/server/gateway/common/signature-session-scope';
 import {
   createAccount,
   createGateway,

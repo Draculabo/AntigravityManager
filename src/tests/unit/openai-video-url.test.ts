@@ -6,12 +6,12 @@ import { pathToFileURL } from 'url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { transformClaudeRequestIn } from '@/modules/proxy-gateway/antigravity/ClaudeRequestMapper';
-import { convertOpenAIToClaude } from '@/modules/proxy-gateway/server/modules/openai/chat/openai-claude-conversion';
+import { convertOpenAIToClaude } from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
 import {
   normalizeVideoMime,
   resolveOpenAIVideoUrl,
-} from '@/modules/proxy-gateway/server/modules/openai/chat/openai-video-url';
-import type { OpenAIContentPart } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+} from '@/server/gateway/modules/openai/chat/openai-video-url';
+import type { OpenAIContentPart } from '@/server/gateway/common/interfaces/request-interfaces';
 import { logger } from '@/shared/logging/logger';
 
 vi.mock('@/shared/logging/logger', () => ({

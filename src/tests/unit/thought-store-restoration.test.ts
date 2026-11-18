@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { GeminiContent } from '@/modules/proxy-gateway/antigravity/types';
-import { hashSessionAnchor } from '@/modules/proxy-gateway/server/common/session-anchor-hash';
+import { hashSessionAnchor } from '@/server/gateway/common/session-anchor-hash';
 import {
   findExistingThoughtRecordIndex,
   isStrongerThoughtRecord,

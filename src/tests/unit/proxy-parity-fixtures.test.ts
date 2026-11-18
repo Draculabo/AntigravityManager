@@ -4,8 +4,8 @@ import { EventEmitter } from 'events';
 import { describe, expect, it, vi } from 'vitest';
 import { Observable } from 'rxjs';
 
-import { OpenAIService as ProxyService } from '../../modules/proxy-gateway/server/modules/openai/openai.service';
-import type { OpenAIChatRequest } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+import { OpenAIService as ProxyService } from '../../server/gateway/modules/openai/openai.service';
+import type { OpenAIChatRequest } from '@/server/gateway/common/interfaces/request-interfaces';
 
 const mockAccountLeaseService = {
   getNextToken: vi.fn(),

@@ -1,4 +1,4 @@
-import type { GeminiResponse } from '../server/common/interfaces/request-interfaces';
+import type { GeminiResponse } from '../../../server/gateway/common/interfaces/request-interfaces';
 import { UpstreamGenerationError } from './UpstreamGenerationError';
 
 export type GenerationStreamPhase = 'waiting_for_output' | 'thinking_only' | 'output_started';

@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AccountLeaseHydrationPolicy } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-hydration.policy';
-import type { AccountLeaseTokenData } from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-token-types';
+import { AccountLeaseHydrationPolicy } from '@/server/gateway/modules/account-lease/policies/account-lease-hydration.policy';
+import type { AccountLeaseTokenData } from '@/server/gateway/modules/account-lease/interfaces/account-lease-token-types';
 import type {
   AccountLeaseAccountStore,
   AccountLeaseUpstream,
-} from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-adapters';
+} from '@/server/gateway/modules/account-lease/interfaces/account-lease-adapters';
 
 function token(overrides: Partial<AccountLeaseTokenData> = {}): AccountLeaseTokenData {
   return {

@@ -3,10 +3,10 @@ import { runWithTrafficAuditRequestContext } from '@/modules/proxy-gateway/audit
 import {
   recordPromptTransformation,
   snapshotPromptTransformations,
-} from '@/modules/proxy-gateway/server/common/prompt-transformation-diagnostics';
+} from '@/server/gateway/common/prompt-transformation-diagnostics';
 import { transformClaudeRequestIn } from '@/modules/proxy-gateway/antigravity/ClaudeRequestMapper';
 import { normalizeSystemPrompt } from '@/modules/proxy-gateway/antigravity/SystemPromptNormalization';
-import { convertOpenAIToClaude } from '@/modules/proxy-gateway/server/modules/openai/chat/openai-claude-conversion';
+import { convertOpenAIToClaude } from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
 import { prepareGeminiRequestThoughtSignatures } from '@/modules/proxy-gateway/antigravity/thought-signature-format';
 import { extractToolResultImages } from '@/modules/proxy-gateway/antigravity/MarkdownImageParts';
 

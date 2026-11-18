@@ -3,9 +3,9 @@ import { PassThrough } from 'node:stream';
 import type { FastifyReply } from 'fastify';
 import { Observable } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getObservableFlowControl } from '@/modules/proxy-gateway/server/common/observable-flow-control';
-import { writeProxySseResponse } from '@/modules/proxy-gateway/server/common/proxy-sse-response';
-import { getSseOutputRetainedBytes } from '@/modules/proxy-gateway/server/common/sse-output-pump';
+import { getObservableFlowControl } from '@/server/gateway/common/observable-flow-control';
+import { writeProxySseResponse } from '@/server/gateway/common/proxy-sse-response';
+import { getSseOutputRetainedBytes } from '@/server/gateway/common/sse-output-pump';
 import {
   createAccount,
   createGateway,

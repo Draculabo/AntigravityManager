@@ -2,9 +2,9 @@ import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import type { FastifyReply } from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
-import { FlowControlledSseStream } from '@/modules/proxy-gateway/server/common/flow-controlled-sse-stream';
-import { writeProxySseResponse } from '@/modules/proxy-gateway/server/common/proxy-sse-response';
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
+import { FlowControlledSseStream } from '@/server/gateway/common/flow-controlled-sse-stream';
+import { writeProxySseResponse } from '@/server/gateway/common/proxy-sse-response';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
 import {
   createAccount,
   createGateway,

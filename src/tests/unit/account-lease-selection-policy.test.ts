@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AccountLeaseAffinity } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-affinity';
+import { AccountLeaseAffinity } from '@/server/gateway/modules/account-lease/policies/account-lease-affinity';
 import { createAccount } from './proxy-real-path.harness';
 import {
   AccountLeaseSelectionPolicy,
   type AccountLeaseSelectionConfig,
   type AccountLeaseSelectionRequest,
-} from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-selection.policy';
+} from '@/server/gateway/modules/account-lease/policies/account-lease-selection.policy';
 
 interface TestToken {
   email: string;

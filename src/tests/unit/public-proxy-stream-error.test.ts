@@ -9,11 +9,11 @@ import {
   createLease,
   createUpstream,
 } from './proxy-real-path.harness';
-import { OpenAIResponsesSessionStore } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
-import { UpstreamThoughtSignatureConflictError } from '@/modules/proxy-gateway/server/common/upstream-thought-signature-validation';
-import { GenerationDeadlineExceededError } from '@/modules/proxy-gateway/server/common/exceptions/generation-deadline.exception';
+import { OpenAIResponsesSessionStore } from '@/server/gateway/modules/openai/responses/openai-responses-session.store';
+import { UpstreamThoughtSignatureConflictError } from '@/server/gateway/common/upstream-thought-signature-validation';
+import { GenerationDeadlineExceededError } from '@/server/gateway/common/exceptions/generation-deadline.exception';
 
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', () => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', () => ({
   resolveRequestUserAgent: async () => 'controlled-public-stream-test/0.0.0',
   buildContentRequestUserAgent: () => 'controlled-public-stream-test/0.0.0',
   resolveLocalInstalledVersion: () => '0.0.0',

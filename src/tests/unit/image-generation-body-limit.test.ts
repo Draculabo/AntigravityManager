@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_IMAGE_GENERATION_BODY_BYTES } from '@/modules/proxy-gateway/server/modules/openai/media/image-input-validation';
+import { MAX_IMAGE_GENERATION_BODY_BYTES } from '@/server/gateway/modules/openai/media/image-input-validation';
 import { registerImageGenerationBodyLimit } from '@/server/main';
 
 describe('image generation route body limit', () => {

@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   OutputTokenLimitConflictError,
   resolveOutputTokenLimit,
-} from '@/modules/proxy-gateway/server/common/output-token-limit';
-import { buildResponsesChatRequest } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-request';
+} from '@/server/gateway/common/output-token-limit';
+import { buildResponsesChatRequest } from '@/server/gateway/modules/openai/responses/openai-responses-request';
 
 describe('output token limit aliases', () => {
   it('accepts equivalent aliases and normalizes Responses to max_tokens', () => {

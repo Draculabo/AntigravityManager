@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import { OpenAIResponsesStreamingMapper } from '@/modules/proxy-gateway/antigravity/OpenAIResponsesStreamingMapper';
-import type { OpenAITool } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+import type { OpenAITool } from '@/server/gateway/common/interfaces/request-interfaces';
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
 
 function parseEvent(serializedEvent: string): Record<string, unknown> {

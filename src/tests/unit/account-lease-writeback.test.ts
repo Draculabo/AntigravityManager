@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CloudAccount } from '@/modules/cloud-account/types';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
+import { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
 import type {
   AccountLeaseAccountStore,
   AccountLeaseUpstream,
-} from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-adapters';
-import { AccountLeaseQuotaRefreshPolicy } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-quota-refresh.policy';
-import { AccountLeaseTokenCache } from '@/modules/proxy-gateway/server/modules/account-lease/stores/account-lease-token.store';
-import type { AccountLeaseTokenData } from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-token-types';
-import { RateLimitReason } from '@/modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
+} from '@/server/gateway/modules/account-lease/interfaces/account-lease-adapters';
+import { AccountLeaseQuotaRefreshPolicy } from '@/server/gateway/modules/account-lease/policies/account-lease-quota-refresh.policy';
+import { AccountLeaseTokenCache } from '@/server/gateway/modules/account-lease/stores/account-lease-token.store';
+import type { AccountLeaseTokenData } from '@/server/gateway/modules/account-lease/interfaces/account-lease-token-types';
+import { RateLimitReason } from '@/server/gateway/shared/services/rate-limit-tracker.service';
 
 const drains: Array<() => Promise<void>> = [];
 afterEach(async () => {

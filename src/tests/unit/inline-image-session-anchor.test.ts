@@ -4,13 +4,13 @@ import {
   resolveGeminiSessionScope,
   resolveOpenAISessionScope,
   resolveResponsesSessionScope,
-} from '@/modules/proxy-gateway/server/common/signature-session-scope';
-import { buildResponsesChatRequest } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-request';
+} from '@/server/gateway/common/signature-session-scope';
+import { buildResponsesChatRequest } from '@/server/gateway/modules/openai/responses/openai-responses-request';
 import type {
   OpenAIChatRequest,
   AnthropicChatRequest,
   GeminiRequest,
-} from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+} from '@/server/gateway/common/interfaces/request-interfaces';
 
 const headers = { authorization: 'Bearer synthetic-tenant', 'x-session-id': 'synthetic-session' };
 const data =

@@ -1,14 +1,14 @@
 import axios, { AxiosError, AxiosHeaders } from 'axios';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
-import { GeminiController } from '@/modules/proxy-gateway/server/modules/gemini/gemini.controller';
-import { AnthropicController } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
-import type { GeminiService } from '@/modules/proxy-gateway/server/modules/gemini/gemini.service';
-import type { AnthropicService } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.service';
-import type { OpenAIService } from '@/modules/proxy-gateway/server/modules/openai/openai.service';
-import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
-import { ProxyAccountUnavailableError } from '@/modules/proxy-gateway/server/common/exceptions/proxy-account-unavailable.exception';
+import { GeminiClient } from '@/server/gateway/modules/gemini/gemini-client.service';
+import { GeminiController } from '@/server/gateway/modules/gemini/gemini.controller';
+import { AnthropicController } from '@/server/gateway/modules/anthropic/anthropic.controller';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
+import type { GeminiService } from '@/server/gateway/modules/gemini/gemini.service';
+import type { AnthropicService } from '@/server/gateway/modules/anthropic/anthropic.service';
+import type { OpenAIService } from '@/server/gateway/modules/openai/openai.service';
+import { UpstreamRequestError } from '@/server/gateway/common/exceptions/upstream-request.exception';
+import { ProxyAccountUnavailableError } from '@/server/gateway/common/exceptions/proxy-account-unavailable.exception';
 import {
   createReply,
   createAccount,
@@ -17,7 +17,7 @@ import {
   createUpstream,
 } from './proxy-real-path.harness';
 
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', () => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', () => ({
   resolveRequestUserAgent: async () => 'controlled-transport-test/0.0.0',
   buildContentRequestUserAgent: () => 'controlled-transport-test/0.0.0',
   resolveLocalInstalledVersion: () => '0.0.0',

@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
-import { RateLimitTrackerService } from '@/modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
+import { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
+import { RateLimitTrackerService } from '@/server/gateway/shared/services/rate-limit-tracker.service';
 import {
   ModelAvailabilityService,
   type ProxyModelAvailability,
   type ProxyModelAvailabilityPersistence,
-} from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
+} from '@/server/gateway/shared/services/model-availability.service';
 
 function createAvailability(entries: ProxyModelAvailability[]): ModelAvailabilityService {
   const persistence: ProxyModelAvailabilityPersistence = {

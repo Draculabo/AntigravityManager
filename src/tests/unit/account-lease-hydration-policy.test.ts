@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AccountLeaseHydrationPolicy } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-hydration.policy';
+import { AccountLeaseHydrationPolicy } from '@/server/gateway/modules/account-lease/policies/account-lease-hydration.policy';
 import type {
   AccountLeaseAccountStore,
   AccountLeaseUpstream,
-} from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-adapters';
-import type { AccountLeaseTokenData } from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-token-types';
+} from '@/server/gateway/modules/account-lease/interfaces/account-lease-adapters';
+import type { AccountLeaseTokenData } from '@/server/gateway/modules/account-lease/interfaces/account-lease-token-types';
 import { OAuthTokenRefreshError } from '@/modules/cloud-account/services/GoogleAPIService';
 
 function createToken(overrides: Partial<AccountLeaseTokenData> = {}): AccountLeaseTokenData {

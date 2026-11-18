@@ -1,8 +1,8 @@
 import { ServiceUnavailableException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 
-import { V1InternalPassthroughController } from '@/modules/proxy-gateway/server/modules/v1internal-passthrough/v1internal-passthrough.controller';
-import { V1InternalPassthroughService } from '@/modules/proxy-gateway/server/modules/v1internal-passthrough/v1internal-passthrough.service';
+import { V1InternalPassthroughController } from '@/server/gateway/modules/v1internal-passthrough/v1internal-passthrough.controller';
+import { V1InternalPassthroughService } from '@/server/gateway/modules/v1internal-passthrough/v1internal-passthrough.service';
 
 /**
  * The gated diagnostic that lets an operator measure what a vendor verb actually answers,
@@ -85,7 +85,7 @@ describe('v1internal diagnostic passthrough', () => {
   );
   it('registers no route unless it was enabled at startup', async () => {
     const module =
-      await import('@/modules/proxy-gateway/server/modules/v1internal-passthrough/v1internal-passthrough.module');
+      await import('@/server/gateway/modules/v1internal-passthrough/v1internal-passthrough.module');
 
     // The suite runs without AGM_V1INTERNAL_PASSTHROUGH, which is the default posture.
     expect(process.env.AGM_V1INTERNAL_PASSTHROUGH).not.toBe('1');

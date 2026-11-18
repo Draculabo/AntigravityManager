@@ -1,5 +1,5 @@
 import { ResponseToolCallIdentity } from './ResponseToolCallIdentity';
-import { hashSessionAnchor } from '../server/common/session-anchor-hash';
+import { hashSessionAnchor } from '../../../server/gateway/common/session-anchor-hash';
 import {
   ClaudeResponse,
   GeminiResponse,

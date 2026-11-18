@@ -7,12 +7,12 @@ import {
   rebindGeminiModelVariant,
   rebindOpenAIModelVariant,
   resolveOpenAIRoutingEffort,
-} from '@/modules/proxy-gateway/server/shared/services/model-variant-request.service';
+} from '@/server/gateway/shared/services/model-variant-request.service';
 import type {
   AnthropicChatRequest,
   GeminiRequest,
   OpenAIChatRequest,
-} from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+} from '@/server/gateway/common/interfaces/request-interfaces';
 
 const proAgentRecipe = {
   canonicalModel: 'gemini-3.5-flash',

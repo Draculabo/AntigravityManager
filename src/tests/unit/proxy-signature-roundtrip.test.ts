@@ -2,13 +2,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { map, Observable } from 'rxjs';
 import { z } from 'zod';
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
-import { OpenAIResponsesSessionStore } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
-import { createResponsesWebSocketOperations } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.operations';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
+import { OpenAIResponsesSessionStore } from '@/server/gateway/modules/openai/responses/openai-responses-session.store';
+import { createResponsesWebSocketOperations } from '@/server/gateway/modules/openai/responses/openai-responses-websocket.operations';
 import type {
   AnthropicChatRequest,
   OpenAIChatRequest,
-} from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+} from '@/server/gateway/common/interfaces/request-interfaces';
 import {
   collect,
   createAccount,
@@ -19,7 +19,7 @@ import {
   geminiStreamFrame,
 } from './proxy-real-path.harness';
 
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', async (original) => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
   ...(await original<object>()),
   resolveRequestUserAgent: async () => 'signature-roundtrip-test/1.0',
 }));

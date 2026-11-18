@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { InvalidToolResultAssociationError } from '@/modules/proxy-gateway/antigravity/ClaudeToolResultAssociation';
-import type { OpenAIChatRequest } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
-import { OpenAIService } from '@/modules/proxy-gateway/server/modules/openai/openai.service';
+import type { OpenAIChatRequest } from '@/server/gateway/common/interfaces/request-interfaces';
+import { OpenAIService } from '@/server/gateway/modules/openai/openai.service';
 import {
   convertOpenAIToClaude,
   InvalidOpenAIToolArgumentsError,
   normalizeOpenAIChatToolCallIds,
   parseOpenAIFunctionArguments,
-} from '@/modules/proxy-gateway/server/modules/openai/chat/openai-claude-conversion';
+} from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
 
 function createRequest(messages: unknown[]): OpenAIChatRequest {
   return {

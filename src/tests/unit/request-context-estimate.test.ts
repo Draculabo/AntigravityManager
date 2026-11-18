@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
-import { estimateRequestContext } from '@/modules/proxy-gateway/server/common/request-context-estimate';
+import { estimateRequestContext } from '@/server/gateway/common/request-context-estimate';
 
 function request(): GeminiInternalRequest {
   return {

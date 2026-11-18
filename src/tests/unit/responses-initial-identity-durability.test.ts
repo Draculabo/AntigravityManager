@@ -4,13 +4,13 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as paths from '@/shared/platform/paths';
 import * as settings from '@/shared/persistence/durable-store-settings';
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
 import {
   OpenAIResponsesSessionService,
   OPENAI_RESPONSES_SESSION_FILENAME,
-} from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.service';
-import { resolveResponsesSessionScope } from '@/modules/proxy-gateway/server/common/signature-session-scope';
-import { resolveResponsesHistoryOwner } from '@/modules/proxy-gateway/server/modules/openai/responses/responses-history-owner';
+} from '@/server/gateway/modules/openai/responses/openai-responses-session.service';
+import { resolveResponsesSessionScope } from '@/server/gateway/common/signature-session-scope';
+import { resolveResponsesHistoryOwner } from '@/server/gateway/modules/openai/responses/responses-history-owner';
 import {
   createAccount,
   createGateway,
@@ -18,8 +18,8 @@ import {
   createUpstream,
 } from './proxy-real-path.harness';
 import { responsesIdentityFixture } from './responses-identity.fixture';
-import { FileContentStore } from '@/modules/proxy-gateway/server/modules/files/file-content-store.service';
-import { FilesService } from '@/modules/proxy-gateway/server/modules/files/files.service';
+import { FileContentStore } from '@/server/gateway/modules/files/file-content-store.service';
+import { FilesService } from '@/server/gateway/modules/files/files.service';
 
 const headers = { authorization: 'Bearer synthetic-durable-owner' };
 const image =

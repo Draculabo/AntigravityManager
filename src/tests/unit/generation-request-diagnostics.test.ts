@@ -5,16 +5,16 @@ import { once } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { runWithTrafficAuditRequestContext } from '@/modules/proxy-gateway/audit/traffic-audit-context';
-import { explicitContextCacheManager } from '@/modules/proxy-gateway/server/modules/gemini/explicit-context-cache.store';
-import { createGeminiRequestEnvelope } from '@/modules/proxy-gateway/server/modules/gemini/gemini-request-envelope';
-import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
-import { Upstream4xxCaptureService } from '@/modules/proxy-gateway/server/common/upstream-4xx-capture.service';
-import { estimateRequestContext } from '@/modules/proxy-gateway/server/common/request-context-estimate';
+import { explicitContextCacheManager } from '@/server/gateway/modules/gemini/explicit-context-cache.store';
+import { createGeminiRequestEnvelope } from '@/server/gateway/modules/gemini/gemini-request-envelope';
+import { GeminiClient } from '@/server/gateway/modules/gemini/gemini-client.service';
+import { Upstream4xxCaptureService } from '@/server/gateway/common/upstream-4xx-capture.service';
+import { estimateRequestContext } from '@/server/gateway/common/request-context-estimate';
 import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
 import { logger } from '@/shared/logging/logger';
 import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
 
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', () => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', () => ({
   resolveRequestUserAgent: async () => 'controlled-diagnostics/0.0.0',
   buildContentRequestUserAgent: () => 'controlled-diagnostics/0.0.0',
 }));

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createFastifyAdapter } from '@/server/main';
-import { MAX_IMAGE_GENERATION_BODY_BYTES } from '@/modules/proxy-gateway/server/modules/openai/media/image-input-validation';
+import { MAX_IMAGE_GENERATION_BODY_BYTES } from '@/server/gateway/modules/openai/media/image-input-validation';
 
 let server: FastifyInstance;
 

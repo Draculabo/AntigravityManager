@@ -3,7 +3,7 @@ import { PassThrough } from 'node:stream';
 import type { FastifyReply } from 'fastify';
 import { Observable } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
-import { writeProxySseResponse } from '@/modules/proxy-gateway/server/common/proxy-sse-response';
+import { writeProxySseResponse } from '@/server/gateway/common/proxy-sse-response';
 import {
   createAccount,
   createGateway,

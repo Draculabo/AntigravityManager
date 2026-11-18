@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
-import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
+import { proxyModelAvailabilityStore } from '@/server/gateway/shared/services/model-availability.service';
 import {
   createAccount,
   createGateway,
@@ -17,7 +17,7 @@ import {
  */
 
 vi.mock(
-  '@/modules/proxy-gateway/server/common/utils/request-user-agent',
+  '@/server/gateway/common/utils/request-user-agent',
   async (importOriginal) => ({
     ...(await importOriginal<Record<string, unknown>>()),
     resolveRequestUserAgent: async () => 'antigravity-parity-harness/0.0.0',

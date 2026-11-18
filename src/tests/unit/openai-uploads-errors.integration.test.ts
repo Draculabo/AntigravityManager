@@ -2,8 +2,8 @@ import { BadRequestException } from '@nestjs/common';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { describe, expect, it, vi } from 'vitest';
 
-import { FILE_UPLOAD_MULTIPART_LIMITS } from '@/modules/proxy-gateway/server/modules/files/file-upload-request';
-import { OpenAIUploadError } from '@/modules/proxy-gateway/server/modules/uploads/openai-uploads.types';
+import { FILE_UPLOAD_MULTIPART_LIMITS } from '@/server/gateway/modules/files/file-upload-request';
+import { OpenAIUploadError } from '@/server/gateway/modules/uploads/openai-uploads.types';
 import {
   createFilesHttpApp,
   fileMultipartPayload,

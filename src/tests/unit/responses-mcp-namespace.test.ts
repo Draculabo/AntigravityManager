@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Observable } from 'rxjs';
 import { z } from 'zod';
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
-import { buildResponsesChatRequest } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-request';
-import { OpenAIResponsesSessionStore } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
-import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
+import { buildResponsesChatRequest } from '@/server/gateway/modules/openai/responses/openai-responses-request';
+import { OpenAIResponsesSessionStore } from '@/server/gateway/modules/openai/responses/openai-responses-session.store';
+import { proxyModelAvailabilityStore } from '@/server/gateway/shared/services/model-availability.service';
 import {
   collect,
   createAccount,
@@ -16,10 +16,10 @@ import {
 } from './proxy-real-path.harness';
 
 vi.mock(
-  '@/modules/proxy-gateway/server/common/utils/request-user-agent',
+  '@/server/gateway/common/utils/request-user-agent',
   async (importOriginal) => ({
     ...(await importOriginal<
-      typeof import('@/modules/proxy-gateway/server/common/utils/request-user-agent')
+      typeof import('@/server/gateway/common/utils/request-user-agent')
     >()),
     resolveRequestUserAgent: async () => 'controlled-namespace-fixture/0.0.0',
   }),

@@ -4,7 +4,7 @@ import {
   OpenAIResponsesMediaStore,
   containsInlineResponsesMedia,
   hasInvalidResponsesMediaReference,
-} from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-media-store';
+} from '@/server/gateway/modules/openai/responses/openai-responses-media-store';
 import { PIXEL_PNG } from '../fixtures/image-content';
 
 const uri = `data:image/png;base64,${PIXEL_PNG.toString('base64')}`;

@@ -3,17 +3,17 @@ import { WebSocket } from 'ws';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Logger } from '@nestjs/common';
 import { decodeInternalGeminiPayload } from '@/modules/proxy-gateway/antigravity/internal-sse';
-import { upstreamGenerationFailure } from '@/modules/proxy-gateway/server/common/upstream-generation-failure';
-import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
-import { GeminiController } from '@/modules/proxy-gateway/server/modules/gemini/gemini.controller';
-import { AnthropicController } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
-import type { GeminiService } from '@/modules/proxy-gateway/server/modules/gemini/gemini.service';
-import type { AnthropicService } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.service';
-import type { OpenAIService } from '@/modules/proxy-gateway/server/modules/openai/openai.service';
-import { attachOpenAIResponsesWebSocketServer } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.server';
+import { upstreamGenerationFailure } from '@/server/gateway/common/upstream-generation-failure';
+import { UpstreamRequestError } from '@/server/gateway/common/exceptions/upstream-request.exception';
+import { GeminiController } from '@/server/gateway/modules/gemini/gemini.controller';
+import { AnthropicController } from '@/server/gateway/modules/anthropic/anthropic.controller';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
+import type { GeminiService } from '@/server/gateway/modules/gemini/gemini.service';
+import type { AnthropicService } from '@/server/gateway/modules/anthropic/anthropic.service';
+import type { OpenAIService } from '@/server/gateway/modules/openai/openai.service';
+import { attachOpenAIResponsesWebSocketServer } from '@/server/gateway/modules/openai/responses/openai-responses-websocket.server';
 import { createReply } from './proxy-real-path.harness';
-import { GenerationDeadlineExceededError } from '@/modules/proxy-gateway/server/common/exceptions/generation-deadline.exception';
+import { GenerationDeadlineExceededError } from '@/server/gateway/common/exceptions/generation-deadline.exception';
 
 beforeEach(() => {
   vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);

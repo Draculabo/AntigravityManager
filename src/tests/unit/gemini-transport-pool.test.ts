@@ -4,9 +4,9 @@ import { once } from 'node:events';
 import { connect } from 'node:net';
 import type { Duplex } from 'node:stream';
 import { expect, it } from 'vitest';
-import { GeminiHttpTransport } from '@/modules/proxy-gateway/server/modules/gemini/gemini-http-transport';
-import { GEMINI_TRANSPORT_LIMITS } from '@/modules/proxy-gateway/server/modules/gemini/gemini-transport-pool';
-import { UpstreamTransportCapacityError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-transport-capacity.exception';
+import { GeminiHttpTransport } from '@/server/gateway/modules/gemini/gemini-http-transport';
+import { GEMINI_TRANSPORT_LIMITS } from '@/server/gateway/modules/gemini/gemini-transport-pool';
+import { UpstreamTransportCapacityError } from '@/server/gateway/common/exceptions/upstream-transport-capacity.exception';
 import {
   createAccount,
   createGateway,

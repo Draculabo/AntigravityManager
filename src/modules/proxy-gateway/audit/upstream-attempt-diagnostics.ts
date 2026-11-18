@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { errorProcessOwner } from '@/modules/error-diagnostics/public';
 import { UpstreamGenerationError } from '../antigravity/UpstreamGenerationError';
 import { classifyTransportError } from '../antigravity/stream-error-utils';
-import { UpstreamRequestError } from '../server/common/exceptions/upstream-request.exception';
+import { UpstreamRequestError } from '../../../server/gateway/common/exceptions/upstream-request.exception';
 import type { UpstreamAttemptHandle } from './traffic-audit.service';
 import type { CompleteUpstreamAttemptInput } from './traffic-audit.types';
 import { isFailedAuditAttempt } from './audit-attempt-outcome';

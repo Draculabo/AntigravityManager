@@ -4,11 +4,11 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import { CloudAccountHealthService } from '@/modules/cloud-account/services/CloudAccountHealthService';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
-import { cloudAccountStoreAdapter } from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-adapters';
-import { ModelAvailabilityService } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
-import { ProxyRetryService } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
-import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
+import { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
+import { cloudAccountStoreAdapter } from '@/server/gateway/modules/account-lease/interfaces/account-lease-adapters';
+import { ModelAvailabilityService } from '@/server/gateway/shared/services/model-availability.service';
+import { ProxyRetryService } from '@/server/gateway/shared/services/proxy-retry.service';
+import { UpstreamRequestError } from '@/server/gateway/common/exceptions/upstream-request.exception';
 import { createAccount } from './proxy-real-path.harness';
 
 const state = vi.hoisted(() => ({ directory: '' }));

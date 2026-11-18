@@ -14,24 +14,24 @@ import {
   normalizeAnthropicCompleteRequest,
   toAnthropicCompletionResponse,
   toAnthropicMessagesRequest,
-} from '@/modules/proxy-gateway/server/modules/anthropic/anthropic-text-completion';
+} from '@/server/gateway/modules/anthropic/anthropic-text-completion';
 import {
   toAnthropicMessageBatch,
   type AnthropicProcessingStatus,
-} from '@/modules/proxy-gateway/server/modules/batch/anthropic-batch-resource';
-import type { BatchExecutionTarget } from '@/modules/proxy-gateway/server/modules/batch/batch-request-executor';
-import { BatchRunnerService } from '@/modules/proxy-gateway/server/modules/batch/batch-runner.service';
-import { BatchService } from '@/modules/proxy-gateway/server/modules/batch/batch.service';
+} from '@/server/gateway/modules/batch/anthropic-batch-resource';
+import type { BatchExecutionTarget } from '@/server/gateway/modules/batch/batch-request-executor';
+import { BatchRunnerService } from '@/server/gateway/modules/batch/batch-runner.service';
+import { BatchService } from '@/server/gateway/modules/batch/batch.service';
 import {
   type BatchJobRecord,
   type BatchStatus,
-} from '@/modules/proxy-gateway/server/modules/batch/batch-job.types';
-import { respondGeminiBatchGenerateContent } from '@/modules/proxy-gateway/server/modules/batch/gemini-batch-submit';
-import { toGeminiOperation } from '@/modules/proxy-gateway/server/modules/batch/gemini-batch-resource';
-import { toOpenAIBatchObject } from '@/modules/proxy-gateway/server/modules/batch/openai-batch-resource';
-import { FileContentStore } from '@/modules/proxy-gateway/server/modules/files/file-content-store.service';
-import { FilesService } from '@/modules/proxy-gateway/server/modules/files/files.service';
-import { OPENAI_FILE_ID_PREFIX } from '@/modules/proxy-gateway/server/modules/files/openai-file-resource';
+} from '@/server/gateway/modules/batch/batch-job.types';
+import { respondGeminiBatchGenerateContent } from '@/server/gateway/modules/batch/gemini-batch-submit';
+import { toGeminiOperation } from '@/server/gateway/modules/batch/gemini-batch-resource';
+import { toOpenAIBatchObject } from '@/server/gateway/modules/batch/openai-batch-resource';
+import { FileContentStore } from '@/server/gateway/modules/files/file-content-store.service';
+import { FilesService } from '@/server/gateway/modules/files/files.service';
+import { OPENAI_FILE_ID_PREFIX } from '@/server/gateway/modules/files/openai-file-resource';
 
 /**
  * Conformance across the three batch protocol surfaces (OpenAI, Anthropic,

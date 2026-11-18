@@ -329,7 +329,7 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
 
     const { GoogleAPIService } = await import('@/modules/cloud-account/services/GoogleAPIService');
     const { FALLBACK_VERSION, resolveLocalInstalledVersion } =
-      await import('../../modules/proxy-gateway/server/common/utils/request-user-agent');
+      await import('../../server/gateway/common/utils/request-user-agent');
     const expectedVersion = resolveLocalInstalledVersion() ?? FALLBACK_VERSION;
 
     await expect(GoogleAPIService.fetchAICredits('access-token')).resolves.toEqual({
@@ -516,7 +516,7 @@ describe('GoogleAPIService fetchQuota fallback policy', () => {
 
     const { GoogleAPIService } = await import('@/modules/cloud-account/services/GoogleAPIService');
     const { FALLBACK_VERSION, buildUserAgent, resolveLocalInstalledVersion } =
-      await import('../../modules/proxy-gateway/server/common/utils/request-user-agent');
+      await import('../../server/gateway/common/utils/request-user-agent');
     vi.spyOn(GoogleAPIService, 'fetchProjectContext').mockResolvedValue({
       projectId: 'project-1',
       subscriptionTier: 'pro',

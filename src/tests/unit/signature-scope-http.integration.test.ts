@@ -7,19 +7,19 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { getServerConfig, setServerConfig } from '@/server/server-config';
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
-import { ProxyGuard } from '@/modules/proxy-gateway/server/guards/proxy.guard';
-import { OpenAIChatController } from '@/modules/proxy-gateway/server/modules/openai/openai-chat.controller';
-import { OpenAIResponsesController } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses.controller';
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
-import { AnthropicController } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
-import { AnthropicService } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.service';
-import { GeminiController } from '@/modules/proxy-gateway/server/modules/gemini/gemini.controller';
-import { GeminiService } from '@/modules/proxy-gateway/server/modules/gemini/gemini.service';
-import { resolveGeminiSessionScope } from '@/modules/proxy-gateway/server/common/signature-session-scope';
+import { ProxyGuard } from '@/server/gateway/guards/proxy.guard';
+import { OpenAIChatController } from '@/server/gateway/modules/openai/openai-chat.controller';
+import { OpenAIResponsesController } from '@/server/gateway/modules/openai/responses/openai-responses.controller';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
+import { AnthropicController } from '@/server/gateway/modules/anthropic/anthropic.controller';
+import { AnthropicService } from '@/server/gateway/modules/anthropic/anthropic.service';
+import { GeminiController } from '@/server/gateway/modules/gemini/gemini.controller';
+import { GeminiService } from '@/server/gateway/modules/gemini/gemini.service';
+import { resolveGeminiSessionScope } from '@/server/gateway/common/signature-session-scope';
 import type {
   AnthropicChatRequest,
   OpenAIChatRequest,
-} from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+} from '@/server/gateway/common/interfaces/request-interfaces';
 import {
   createAccount,
   createGateway,
@@ -32,7 +32,7 @@ import {
 vi.mock('@/modules/proxy-gateway/opencode-sync/opencode-credentials', () => ({
   openCodeCredentialService: { matches: (token: string) => token === 'synthetic-tenant-b' },
 }));
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', async (original) => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
   ...(await original<object>()),
   resolveRequestUserAgent: async () => 'signature-http-test/1.0',
 }));

@@ -13,12 +13,12 @@ import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import type {
   AnthropicChatRequest,
   AnthropicMessage,
-} from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
-import { Upstream4xxCaptureService } from '@/modules/proxy-gateway/server/common/upstream-4xx-capture.service';
-import { ProxyGuard } from '@/modules/proxy-gateway/server/guards/proxy.guard';
-import { AnthropicController } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
-import { AnthropicService } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.service';
-import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
+} from '@/server/gateway/common/interfaces/request-interfaces';
+import { Upstream4xxCaptureService } from '@/server/gateway/common/upstream-4xx-capture.service';
+import { ProxyGuard } from '@/server/gateway/guards/proxy.guard';
+import { AnthropicController } from '@/server/gateway/modules/anthropic/anthropic.controller';
+import { AnthropicService } from '@/server/gateway/modules/anthropic/anthropic.service';
+import { GeminiClient } from '@/server/gateway/modules/gemini/gemini-client.service';
 import { getServerConfig, setServerConfig } from '@/server/server-config';
 import {
   createAccount,
@@ -30,9 +30,9 @@ import {
 vi.mock('@/modules/proxy-gateway/opencode-sync/opencode-credentials', () => ({
   openCodeCredentialService: { matches: () => false },
 }));
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', async (original) => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
   ...(await original<
-    typeof import('@/modules/proxy-gateway/server/common/utils/request-user-agent')
+    typeof import('@/server/gateway/common/utils/request-user-agent')
   >()),
   resolveRequestUserAgent: async () => 'd13-loopback-fixture',
   buildContentRequestUserAgent: () => 'd13-loopback-fixture',

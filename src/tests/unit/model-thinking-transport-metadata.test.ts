@@ -6,8 +6,8 @@ import { CloudQuotaModelInfoSchema } from '@/modules/cloud-account/types';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import { refreshAccountQuotaCore } from '@/modules/cloud-account/services/cloud-account-quota-refresh.service';
-import { AccountLeaseModelPolicy } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-model.policy';
-import type { AccountLeaseTokenData } from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-token-types';
+import { AccountLeaseModelPolicy } from '@/server/gateway/modules/account-lease/policies/account-lease-model.policy';
+import type { AccountLeaseTokenData } from '@/server/gateway/modules/account-lease/interfaces/account-lease-token-types';
 import { mockAxiosRequests } from '../helpers/mock-axios-request';
 
 vi.mock('node:timers/promises', async (original) => ({

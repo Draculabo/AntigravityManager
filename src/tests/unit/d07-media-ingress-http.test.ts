@@ -14,14 +14,14 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { createFastifyAdapter } from '@/server/main';
 import { getServerConfig, setServerConfig } from '@/server/server-config';
-import { ProxyGuard } from '@/modules/proxy-gateway/server/guards/proxy.guard';
+import { ProxyGuard } from '@/server/gateway/guards/proxy.guard';
 import { registerTrafficAuditHttpHooks } from '@/modules/proxy-gateway/audit/traffic-audit-context';
 import { trafficAuditService } from '@/modules/proxy-gateway/audit/traffic-audit.service';
-import { OpenAIService } from '@/modules/proxy-gateway/server/modules/openai/openai.service';
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
-import { OpenAIResponsesController } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses.controller';
-import { OpenAIMediaController } from '@/modules/proxy-gateway/server/modules/openai/openai-media.controller';
-import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
+import { OpenAIService } from '@/server/gateway/modules/openai/openai.service';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
+import { OpenAIResponsesController } from '@/server/gateway/modules/openai/responses/openai-responses.controller';
+import { OpenAIMediaController } from '@/server/gateway/modules/openai/openai-media.controller';
+import { GeminiClient } from '@/server/gateway/modules/gemini/gemini-client.service';
 import { PIXEL_PNG } from '../fixtures/image-content';
 import {
   createAccount,
@@ -34,7 +34,7 @@ import {
 vi.mock('@/modules/proxy-gateway/opencode-sync/opencode-credentials', () => ({
   openCodeCredentialService: { matches: (token: string) => token === 'synthetic-opencode-gzip' },
 }));
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', async (original) => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
   ...(await original<object>()),
   resolveRequestUserAgent: async () => 'd07-test/1.0',
 }));

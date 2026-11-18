@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AccountLeaseLimitPolicy } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-limit.policy';
+import { AccountLeaseLimitPolicy } from '@/server/gateway/modules/account-lease/policies/account-lease-limit.policy';
 import {
   RateLimitReason,
   RateLimitTrackerService,
-} from '@/modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
-import { ModelAvailabilityService } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
+} from '@/server/gateway/shared/services/rate-limit-tracker.service';
+import { ModelAvailabilityService } from '@/server/gateway/shared/services/model-availability.service';
 
 const now = Date.parse('2026-10-16T00:00:00Z');
 const model = 'claude-sonnet-4-6-thinking';

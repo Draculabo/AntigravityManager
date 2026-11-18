@@ -2,11 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Observable } from 'rxjs';
 import { PassThrough } from 'stream';
 
-import { AnthropicController } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
-import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
-import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
+import { AnthropicController } from '@/server/gateway/modules/anthropic/anthropic.controller';
+import { proxyModelAvailabilityStore } from '@/server/gateway/shared/services/model-availability.service';
+import { UpstreamRequestError } from '@/server/gateway/common/exceptions/upstream-request.exception';
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
-import { resolveAnthropicSessionScope } from '@/modules/proxy-gateway/server/common/signature-session-scope';
+import { resolveAnthropicSessionScope } from '@/server/gateway/common/signature-session-scope';
 import {
   collect,
   createAccount,
@@ -28,7 +28,7 @@ import {
  */
 
 vi.mock(
-  '@/modules/proxy-gateway/server/common/utils/request-user-agent',
+  '@/server/gateway/common/utils/request-user-agent',
   async (importOriginal) => ({
     ...(await importOriginal<Record<string, unknown>>()),
     resolveRequestUserAgent: async () => 'antigravity-parity-harness/0.0.0',

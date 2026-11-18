@@ -5,12 +5,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { getServerConfig, setServerConfig } from '@/server/server-config';
-import { ProxyGuard } from '@/modules/proxy-gateway/server/guards/proxy.guard';
-import { GeminiController } from '@/modules/proxy-gateway/server/modules/gemini/gemini.controller';
-import { GeminiService } from '@/modules/proxy-gateway/server/modules/gemini/gemini.service';
-import { AnthropicController } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
-import { AnthropicService } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.service';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
+import { ProxyGuard } from '@/server/gateway/guards/proxy.guard';
+import { GeminiController } from '@/server/gateway/modules/gemini/gemini.controller';
+import { GeminiService } from '@/server/gateway/modules/gemini/gemini.service';
+import { AnthropicController } from '@/server/gateway/modules/anthropic/anthropic.controller';
+import { AnthropicService } from '@/server/gateway/modules/anthropic/anthropic.service';
+import { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
 
 vi.mock('@/modules/proxy-gateway/opencode-sync/opencode-credentials', () => ({
   openCodeCredentialService: { matches: () => false },

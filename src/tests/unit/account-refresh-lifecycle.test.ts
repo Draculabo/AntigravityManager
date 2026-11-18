@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
-import { AccountLeaseHydrationPolicy } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-hydration.policy';
-import type { AccountLeaseTokenData } from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-token-types';
+import { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
+import { AccountLeaseHydrationPolicy } from '@/server/gateway/modules/account-lease/policies/account-lease-hydration.policy';
+import type { AccountLeaseTokenData } from '@/server/gateway/modules/account-lease/interfaces/account-lease-token-types';
 import type {
   AccountLeaseAccountStore,
   AccountLeaseUpstream,
-} from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-adapters';
+} from '@/server/gateway/modules/account-lease/interfaces/account-lease-adapters';
 import { CloudAccountRefreshBlockedError } from '@/modules/cloud-account/services/CloudAccountRefreshService';
 import type { TokenResponse } from '@/modules/cloud-account/services/GoogleAPIService';
 import { createAccount } from './proxy-real-path.harness';

@@ -1,8 +1,8 @@
 import { BadRequestException, Logger } from '@nestjs/common';
 import { Observable } from 'rxjs';
-import { prepareGoogleGenerationContents } from '@/modules/proxy-gateway/server/common/generation-history';
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
-import { OpenAIResponsesSessionStore } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
+import { prepareGoogleGenerationContents } from '@/server/gateway/common/generation-history';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
+import { OpenAIResponsesSessionStore } from '@/server/gateway/modules/openai/responses/openai-responses-session.store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createAccount,
@@ -17,9 +17,9 @@ import type {
   AnthropicMessage,
   GeminiContent,
   OpenAIMessage,
-} from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+} from '@/server/gateway/common/interfaces/request-interfaces';
 
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', () => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', () => ({
   resolveRequestUserAgent: async () => 'controlled-generation-history/0.0.0',
   buildContentRequestUserAgent: () => 'controlled-generation-history/0.0.0',
   resolveLocalInstalledVersion: () => '0.0.0',

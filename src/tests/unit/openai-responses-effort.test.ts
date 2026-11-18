@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildResponsesChatRequest, parseResponsesRequestBody } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-request';
+import { buildResponsesChatRequest, parseResponsesRequestBody } from '@/server/gateway/modules/openai/responses/openai-responses-request';
 
 describe('OpenAI Responses reasoning effort', () => {
   it('preserves reasoning.effort and max_tokens in the internal Chat request', () => {

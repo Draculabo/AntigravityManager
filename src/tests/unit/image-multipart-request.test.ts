@@ -2,11 +2,11 @@ import fastifyMultipart from '@fastify/multipart';
 import Fastify, { type FastifyRequest } from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PIXEL_PNG, PIXEL_GIF } from '../fixtures/image-content';
-import { MAX_INPUT_IMAGES } from '@/modules/proxy-gateway/server/modules/openai/media/image-input-validation';
+import { MAX_INPUT_IMAGES } from '@/server/gateway/modules/openai/media/image-input-validation';
 import {
   isEditImageField,
   parseImageMultipartRequest,
-} from '@/modules/proxy-gateway/server/modules/openai/media/image-multipart-request';
+} from '@/server/gateway/modules/openai/media/image-multipart-request';
 
 const servers: Array<ReturnType<typeof Fastify>> = [];
 

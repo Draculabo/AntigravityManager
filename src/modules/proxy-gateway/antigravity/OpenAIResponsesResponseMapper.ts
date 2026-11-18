@@ -1,7 +1,7 @@
 import type {
   OpenAIChatResponse,
   OpenAIToolCall,
-} from '../server/common/interfaces/request-interfaces';
+} from '../../../server/gateway/common/interfaces/request-interfaces';
 import {
   isMalformedFunctionCallFinishReason,
   MALFORMED_FUNCTION_CALL_RECOVERY_TEXT,

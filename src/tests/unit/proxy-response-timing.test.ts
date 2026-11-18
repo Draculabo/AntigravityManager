@@ -9,7 +9,7 @@ import {
   markProxyUpstreamFirstByte,
   markProxyUpstreamStarted,
   recordProxyThinkingFill,
-} from '@/modules/proxy-gateway/server/common/proxy-response-timing';
+} from '@/server/gateway/common/proxy-response-timing';
 
 describe('proxy response timing headers', () => {
   it('omits unmeasured stages while retaining measured zero and identity headers', () => {

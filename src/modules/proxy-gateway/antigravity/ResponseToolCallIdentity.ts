@@ -1,4 +1,4 @@
-import { hashSessionAnchor } from '../server/common/session-anchor-hash';
+import { hashSessionAnchor } from '../../../server/gateway/common/session-anchor-hash';
 
 /**
  * Invocation-local missing-ID identity. The owner supplies a causal request anchor;

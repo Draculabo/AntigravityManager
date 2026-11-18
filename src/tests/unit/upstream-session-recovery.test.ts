@@ -2,12 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   UpstreamSessionRecovery,
   isUpstreamInputLimitError,
-} from '@/modules/proxy-gateway/server/common/upstream-session-recovery';
+} from '@/server/gateway/common/upstream-session-recovery';
 import {
   createUpstreamSessionIdentity,
   type UpstreamSessionIdentity,
-} from '@/modules/proxy-gateway/server/common/upstream-session-identity';
-import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
+} from '@/server/gateway/common/upstream-session-identity';
+import { UpstreamRequestError } from '@/server/gateway/common/exceptions/upstream-request.exception';
 
 const identity = createUpstreamSessionIdentity('account-a', 'store-a');
 const overflow = () =>

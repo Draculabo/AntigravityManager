@@ -2,9 +2,9 @@ import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AnthropicController } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
-import { AnthropicService } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.service';
-import { ProxyGuard } from '@/modules/proxy-gateway/server/guards/proxy.guard';
+import { AnthropicController } from '@/server/gateway/modules/anthropic/anthropic.controller';
+import { AnthropicService } from '@/server/gateway/modules/anthropic/anthropic.service';
+import { ProxyGuard } from '@/server/gateway/guards/proxy.guard';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { getServerConfig, setServerConfig } from '@/server/server-config';
 import { createGateway, createLease, createUpstream } from './proxy-real-path.harness';
@@ -13,9 +13,9 @@ import { PIXEL_PNG } from '../fixtures/image-content';
 vi.mock('@/modules/proxy-gateway/opencode-sync/opencode-credentials', () => ({
   openCodeCredentialService: { matches: () => false },
 }));
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', async (original) => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
   ...(await original<
-    typeof import('@/modules/proxy-gateway/server/common/utils/request-user-agent')
+    typeof import('@/server/gateway/common/utils/request-user-agent')
   >()),
   resolveRequestUserAgent: async () => 'antigravity-local-count-fixture',
 }));

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { OpenAIResponsesWebSocketProtocol } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.protocol';
-import { mergeOpenAIResponsesInputItems } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
+import { OpenAIResponsesWebSocketProtocol } from '@/server/gateway/modules/openai/responses/openai-responses-websocket.protocol';
+import { mergeOpenAIResponsesInputItems } from '@/server/gateway/modules/openai/responses/openai-responses-session.store';
 
 async function input(protocol: OpenAIResponsesWebSocketProtocol, items: unknown[]) {
   const action = await protocol.accept({ type: 'response.append', input: items });

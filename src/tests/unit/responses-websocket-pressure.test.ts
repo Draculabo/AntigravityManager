@@ -2,8 +2,8 @@ import { createServer } from 'node:http';
 import { PassThrough } from 'node:stream';
 import { WebSocket } from 'ws';
 import { describe, expect, it, vi } from 'vitest';
-import { FlowControlledSseStream } from '@/modules/proxy-gateway/server/common/flow-controlled-sse-stream';
-import { attachOpenAIResponsesWebSocketServer } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.server';
+import { FlowControlledSseStream } from '@/server/gateway/common/flow-controlled-sse-stream';
+import { attachOpenAIResponsesWebSocketServer } from '@/server/gateway/modules/openai/responses/openai-responses-websocket.server';
 
 describe('Responses WebSocket pressure', () => {
   it('aborts admission on disconnect and destroys a late unconsumed Readable', async () => {

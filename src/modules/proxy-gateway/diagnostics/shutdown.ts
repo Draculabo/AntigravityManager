@@ -1,6 +1,6 @@
 import { trafficAuditService } from '../audit/traffic-audit.service';
 import { thoughtStoreService } from '../thought-store/thought-store.service';
-import { responsesSessionOwner } from '../server/modules/openai/responses/responses-session-owner';
+import { responsesSessionOwner } from '../../../server/gateway/modules/openai/responses/responses-session-owner';
 import { errorProcessOwner } from '@/modules/error-diagnostics/public';
 
 /** Attempt every owner, including when the gateway was never started or is already stopped. */

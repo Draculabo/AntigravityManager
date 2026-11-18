@@ -2,9 +2,9 @@ import { createBatchHttpApp, batchTestHeaders } from '../helpers/batch-http-app'
 import type { LightMyRequestResponse } from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
 
-import { BatchRunnerService } from '@/modules/proxy-gateway/server/modules/batch/batch-runner.service';
-import type { BatchExecutionTarget } from '@/modules/proxy-gateway/server/modules/batch/batch-request-executor';
-import { BatchService } from '@/modules/proxy-gateway/server/modules/batch/batch.service';
+import { BatchRunnerService } from '@/server/gateway/modules/batch/batch-runner.service';
+import type { BatchExecutionTarget } from '@/server/gateway/modules/batch/batch-request-executor';
+import { BatchService } from '@/server/gateway/modules/batch/batch.service';
 
 function sent(reply: LightMyRequestResponse): any {
   return String(reply.headers['content-type']).startsWith('application/x-jsonl')

@@ -5,11 +5,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { getServerConfig, setServerConfig } from '@/server/server-config';
-import { ProxyGuard } from '@/modules/proxy-gateway/server/guards/proxy.guard';
-import { OpenAIModelsController } from '@/modules/proxy-gateway/server/modules/openai/openai-models.controller';
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
-import { OpenAIService } from '@/modules/proxy-gateway/server/modules/openai/openai.service';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
+import { ProxyGuard } from '@/server/gateway/guards/proxy.guard';
+import { OpenAIModelsController } from '@/server/gateway/modules/openai/openai-models.controller';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
+import { OpenAIService } from '@/server/gateway/modules/openai/openai.service';
+import { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
 
 vi.mock('@/modules/proxy-gateway/opencode-sync/opencode-credentials', () => ({
   openCodeCredentialService: { matches: () => false },

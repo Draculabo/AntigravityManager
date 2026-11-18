@@ -6,7 +6,7 @@ import type { ClaudeRequest } from '@/modules/proxy-gateway/antigravity/types';
 import {
   convertClaudeToOpenAIResponse,
   convertOpenAIToolsToAnthropicTools,
-} from '@/modules/proxy-gateway/server/modules/openai/chat/openai-claude-conversion';
+} from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
 
 function createWebSearchRequest(model: string): ClaudeRequest {
   return {

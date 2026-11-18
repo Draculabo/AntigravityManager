@@ -30,7 +30,7 @@ This project is also an Electron app, but it additionally includes Node, Undici,
 
 - Electron main-process outbound requests
 - renderer-side requests
-- upstream requests handled by `src/modules/proxy-gateway/server/`; `src/server/` owns gateway
+- upstream requests handled by `src/server/gateway/`; `src/server/main.ts` owns gateway
   startup and shutdown.
 
 ## Debug the Installed Official Antigravity Client

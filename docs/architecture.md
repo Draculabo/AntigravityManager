@@ -758,15 +758,15 @@ Errors crossing into the renderer must preserve actionable public information wi
 
 The proxy page's service control shows an account-risk notice before the first manual start. Only explicit confirmation records the versioned acknowledgement in the renderer profile's local storage and dispatches startup; dismissing the dialog does neither. Later manual starts reuse that acknowledgement, while stop remains available without it. If preference storage is unavailable, confirmation applies to the mounted control and the notice reappears after remounting. Pending start/stop operations disable the control and display loading. This UI notice does not change gateway IPC contracts or application auto-start behavior.
 
-The Electron main process starts and stops the NestJS/Fastify gateway through [src/server/main.ts](../src/server/main.ts). Protocol controllers, mappers, routing, quotas, retries, streaming state and provider adapters belong under `src/modules/proxy-gateway/server` or another proxy-gateway-owned directory.
+The Electron main process starts and stops the NestJS/Fastify gateway through [src/server/main.ts](../src/server/main.ts). Protocol controllers, mappers, routing, quotas, retries, streaming state and provider adapters belong under `src/server/gateway` or another proxy-gateway-owned directory.
 
 Audit and thought management query/path parameters use their existing Zod schemas
-through the gateway's [Zod parameter Pipe](../src/modules/proxy-gateway/server/common/zod-schema.pipe.ts).
+through the gateway's [Zod parameter Pipe](../src/server/gateway/common/zod-schema.pipe.ts).
 Validation preserves coercion, defaults and bad-request envelopes. Body chunk
 requests validate the path UUID before reporting query errors.
 
 Batch, ordinary Files, OpenAI Uploads and legacy Anthropic completion handlers declare their existing dialect error mapper
-through [ProtocolErrors](../src/modules/proxy-gateway/server/common/protocol-errors.decorator.ts).
+through [ProtocolErrors](../src/server/gateway/common/protocol-errors.decorator.ts).
 Its Interceptor maps handler failures into HTTP exceptions; guard authentication
 failures keep their existing handling. Ordinary methods return protocol objects,
 with POST success explicitly set to 200. Anthropic JSONL results keep manual
@@ -790,7 +790,7 @@ Unexpected store failures retain the framework's error handling. Response
 generation, continuation and durable storage remain service-owned.
 
 Thought management mutations declare their existing success-only administrative
-audit through [AuditAdminOperation](../src/modules/proxy-gateway/server/modules/observability/admin-operation-audit.decorator.ts).
+audit through [AuditAdminOperation](../src/server/gateway/modules/observability/admin-operation-audit.decorator.ts).
 Each single-result handler finishes its mutation before the Interceptor records
 the operation and its affected count. Validation, authentication and mutation
 failures do not generate a successful audit event; recorder failures still
@@ -845,7 +845,7 @@ Route source files live in `src/routes`. TanStack Router generates `src/routeTre
 | --------------------------------------------- | ---------------------------------------------------------------------- |
 | Add feature UI or behavior                    | Owning `src/modules/<feature>` subtree                                 |
 | Add a renderer-to-main operation              | Feature IPC schema/router plus typed renderer client usage             |
-| Add a gateway endpoint or protocol behavior   | `src/modules/proxy-gateway/server` and the owning protocol module      |
+| Add a gateway endpoint or protocol behavior   | `src/server/gateway` and the owning protocol module                    |
 | Add feature persistence                       | Owning feature repository using shared database primitives             |
 | Add reusable database infrastructure          | `src/shared/persistence/database`                                      |
 | Add a generic UI primitive                    | `src/components/ui`                                                    |

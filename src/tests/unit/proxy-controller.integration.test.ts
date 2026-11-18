@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { firstValueFrom, Observable, of, throwError } from 'rxjs';
 
-import { AnthropicController } from '../../modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
-import { OpenAIOperations as ProxyController } from '../../modules/proxy-gateway/server/modules/openai/openai-operations.service';
-import { OpenAIResponsesSessionStore } from '../../modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
-import { UpstreamRequestError } from '../../modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
+import { AnthropicController } from '../../server/gateway/modules/anthropic/anthropic.controller';
+import { OpenAIOperations as ProxyController } from '../../server/gateway/modules/openai/openai-operations.service';
+import { OpenAIResponsesSessionStore } from '../../server/gateway/modules/openai/responses/openai-responses-session.store';
+import { UpstreamRequestError } from '../../server/gateway/common/exceptions/upstream-request.exception';
 import { DEFAULT_APP_CONFIG } from '../../modules/config/types';
 import { setServerConfig } from '../../server/server-config';
-import { ProxyAccountUnavailableError } from '../../modules/proxy-gateway/server/common/exceptions/proxy-account-unavailable.exception';
+import { ProxyAccountUnavailableError } from '../../server/gateway/common/exceptions/proxy-account-unavailable.exception';
 import { PIXEL_PNG, PIXEL_GIF, PIXEL_JPEG } from '../fixtures/image-content';
 
 function createReplyMock() {

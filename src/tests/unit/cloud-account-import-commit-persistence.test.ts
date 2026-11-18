@@ -5,12 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import { upsertCloudAccountsAtomically } from '@/modules/cloud-account/persistence/cloud-account-batch-writer';
 import type { CloudAccount } from '@/modules/cloud-account/types';
-import { cloudAccountStoreAdapter } from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-adapters';
+import { cloudAccountStoreAdapter } from '@/server/gateway/modules/account-lease/interfaces/account-lease-adapters';
 import {
   captureLeaseWriteGuard,
   leaseStoredContext,
-} from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-writeback';
-import type { AccountLeaseTokenData } from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-token-types';
+} from '@/server/gateway/modules/account-lease/policies/account-lease-writeback';
+import type { AccountLeaseTokenData } from '@/server/gateway/modules/account-lease/interfaces/account-lease-token-types';
 
 const state = vi.hoisted(() => ({ directory: '' }));
 vi.mock('better-sqlite3', async () => {

@@ -14,7 +14,7 @@ import { refreshAccountQuotaCore } from '@/modules/cloud-account/services/cloud-
 import { CloudMonitorService } from '@/modules/cloud-account/services/CloudMonitorService';
 import { GoogleAPIService } from '@/modules/cloud-account/services/GoogleAPIService';
 import { AutoSwitchService } from '@/modules/cloud-account/services/AutoSwitchService';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
+import { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
 import { CoreService, type CoreDependencies } from '@/core/core-service';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import type { CloudAccount } from '@/modules/cloud-account/types';

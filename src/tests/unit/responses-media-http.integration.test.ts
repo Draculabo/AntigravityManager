@@ -13,11 +13,11 @@ import { z } from 'zod';
 import { DEFAULT_APP_CONFIG, type ImageSchedulerConfig } from '@/modules/config/types';
 import { getServerConfig, setServerConfig } from '@/server/server-config';
 import { registerModelRouteBodyLimits } from '@/server/main';
-import { ProxyGuard } from '@/modules/proxy-gateway/server/guards/proxy.guard';
-import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
-import { OpenAIService } from '@/modules/proxy-gateway/server/modules/openai/openai.service';
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
-import { OpenAIResponsesController } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses.controller';
+import { ProxyGuard } from '@/server/gateway/guards/proxy.guard';
+import { GeminiClient } from '@/server/gateway/modules/gemini/gemini-client.service';
+import { OpenAIService } from '@/server/gateway/modules/openai/openai.service';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
+import { OpenAIResponsesController } from '@/server/gateway/modules/openai/responses/openai-responses.controller';
 import { inferProtocol } from '@/modules/proxy-gateway/audit/traffic-audit-http-metadata';
 import { classifyHttpTraffic } from '@/modules/proxy-gateway/audit/traffic-classifier';
 import { PIXEL_PNG, PIXEL_GIF, pngWithBytes } from '../fixtures/image-content';
@@ -32,7 +32,7 @@ import {
 vi.mock('@/modules/proxy-gateway/opencode-sync/opencode-credentials', () => ({
   openCodeCredentialService: { matches: () => false },
 }));
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', () => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', () => ({
   resolveRequestUserAgent: async () => 'responses-media-test/0.0.0',
   buildContentRequestUserAgent: () => 'responses-media-test/0.0.0',
   resolveLocalInstalledVersion: () => '0.0.0',

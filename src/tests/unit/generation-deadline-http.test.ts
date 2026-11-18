@@ -7,11 +7,11 @@ import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fa
 import axios from 'axios';
 import { fetch } from 'undici';
 import { afterEach, expect, it, vi } from 'vitest';
-import { ProxyGuard } from '@/modules/proxy-gateway/server/guards/proxy.guard';
-import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
-import { GeminiController } from '@/modules/proxy-gateway/server/modules/gemini/gemini.controller';
-import { GeminiService } from '@/modules/proxy-gateway/server/modules/gemini/gemini.service';
-import { Upstream4xxCaptureService } from '@/modules/proxy-gateway/server/common/upstream-4xx-capture.service';
+import { ProxyGuard } from '@/server/gateway/guards/proxy.guard';
+import { GeminiClient } from '@/server/gateway/modules/gemini/gemini-client.service';
+import { GeminiController } from '@/server/gateway/modules/gemini/gemini.controller';
+import { GeminiService } from '@/server/gateway/modules/gemini/gemini.service';
+import { Upstream4xxCaptureService } from '@/server/gateway/common/upstream-4xx-capture.service';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { setServerConfig } from '@/server/server-config';
 import { logger } from '@/shared/logging/logger';
@@ -22,9 +22,9 @@ import {
   createUpstream,
 } from './proxy-real-path.harness';
 
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', async (original) => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
   ...(await original<
-    typeof import('@/modules/proxy-gateway/server/common/utils/request-user-agent')
+    typeof import('@/server/gateway/common/utils/request-user-agent')
   >()),
   resolveRequestUserAgent: async () => 'controlled-deadline-fixture',
   buildContentRequestUserAgent: () => 'controlled-deadline-fixture',

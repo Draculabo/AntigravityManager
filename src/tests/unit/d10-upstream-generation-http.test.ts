@@ -9,12 +9,12 @@ import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
-import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
-import { Upstream4xxCaptureService } from '@/modules/proxy-gateway/server/common/upstream-4xx-capture.service';
-import { OpenAIChatController } from '@/modules/proxy-gateway/server/modules/openai/openai-chat.controller';
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
-import { OpenAIService } from '@/modules/proxy-gateway/server/modules/openai/openai.service';
-import { ProxyGuard } from '@/modules/proxy-gateway/server/guards/proxy.guard';
+import { GeminiClient } from '@/server/gateway/modules/gemini/gemini-client.service';
+import { Upstream4xxCaptureService } from '@/server/gateway/common/upstream-4xx-capture.service';
+import { OpenAIChatController } from '@/server/gateway/modules/openai/openai-chat.controller';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
+import { OpenAIService } from '@/server/gateway/modules/openai/openai.service';
+import { ProxyGuard } from '@/server/gateway/guards/proxy.guard';
 import { getServerConfig, setServerConfig } from '@/server/server-config';
 import { logger } from '@/shared/logging/logger';
 import {
@@ -24,9 +24,9 @@ import {
   geminiTextResponse,
 } from './proxy-real-path.harness';
 
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', async (original) => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
   ...(await original<
-    typeof import('@/modules/proxy-gateway/server/common/utils/request-user-agent')
+    typeof import('@/server/gateway/common/utils/request-user-agent')
   >()),
   resolveRequestUserAgent: async () => 'd10-loopback-fixture',
   buildContentRequestUserAgent: () => 'd10-loopback-fixture',

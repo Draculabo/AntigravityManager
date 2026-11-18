@@ -1,8 +1,8 @@
 import { BadRequestException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 
-import { FileStoreError } from '@/modules/proxy-gateway/server/modules/files/file-store.types';
-import { FILE_UPLOAD_MULTIPART_LIMITS } from '@/modules/proxy-gateway/server/modules/files/file-upload-request';
+import { FileStoreError } from '@/server/gateway/modules/files/file-store.types';
+import { FILE_UPLOAD_MULTIPART_LIMITS } from '@/server/gateway/modules/files/file-upload-request';
 import {
   createFilesHttpApp,
   fileMultipartPayload,

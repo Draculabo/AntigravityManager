@@ -3,16 +3,16 @@ import type {
   WeeklyWarmupRequest,
 } from '@/modules/cloud-account/weekly-warmup';
 import { transformClaudeRequestIn } from './antigravity/ClaudeRequestMapper';
-import { Upstream4xxCaptureService } from './server/common/upstream-4xx-capture.service';
-import { GeminiClient } from './server/modules/gemini/gemini-client.service';
-import { createGeminiRequestEnvelope } from './server/modules/gemini/gemini-request-envelope';
-import { ModelRoutingService } from './server/shared/services/model-routing.service';
-import { resolveBareFamilyModel } from './server/modules/account-lease/policies/account-bare-model-tier';
+import { Upstream4xxCaptureService } from '../../server/gateway/common/upstream-4xx-capture.service';
+import { GeminiClient } from '../../server/gateway/modules/gemini/gemini-client.service';
+import { createGeminiRequestEnvelope } from '../../server/gateway/modules/gemini/gemini-request-envelope';
+import { ModelRoutingService } from '../../server/gateway/shared/services/model-routing.service';
+import { resolveBareFamilyModel } from '../../server/gateway/modules/account-lease/policies/account-bare-model-tier';
 import {
   isModelTierBindingAllowed,
   resolveModelVariant,
 } from './antigravity/model-variant-registry';
-import { throwIfRequestAborted } from './server/common/request-cancellation';
+import { throwIfRequestAborted } from '../../server/gateway/common/request-cancellation';
 
 type WarmupClient = Pick<GeminiClient, 'warmupInternal'>;
 

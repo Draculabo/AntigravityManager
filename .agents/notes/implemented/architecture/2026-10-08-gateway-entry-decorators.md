@@ -13,14 +13,14 @@ obscured each operation.
 ## Decision
 
 Audit and thought management parameters use the gateway's
-[ZodSchemaPipe](../../../../src/modules/proxy-gateway/server/common/zod-schema.pipe.ts).
+[ZodSchemaPipe](../../../../src/server/gateway/common/zod-schema.pipe.ts).
 Existing schemas remain at their owning entry and preserve coercion, trimming,
 defaults, limits and flattened bad-request envelopes. The body-chunk handler
 declares its UUID parameter last because Nest resolves parameter Pipes in reverse
 order; this preserves UUID-first errors when both path and query are invalid.
 
 Batch, ordinary Files and OpenAI Uploads handlers use
-[ProtocolErrors](../../../../src/modules/proxy-gateway/server/common/protocol-errors.decorator.ts)
+[ProtocolErrors](../../../../src/server/gateway/common/protocol-errors.decorator.ts)
 with their existing dialect mapper. The decorator binds a local Interceptor that
 converts mapped bodies and statuses into HTTP exceptions. Guards execute before
 Interceptors, so authentication denials retain their existing handling. Handler
@@ -58,7 +58,7 @@ including the successful unknown-model fallback; generation and abort scopes sta
 explicit.
 
 Thought management mutations use
-[AuditAdminOperation](../../../../src/modules/proxy-gateway/server/modules/observability/admin-operation-audit.decorator.ts).
+[AuditAdminOperation](../../../../src/server/gateway/modules/observability/admin-operation-audit.decorator.ts).
 Its Interceptor records after the operation resolves and before HTTP serialization,
 using a typed result projector for affected counts. It applies only to single-result
 management operations. Mutation failures do not record success, and recorder

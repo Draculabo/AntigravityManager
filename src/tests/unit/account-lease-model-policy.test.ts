@@ -1,7 +1,7 @@
-import { ModelAvailabilityService } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
+import { ModelAvailabilityService } from '@/server/gateway/shared/services/model-availability.service';
 import { describe, expect, it, vi } from 'vitest';
-import { AccountLeaseModelPolicy } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-model.policy';
-import type { AccountLeaseTokenData } from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-token-types';
+import { AccountLeaseModelPolicy } from '@/server/gateway/modules/account-lease/policies/account-lease-model.policy';
+import type { AccountLeaseTokenData } from '@/server/gateway/modules/account-lease/interfaces/account-lease-token-types';
 
 function createToken(overrides: Partial<AccountLeaseTokenData> = {}): AccountLeaseTokenData {
   return {

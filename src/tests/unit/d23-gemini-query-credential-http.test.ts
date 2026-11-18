@@ -10,21 +10,21 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createFastifyAdapter } from '@/server/main';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { getServerConfig, setServerConfig } from '@/server/server-config';
-import { ProxyGuard } from '@/modules/proxy-gateway/server/guards/proxy.guard';
-import { AdminGuard } from '@/modules/proxy-gateway/server/guards/admin.guard';
-import { extractApiKeyToken } from '@/modules/proxy-gateway/server/guards/api-key-auth.util';
-import { GeminiController } from '@/modules/proxy-gateway/server/modules/gemini/gemini.controller';
-import { GeminiService } from '@/modules/proxy-gateway/server/modules/gemini/gemini.service';
-import { GeminiFilesController } from '@/modules/proxy-gateway/server/modules/files/gemini-files.controller';
-import { FilesService } from '@/modules/proxy-gateway/server/modules/files/files.service';
-import type { StoredFileRecord } from '@/modules/proxy-gateway/server/modules/files/file-store.types';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
+import { ProxyGuard } from '@/server/gateway/guards/proxy.guard';
+import { AdminGuard } from '@/server/gateway/guards/admin.guard';
+import { extractApiKeyToken } from '@/server/gateway/guards/api-key-auth.util';
+import { GeminiController } from '@/server/gateway/modules/gemini/gemini.controller';
+import { GeminiService } from '@/server/gateway/modules/gemini/gemini.service';
+import { GeminiFilesController } from '@/server/gateway/modules/files/gemini-files.controller';
+import { FilesService } from '@/server/gateway/modules/files/files.service';
+import type { StoredFileRecord } from '@/server/gateway/modules/files/file-store.types';
+import { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
 import {
   resolveGeminiSessionScope,
   tenantIdentity,
-} from '@/modules/proxy-gateway/server/common/signature-session-scope';
+} from '@/server/gateway/common/signature-session-scope';
 import { resolveThoughtSession } from '@/modules/proxy-gateway/audit/traffic-audit-http-metadata';
-import { attachOpenAIResponsesWebSocketServer } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.server';
+import { attachOpenAIResponsesWebSocketServer } from '@/server/gateway/modules/openai/responses/openai-responses-websocket.server';
 
 vi.mock('@/modules/proxy-gateway/opencode-sync/opencode-credentials', () => ({
   openCodeCredentialService: { matches: () => false },

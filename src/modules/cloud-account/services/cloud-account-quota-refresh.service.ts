@@ -23,8 +23,8 @@ import {
   evictAccountFromActiveLeaseCache,
   quarantineAccountInActiveLeaseCache,
 } from './CloudAccountHealthService';
-import { classifyForbiddenUpstreamError } from '@/modules/proxy-gateway/server/common/google-error-details';
-import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
+import { classifyForbiddenUpstreamError } from '@/server/gateway/common/google-error-details';
+import { proxyModelAvailabilityStore } from '@/server/gateway/shared/services/model-availability.service';
 import { AppError } from '@/shared/errors/appError';
 import { logger } from '@/shared/logging/logger';
 import { CloudAccountRefreshWriteback } from './cloud-account-refresh-writeback';

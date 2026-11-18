@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AccountLeaseFulfillmentPolicy } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-fulfillment.policy';
-import type { AccountLeaseHydrationPolicy } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-hydration.policy';
-import { AccountLeaseRefreshRejectedError } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-hydration.policy';
-import type { AccountLeaseTokenData } from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-token-types';
-import type { AccountLeaseAccountStore } from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-adapters';
+import { AccountLeaseFulfillmentPolicy } from '@/server/gateway/modules/account-lease/policies/account-lease-fulfillment.policy';
+import type { AccountLeaseHydrationPolicy } from '@/server/gateway/modules/account-lease/policies/account-lease-hydration.policy';
+import { AccountLeaseRefreshRejectedError } from '@/server/gateway/modules/account-lease/policies/account-lease-hydration.policy';
+import type { AccountLeaseTokenData } from '@/server/gateway/modules/account-lease/interfaces/account-lease-token-types';
+import type { AccountLeaseAccountStore } from '@/server/gateway/modules/account-lease/interfaces/account-lease-adapters';
 
 function createAccountStore(): AccountLeaseAccountStore {
   return {

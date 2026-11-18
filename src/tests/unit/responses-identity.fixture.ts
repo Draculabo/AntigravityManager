@@ -1,4 +1,4 @@
-import type { ResponsesInitialIdentity } from '@/modules/proxy-gateway/server/modules/openai/responses/responses-initial-identity';
+import type { ResponsesInitialIdentity } from '@/server/gateway/modules/openai/responses/responses-initial-identity';
 
 /** Synthetic metadata for storage/authorization tests that do not exercise task derivation. */
 export const responsesIdentityFixture = Object.freeze({

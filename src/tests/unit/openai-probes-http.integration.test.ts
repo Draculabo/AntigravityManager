@@ -8,12 +8,12 @@ import { z } from 'zod';
 import { name, version } from '../../../package.json';
 import { DEFAULT_APP_CONFIG, type ProxyConfig } from '@/modules/config/types';
 import { getServerConfig, setServerConfig } from '@/server/server-config';
-import { ProxyGuard } from '@/modules/proxy-gateway/server/guards/proxy.guard';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
-import { OpenAIModelsController } from '@/modules/proxy-gateway/server/modules/openai/openai-models.controller';
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
-import { OpenAIProbesController } from '@/modules/proxy-gateway/server/modules/openai/openai-probes.controller';
-import { OpenAIService } from '@/modules/proxy-gateway/server/modules/openai/openai.service';
+import { ProxyGuard } from '@/server/gateway/guards/proxy.guard';
+import { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
+import { OpenAIModelsController } from '@/server/gateway/modules/openai/openai-models.controller';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
+import { OpenAIProbesController } from '@/server/gateway/modules/openai/openai-probes.controller';
+import { OpenAIService } from '@/server/gateway/modules/openai/openai.service';
 
 vi.mock('@/modules/proxy-gateway/opencode-sync/opencode-credentials', () => ({
   openCodeCredentialService: { matches: () => false },

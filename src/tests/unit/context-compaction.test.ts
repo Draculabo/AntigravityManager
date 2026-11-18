@@ -5,7 +5,7 @@ import {
   fingerprintCompactionInput,
   resolveCompactionPolicy,
   resolveManualCompactionCommand,
-} from '@/modules/proxy-gateway/server/common/context-compaction';
+} from '@/server/gateway/common/context-compaction';
 
 describe('Cowork context compaction coordination', () => {
   it('computes the target from fixed overhead and raises the effective threshold', () => {

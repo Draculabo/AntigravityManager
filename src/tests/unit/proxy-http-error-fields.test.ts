@@ -1,16 +1,16 @@
 import { BadRequestException, HttpException, Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AnthropicController } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
-import type { AnthropicService } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.service';
-import type { OpenAIService } from '@/modules/proxy-gateway/server/modules/openai/openai.service';
-import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
-import { ProxyAccountUnavailableError } from '@/modules/proxy-gateway/server/common/exceptions/proxy-account-unavailable.exception';
+import { AnthropicController } from '@/server/gateway/modules/anthropic/anthropic.controller';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
+import type { AnthropicService } from '@/server/gateway/modules/anthropic/anthropic.service';
+import type { OpenAIService } from '@/server/gateway/modules/openai/openai.service';
+import { UpstreamRequestError } from '@/server/gateway/common/exceptions/upstream-request.exception';
+import { ProxyAccountUnavailableError } from '@/server/gateway/common/exceptions/proxy-account-unavailable.exception';
 import { SchemaInputError } from '@/modules/proxy-gateway/antigravity/schema/SchemaConversion';
 import { ToolConfigurationError } from '@/modules/proxy-gateway/antigravity/ToolChoiceCompat';
 import { InvalidToolResultAssociationError } from '@/modules/proxy-gateway/antigravity/ClaudeToolResultAssociation';
-import { InvalidModelEffortError } from '@/modules/proxy-gateway/server/common/invalid-model-effort.error';
-import { OutputTokenLimitConflictError } from '@/modules/proxy-gateway/server/common/output-token-limit';
+import { InvalidModelEffortError } from '@/server/gateway/common/invalid-model-effort.error';
+import { OutputTokenLimitConflictError } from '@/server/gateway/common/output-token-limit';
 import {
   createReply,
   createAccount,
@@ -19,7 +19,7 @@ import {
   createUpstream,
 } from './proxy-real-path.harness';
 
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', () => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', () => ({
   resolveRequestUserAgent: async () => 'controlled-error-fields/0.0.0',
   buildContentRequestUserAgent: () => 'controlled-error-fields/0.0.0',
   resolveLocalInstalledVersion: () => '0.0.0',

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createUpstreamSessionIdentity,
   withUpstreamSessionIdentity,
-} from '@/modules/proxy-gateway/server/common/upstream-session-identity';
+} from '@/server/gateway/common/upstream-session-identity';
 import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
 
 afterEach(() => vi.useRealTimers());

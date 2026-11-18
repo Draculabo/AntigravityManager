@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ProxyModule } from '../modules/proxy-gateway/server/proxy.module';
+import { ProxyModule } from './gateway/proxy.module';
 
 @Module({
   imports: [ProxyModule],

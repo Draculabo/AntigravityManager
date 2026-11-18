@@ -8,7 +8,7 @@ import {
   defaultModelRouteMissJournalOptions,
   MODEL_ROUTE_MISS_JOURNAL_TTL_MS,
   ModelRouteMissJournalService,
-} from '@/modules/proxy-gateway/server/shared/services/model-route-miss-journal.service';
+} from '@/server/gateway/shared/services/model-route-miss-journal.service';
 
 describe('ModelRouteMissJournalService durability', () => {
   let directory = '';

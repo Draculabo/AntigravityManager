@@ -1,16 +1,16 @@
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', () => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', () => ({
   resolveRequestUserAgent: async () => 'aggregation-fixture',
   resolveLocalInstalledVersion: () => '0.0.0',
 }));
 import { Readable } from 'node:stream';
 import { afterEach, expect, it, vi } from 'vitest';
-import { BaseProxyService } from '@/modules/proxy-gateway/server/common/base-proxy.service';
+import { BaseProxyService } from '@/server/gateway/common/base-proxy.service';
 import {
   AggregationAdmission,
   AggregationAdmissionError,
   aggregationAdmission,
-} from '@/modules/proxy-gateway/server/common/aggregation-admission';
-import { aggregateGeminiFallback } from '@/modules/proxy-gateway/server/common/aggregate-gemini-fallback';
+} from '@/server/gateway/common/aggregation-admission';
+import { aggregateGeminiFallback } from '@/server/gateway/common/aggregate-gemini-fallback';
 import {
   createAccount,
   createGateway,

@@ -1,14 +1,14 @@
 import { BadRequestException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 
-import { BatchRunnerService } from '@/modules/proxy-gateway/server/modules/batch/batch-runner.service';
-import { BatchService } from '@/modules/proxy-gateway/server/modules/batch/batch.service';
+import { BatchRunnerService } from '@/server/gateway/modules/batch/batch-runner.service';
+import { BatchService } from '@/server/gateway/modules/batch/batch.service';
 import {
   BatchJobError,
   type BatchJobRecord,
-} from '@/modules/proxy-gateway/server/modules/batch/batch-job.types';
-import { toOpenAIBatchObject } from '@/modules/proxy-gateway/server/modules/batch/openai-batch-resource';
-import { toAnthropicMessageBatch } from '@/modules/proxy-gateway/server/modules/batch/anthropic-batch-resource';
+} from '@/server/gateway/modules/batch/batch-job.types';
+import { toOpenAIBatchObject } from '@/server/gateway/modules/batch/openai-batch-resource';
+import { toAnthropicMessageBatch } from '@/server/gateway/modules/batch/anthropic-batch-resource';
 import { batchTestHeaders, createBatchHttpApp } from '../helpers/batch-http-app';
 
 const bareId = '0'.repeat(24);

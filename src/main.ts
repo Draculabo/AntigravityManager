@@ -35,7 +35,7 @@ import { createDesktopShutdownCoordinator } from '@/modules/app-shell/services/d
 import { ProfileLease, ProfileOwnershipError } from '@/core/ownership/profile-lease';
 import { initDatabase } from '@/modules/account/public';
 import { CloudMonitorService } from '@/modules/cloud-account/services/CloudMonitorService';
-import { configureImageQuotaRefresh } from '@/modules/proxy-gateway/server/modules/openai/image-quota-refresh';
+import { configureImageQuotaRefresh } from '@/server/gateway/modules/openai/image-quota-refresh';
 import { auditFileOwner } from '@/modules/proxy-gateway/audit/audit-file-owner.service';
 import { auditOwner } from '@/modules/proxy-gateway/audit/audit-owner.service';
 import { auditCurlOwner } from '@/modules/proxy-gateway/traffic-monitor/audit-curl-owner.service';

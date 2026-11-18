@@ -5,10 +5,10 @@ import {
   ThinkingOnlyRecovery,
   recoverThinkingOnlyStream,
   combineRecoveryUsage,
-} from '@/modules/proxy-gateway/server/common/thinking-only-recovery';
-import { getStreamOutputRetainedBytes } from '@/modules/proxy-gateway/server/common/stream-output-budget';
+} from '@/server/gateway/common/thinking-only-recovery';
+import { getStreamOutputRetainedBytes } from '@/server/gateway/common/stream-output-budget';
 import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
-import type { GeminiResponse } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+import type { GeminiResponse } from '@/server/gateway/common/interfaces/request-interfaces';
 import { isTerminalGenerationFailure } from '@/modules/proxy-gateway/antigravity/UpstreamGenerationError';
 import {
   decodeInternalSseData,
@@ -19,7 +19,7 @@ import {
   generationDeadlineAt,
   admitUpstreamGenerationSend,
   LARGE_GENERATION_SEND_BYTES,
-} from '@/modules/proxy-gateway/server/common/generation-deadline';
+} from '@/server/gateway/common/generation-deadline';
 
 const wire = (response: GeminiResponse) => Buffer.from(`data: ${JSON.stringify({ response })}\n\n`);
 const thought: GeminiResponse = {

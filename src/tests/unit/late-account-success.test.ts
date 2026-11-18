@@ -1,17 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Readable } from 'node:stream';
 import { isObservable } from 'rxjs';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
+import { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
 import type {
   AccountLeaseAccountStore,
   AccountLeaseUpstream,
-} from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-adapters';
-import { ProxyRetryService } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
-import { ModelAvailabilityService } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
+} from '@/server/gateway/modules/account-lease/interfaces/account-lease-adapters';
+import { ProxyRetryService } from '@/server/gateway/shared/services/proxy-retry.service';
+import { ModelAvailabilityService } from '@/server/gateway/shared/services/model-availability.service';
 import {
   RateLimitTrackerService,
   RateLimitReason,
-} from '@/modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
+} from '@/server/gateway/shared/services/rate-limit-tracker.service';
 import {
   createAccount,
   createGateway,
@@ -21,9 +21,9 @@ import {
   collect,
 } from './proxy-real-path.harness';
 
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', async (original) => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
   ...(await original<
-    typeof import('@/modules/proxy-gateway/server/common/utils/request-user-agent')
+    typeof import('@/server/gateway/common/utils/request-user-agent')
   >()),
   resolveRequestUserAgent: async () => 'synthetic-late-success/0.0.0',
 }));

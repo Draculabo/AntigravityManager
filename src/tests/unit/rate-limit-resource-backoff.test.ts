@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   RateLimitReason,
   RateLimitTrackerService,
-} from '@/modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
+} from '@/server/gateway/shared/services/rate-limit-tracker.service';
 
 const now = Date.UTC(2026, 9, 13);
 const genericError = {

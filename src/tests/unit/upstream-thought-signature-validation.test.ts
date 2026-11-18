@@ -4,10 +4,10 @@ import { Readable } from 'node:stream';
 import {
   findUpstreamThoughtSignatureConflict,
   UpstreamThoughtSignatureConflictError,
-} from '@/modules/proxy-gateway/server/common/upstream-thought-signature-validation';
+} from '@/server/gateway/common/upstream-thought-signature-validation';
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
-import { GeminiController } from '@/modules/proxy-gateway/server/modules/gemini/gemini.controller';
-import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
+import { GeminiController } from '@/server/gateway/modules/gemini/gemini.controller';
+import { proxyModelAvailabilityStore } from '@/server/gateway/shared/services/model-availability.service';
 import {
   createAccount,
   createGateway,
@@ -18,10 +18,10 @@ import {
 } from './proxy-real-path.harness';
 
 vi.mock(
-  '@/modules/proxy-gateway/server/common/utils/request-user-agent',
+  '@/server/gateway/common/utils/request-user-agent',
   async (importOriginal) => ({
     ...(await importOriginal<
-      typeof import('@/modules/proxy-gateway/server/common/utils/request-user-agent')
+      typeof import('@/server/gateway/common/utils/request-user-agent')
     >()),
     resolveRequestUserAgent: async () => 'antigravity-parity-harness/0.0.0',
   }),

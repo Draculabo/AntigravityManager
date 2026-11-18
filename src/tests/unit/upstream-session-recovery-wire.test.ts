@@ -7,11 +7,11 @@ import { getServerConfig, setServerConfig } from '@/server/server-config';
 import {
   GeminiClient,
   type InternalGenerationOptions,
-} from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
-import { Upstream4xxCaptureService } from '@/modules/proxy-gateway/server/common/upstream-4xx-capture.service';
-import { createUpstreamSessionIdentity } from '@/modules/proxy-gateway/server/common/upstream-session-identity';
+} from '@/server/gateway/modules/gemini/gemini-client.service';
+import { Upstream4xxCaptureService } from '@/server/gateway/common/upstream-4xx-capture.service';
+import { createUpstreamSessionIdentity } from '@/server/gateway/common/upstream-session-identity';
 import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
-import { explicitContextCacheManager } from '@/modules/proxy-gateway/server/modules/gemini/explicit-context-cache.store';
+import { explicitContextCacheManager } from '@/server/gateway/modules/gemini/explicit-context-cache.store';
 import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
 import * as audit from '@/modules/proxy-gateway/audit/traffic-audit-context';
 

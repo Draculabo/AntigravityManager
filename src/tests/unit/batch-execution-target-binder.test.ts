@@ -1,12 +1,12 @@
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { describe, expect, it, vi } from 'vitest';
-import { BatchExecutionTargetBinder } from '@/modules/proxy-gateway/server/batch-execution-target.binder';
-import { BatchService } from '@/modules/proxy-gateway/server/modules/batch/batch.service';
-import type { BatchExecutionTarget } from '@/modules/proxy-gateway/server/modules/batch/batch-request-executor';
-import { OpenAIService } from '@/modules/proxy-gateway/server/modules/openai/openai.service';
-import { AnthropicService } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.service';
-import { GeminiService } from '@/modules/proxy-gateway/server/modules/gemini/gemini.service';
+import { BatchExecutionTargetBinder } from '@/server/gateway/batch-execution-target.binder';
+import { BatchService } from '@/server/gateway/modules/batch/batch.service';
+import type { BatchExecutionTarget } from '@/server/gateway/modules/batch/batch-request-executor';
+import { OpenAIService } from '@/server/gateway/modules/openai/openai.service';
+import { AnthropicService } from '@/server/gateway/modules/anthropic/anthropic.service';
+import { GeminiService } from '@/server/gateway/modules/gemini/gemini.service';
 
 describe('batch execution target Nest bootstrap', () => {
   it('injects all targets without relying on emitted design:paramtypes metadata', async () => {

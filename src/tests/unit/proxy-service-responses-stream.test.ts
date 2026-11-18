@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { lastValueFrom, Observable, toArray } from 'rxjs';
 
 import { MAX_SSE_EVENT_BYTES } from '@/modules/proxy-gateway/antigravity/internal-sse';
-import { OpenAIService as ProxyService } from '@/modules/proxy-gateway/server/modules/openai/openai.service';
+import { OpenAIService as ProxyService } from '@/server/gateway/modules/openai/openai.service';
 import { createAccount } from './proxy-real-path.harness';
 
 function parseEvent(serializedEvent: string): Record<string, unknown> {

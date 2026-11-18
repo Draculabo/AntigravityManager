@@ -5,9 +5,9 @@ import { afterEach, vi } from 'vitest';
 
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { getServerConfig, setServerConfig } from '@/server/server-config';
-import { ProxyGuard } from '@/modules/proxy-gateway/server/guards/proxy.guard';
-import { AnthropicCompleteController } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic-complete.controller';
-import { AnthropicService } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.service';
+import { ProxyGuard } from '@/server/gateway/guards/proxy.guard';
+import { AnthropicCompleteController } from '@/server/gateway/modules/anthropic/anthropic-complete.controller';
+import { AnthropicService } from '@/server/gateway/modules/anthropic/anthropic.service';
 
 vi.mock('@/modules/proxy-gateway/opencode-sync/opencode-credentials', () => ({
   openCodeCredentialService: { matches: () => false },

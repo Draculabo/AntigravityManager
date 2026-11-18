@@ -6,7 +6,7 @@ import {
   MAX_TOTAL_INPUT_IMAGE_BYTES,
   parseGenerationInputImages,
   validateInputImageLimits,
-} from '@/modules/proxy-gateway/server/modules/openai/media/image-input-validation';
+} from '@/server/gateway/modules/openai/media/image-input-validation';
 
 describe('image input validation', () => {
   it('preserves valid generation images in request order', () => {

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Hash } from 'node:crypto';
-import { hashSessionAnchor } from '@/modules/proxy-gateway/server/common/session-anchor-hash';
+import { hashSessionAnchor } from '@/server/gateway/common/session-anchor-hash';
 
 const writes = vi.hoisted(() => ({ largest: 0, count: 0 }));
 beforeEach(() => {

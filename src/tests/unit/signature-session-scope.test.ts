@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
-import type { RequestHeaders } from '@/modules/proxy-gateway/server/guards/api-key-auth.util';
+import type { RequestHeaders } from '@/server/gateway/guards/api-key-auth.util';
 import {
   resolveAnthropicSessionScope,
   resolveOpenAISessionScope,
-} from '@/modules/proxy-gateway/server/common/signature-session-scope';
+} from '@/server/gateway/common/signature-session-scope';
 import type {
   AnthropicChatRequest,
   OpenAIChatRequest,
-} from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+} from '@/server/gateway/common/interfaces/request-interfaces';
 
 const openAI: OpenAIChatRequest = {
   model: 'gemini-pro-agent',

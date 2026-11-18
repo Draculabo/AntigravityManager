@@ -1,4 +1,4 @@
-import type { OpenAITool } from '../server/common/interfaces/request-interfaces';
+import type { OpenAITool } from '../../../server/gateway/common/interfaces/request-interfaces';
 import { flattenOpenAITools, getOpenAIToolName } from './ToolNamespace';
 
 export function isDeclaredOpenAICustomTool(name: string, tools: OpenAITool[] | undefined): boolean {

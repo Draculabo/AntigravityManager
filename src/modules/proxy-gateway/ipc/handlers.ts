@@ -4,7 +4,7 @@
  */
 import { ConfigManager } from '@/modules/config/ipc/manager';
 import { getNestServerStatus, type NestServerStartResult } from '@/server/main';
-import { explicitContextCacheManager } from '../server/modules/gemini/explicit-context-cache.store';
+import { explicitContextCacheManager } from '../../../server/gateway/modules/gemini/explicit-context-cache.store';
 import { gatewayLifecycleService } from '../services/gateway-lifecycle.service';
 
 /**

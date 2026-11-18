@@ -6,7 +6,7 @@ import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/
 import type { ThoughtRecord } from '@/modules/proxy-gateway/thought-store/thought-store.types';
 import type { TrafficAuditRequestContext } from '@/modules/proxy-gateway/audit/traffic-audit-context';
 import { thoughtCausalHistory } from '@/modules/proxy-gateway/thought-store/thought-causal-history';
-import { hashSessionAnchor } from '@/modules/proxy-gateway/server/common/session-anchor-hash';
+import { hashSessionAnchor } from '@/server/gateway/common/session-anchor-hash';
 import type {
   SqliteWorkerCommand,
   SqliteWorkerWriteCallbacks,

@@ -4,9 +4,9 @@ import { z } from 'zod';
 import {
   createLazySseStream,
   FlowControlledSseStream,
-} from '@/modules/proxy-gateway/server/common/flow-controlled-sse-stream';
-import { createResponsesStream } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-stream';
-import { createSyntheticResponsesStream } from '@/modules/proxy-gateway/server/modules/openai/openai-synthetic-streams';
+} from '@/server/gateway/common/flow-controlled-sse-stream';
+import { createResponsesStream } from '@/server/gateway/modules/openai/responses/openai-responses-stream';
+import { createSyntheticResponsesStream } from '@/server/gateway/modules/openai/openai-synthetic-streams';
 import type { GeminiResponsesStreamPart } from '@/modules/proxy-gateway/antigravity/OpenAIResponsesStreamingMapper';
 
 const eventSchema = z.object({ type: z.string(), sequence_number: z.number() }).passthrough();

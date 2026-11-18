@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { Readable } from 'node:stream';
 
 import { IncrementalSseRedactor } from '@/modules/proxy-gateway/audit/incremental-sse-redactor';
-import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
-import { Upstream4xxCaptureService } from '@/modules/proxy-gateway/server/common/upstream-4xx-capture.service';
+import { GeminiClient } from '@/server/gateway/modules/gemini/gemini-client.service';
+import { Upstream4xxCaptureService } from '@/server/gateway/common/upstream-4xx-capture.service';
 
 const axiosMock = vi.hoisted(() => ({
   post: vi.fn(),

@@ -7,12 +7,12 @@ import {
   decodeResponsesHistoryOwner,
   getOwnedResponsesHistory,
   resolveResponsesHistoryOwner,
-} from '@/modules/proxy-gateway/server/modules/openai/responses/responses-history-owner';
-import { OpenAIResponsesSessionStoreImpl } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
+} from '@/server/gateway/modules/openai/responses/responses-history-owner';
+import { OpenAIResponsesSessionStoreImpl } from '@/server/gateway/modules/openai/responses/openai-responses-session.store';
 import {
   OPENAI_RESPONSES_SESSION_FILENAME,
   OpenAIResponsesSessionService,
-} from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.service';
+} from '@/server/gateway/modules/openai/responses/openai-responses-session.service';
 
 const a = resolveResponsesHistoryOwner({ authorization: 'Bearer synthetic-owner-a' });
 const b = resolveResponsesHistoryOwner({ 'x-api-key': 'synthetic-owner-b' });

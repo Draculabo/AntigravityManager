@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
+import { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
 import type {
   AccountLeaseAccountStore,
   AccountLeaseUpstream,
-} from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-adapters';
-import { ModelAvailabilityService } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
+} from '@/server/gateway/modules/account-lease/interfaces/account-lease-adapters';
+import { ModelAvailabilityService } from '@/server/gateway/shared/services/model-availability.service';
 import {
   RateLimitReason,
   RateLimitTrackerService,
-} from '@/modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
-import { ProxyRetryService } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
+} from '@/server/gateway/shared/services/rate-limit-tracker.service';
+import { ProxyRetryService } from '@/server/gateway/shared/services/proxy-retry.service';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { getServerConfig, setServerConfig } from '@/server/server-config';
 import { createAccount } from './proxy-real-path.harness';

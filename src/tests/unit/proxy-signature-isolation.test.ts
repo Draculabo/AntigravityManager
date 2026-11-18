@@ -3,7 +3,7 @@ import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureSto
 import type {
   AnthropicChatRequest,
   OpenAIChatRequest,
-} from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+} from '@/server/gateway/common/interfaces/request-interfaces';
 import {
   collect,
   createAccount,
@@ -14,7 +14,7 @@ import {
 } from './proxy-real-path.harness';
 import { Observable } from 'rxjs';
 
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', async (original) => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
   ...(await original<object>()),
   resolveRequestUserAgent: async () => 'signature-test/1.0',
 }));

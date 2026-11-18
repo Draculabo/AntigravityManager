@@ -1,4 +1,4 @@
-import { getGenerationTimeoutMs } from '../server/common/generation-timeout-policy';
+import { getGenerationTimeoutMs } from '../../../server/gateway/common/generation-timeout-policy';
 import { StringDecoder } from 'node:string_decoder';
 import axios from 'axios';
 import { z } from 'zod';

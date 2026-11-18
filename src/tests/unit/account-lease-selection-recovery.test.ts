@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AccountLeaseSelectionPolicy,
   type AccountLeaseSelectionRequest,
-} from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-selection.policy';
-import { AccountLeaseSelectionWait } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-selection-wait';
+} from '@/server/gateway/modules/account-lease/policies/account-lease-selection.policy';
+import { AccountLeaseSelectionWait } from '@/server/gateway/modules/account-lease/policies/account-lease-selection-wait';
 
 function request(
   overrides: Partial<AccountLeaseSelectionRequest<string>> = {},

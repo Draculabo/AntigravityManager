@@ -8,7 +8,7 @@ import {
 } from './types';
 import { SignatureStore } from './SignatureStore';
 import { ResponseToolCallIdentity } from './ResponseToolCallIdentity';
-import { hashSessionAnchor } from '../server/common/session-anchor-hash';
+import { hashSessionAnchor } from '../../../server/gateway/common/session-anchor-hash';
 import { readThoughtSignature } from './signature-utils';
 import { toClaudeClientThoughtSignature } from './thought-signature-format';
 import { toAnthropicMessageId } from './anthropic-message-id';

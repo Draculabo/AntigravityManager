@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveGenerationPlan } from '@/modules/proxy-gateway/server/shared/generation-plan';
+import { resolveGenerationPlan } from '@/server/gateway/shared/generation-plan';
 
 describe('resolveGenerationPlan', () => {
   it('keeps -1 as adaptive and does not treat 32768 as a sentinel', () => {

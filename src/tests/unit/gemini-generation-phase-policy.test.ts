@@ -4,9 +4,9 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { Observable } from 'rxjs';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { setServerConfig } from '@/server/server-config';
-import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
+import { GeminiClient } from '@/server/gateway/modules/gemini/gemini-client.service';
 import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
-import type { GeminiResponse } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+import type { GeminiResponse } from '@/server/gateway/common/interfaces/request-interfaces';
 import {
   createAccount,
   createGateway,
@@ -14,7 +14,7 @@ import {
   createUpstream,
 } from './proxy-real-path.harness';
 
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', () => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', () => ({
   buildContentRequestUserAgent: () => 'controlled-phase-policy/0.0.0',
   resolveRequestUserAgent: async () => 'controlled-phase-policy/0.0.0',
   resolveLocalInstalledVersion: () => '0.0.0',

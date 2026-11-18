@@ -3,9 +3,9 @@ import { Observable } from 'rxjs';
 import { z } from 'zod';
 import { PIXEL_PNG, PIXEL_GIF } from '../fixtures/image-content';
 
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
-import { OpenAIResponsesSessionStore } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
-import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
+import { OpenAIResponsesSessionStore } from '@/server/gateway/modules/openai/responses/openai-responses-session.store';
+import { proxyModelAvailabilityStore } from '@/server/gateway/shared/services/model-availability.service';
 import {
   collect,
   createAccount,
@@ -18,7 +18,7 @@ import {
 } from './proxy-real-path.harness';
 
 vi.mock(
-  '@/modules/proxy-gateway/server/common/utils/request-user-agent',
+  '@/server/gateway/common/utils/request-user-agent',
   async (importOriginal) => ({
     ...(await importOriginal<Record<string, unknown>>()),
     resolveRequestUserAgent: async () => 'antigravity-parity-harness/0.0.0',

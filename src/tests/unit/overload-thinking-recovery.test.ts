@@ -4,9 +4,9 @@ import type {
   GeminiInternalRequest,
   ThinkingGeminiConfig,
 } from '@/modules/proxy-gateway/antigravity/types';
-import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
-import { GenerationDeadlineExceededError } from '@/modules/proxy-gateway/server/common/exceptions/generation-deadline.exception';
-import { OverloadThinkingRecovery } from '@/modules/proxy-gateway/server/common/overload-thinking-recovery';
+import { UpstreamRequestError } from '@/server/gateway/common/exceptions/upstream-request.exception';
+import { GenerationDeadlineExceededError } from '@/server/gateway/common/exceptions/generation-deadline.exception';
+import { OverloadThinkingRecovery } from '@/server/gateway/common/overload-thinking-recovery';
 
 function request(
   model = 'gemini-3-flash',

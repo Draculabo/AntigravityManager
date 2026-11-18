@@ -3,7 +3,7 @@ import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Observable } from 'rxjs';
 
-import type { AnthropicService } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.service';
+import type { AnthropicService } from '@/server/gateway/modules/anthropic/anthropic.service';
 import {
   createAccount,
   createGateway,
@@ -15,7 +15,7 @@ import {
 const ping = 'event: ping\ndata: {"type":"ping"}\n\n';
 
 vi.mock(
-  '@/modules/proxy-gateway/server/common/utils/request-user-agent',
+  '@/server/gateway/common/utils/request-user-agent',
   async (importOriginal) => ({
     ...(await importOriginal<Record<string, unknown>>()),
     resolveRequestUserAgent: async () => 'antigravity-timeout-test/0.0.0',

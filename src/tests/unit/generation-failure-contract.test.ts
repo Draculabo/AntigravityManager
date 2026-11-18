@@ -7,10 +7,10 @@ import {
   createLease,
   createUpstream,
 } from './proxy-real-path.harness';
-import { aggregationAdmission } from '@/modules/proxy-gateway/server/common/aggregation-admission';
-import { aggregationByteAccounting } from '@/modules/proxy-gateway/server/common/aggregation-byte-accounting';
+import { aggregationAdmission } from '@/server/gateway/common/aggregation-admission';
+import { aggregationByteAccounting } from '@/server/gateway/common/aggregation-byte-accounting';
 
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', () => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', () => ({
   resolveRequestUserAgent: async () => 'controlled-failure-contract/0.0.0',
   buildContentRequestUserAgent: () => 'controlled-failure-contract/0.0.0',
   resolveLocalInstalledVersion: () => '0.0.0',

@@ -4,15 +4,15 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import { captureTokenWriteGuard } from '@/modules/cloud-account/services/cloud-account-refresh-writeback';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
+import { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
 import {
   cloudAccountStoreAdapter,
   type AccountLeaseUpstream,
-} from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-adapters';
+} from '@/server/gateway/modules/account-lease/interfaces/account-lease-adapters';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { exportCloudAccounts } from '@/modules/cloud-account/services/cloud-account-file-policy.service';
-import { ModelAvailabilityService } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
-import { ProxyRetryService } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
+import { ModelAvailabilityService } from '@/server/gateway/shared/services/model-availability.service';
+import { ProxyRetryService } from '@/server/gateway/shared/services/proxy-retry.service';
 
 const state = vi.hoisted(() => ({ directory: '' }));
 vi.mock('better-sqlite3', async () => {

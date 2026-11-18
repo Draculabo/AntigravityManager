@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { openAIMediaTask } from '@/modules/proxy-gateway/server/common/session-media-anchor';
+import { openAIMediaTask } from '@/server/gateway/common/session-media-anchor';
 import {
   resolveAnthropicSessionScope,
   resolveGeminiSessionScope,
   resolveOpenAISessionScope,
-} from '@/modules/proxy-gateway/server/common/signature-session-scope';
-import { buildResponsesChatRequest } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-request';
+} from '@/server/gateway/common/signature-session-scope';
+import { buildResponsesChatRequest } from '@/server/gateway/modules/openai/responses/openai-responses-request';
 import type {
   AnthropicChatRequest,
   AnthropicContent,
@@ -13,7 +13,7 @@ import type {
   GeminiRequest,
   OpenAIChatRequest,
   OpenAIContentPart,
-} from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+} from '@/server/gateway/common/interfaces/request-interfaces';
 
 const headers = { authorization: 'Bearer synthetic-media-tenant', 'x-session-id': 'media-session' };
 const audio = 'UklGRjAwMDBXQVZFZm10IA==';

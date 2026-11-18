@@ -1,9 +1,9 @@
-import { validatedImageMimeType } from '../server/common/image-content-validation';
+import { validatedImageMimeType } from '../../../server/gateway/common/image-content-validation';
 import {
   MAX_INPUT_IMAGE_BYTES,
   MAX_TOTAL_INPUT_IMAGE_BYTES,
-} from '../server/modules/openai/media/image-input-validation';
-import { recordPromptTransformation } from '../server/common/prompt-transformation-diagnostics';
+} from '../../../server/gateway/modules/openai/media/image-input-validation';
+import { recordPromptTransformation } from '../../../server/gateway/common/prompt-transformation-diagnostics';
 import type { GeminiPart } from './types';
 
 export const MARKDOWN_BASE64_IMAGE_PATTERN =

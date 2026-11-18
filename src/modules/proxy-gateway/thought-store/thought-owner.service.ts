@@ -1,6 +1,6 @@
 import { z } from 'zod';
 // Compose the selected process's lazy recovery owner even before the HTTP gateway starts.
-import '../server/modules/openai/responses/responses-session-owner';
+import '../../../server/gateway/modules/openai/responses/responses-session-owner';
 import {
   thoughtStoreService,
   type ThoughtStoreService,

@@ -2,7 +2,7 @@ import type { ImageSchedulerConfig } from '@/modules/config/types';
 import {
   MEDIA_WINDOW_OMISSION_TEXT,
   planMediaSendWindow,
-} from '../server/common/media-send-window';
+} from '../../../server/gateway/common/media-send-window';
 import type { GeminiContent, GeminiPart } from './types';
 
 const BASE64_IMAGE_DATA_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/u;

@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CloudAccountHealthSchema, type CloudAccount } from '@/modules/cloud-account/types';
-import { classifyForbiddenUpstreamError } from '@/modules/proxy-gateway/server/common/google-error-details';
+import { classifyForbiddenUpstreamError } from '@/server/gateway/common/google-error-details';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { getServerConfig, setServerConfig } from '@/server/server-config';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
+import { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
 import type {
   AccountLeaseAccountStore,
   AccountLeaseUpstream,
-} from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-adapters';
+} from '@/server/gateway/modules/account-lease/interfaces/account-lease-adapters';
 
 const previous = getServerConfig() ?? DEFAULT_APP_CONFIG.proxy;
 afterEach(() => {

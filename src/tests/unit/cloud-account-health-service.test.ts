@@ -7,7 +7,7 @@ import {
   clearServiceDisabledManually,
 } from '@/modules/cloud-account/services/CloudAccountHealthService';
 import type { CloudAccount } from '@/modules/cloud-account/types';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
+import { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
 import {
   reloadNestServerAccountLeaseCache,
   clearNestServerAccountMemoryQuarantine,

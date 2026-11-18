@@ -1,9 +1,9 @@
 import axios from 'axios';
 import { createServer, type Server } from 'node:http';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
-import { Upstream4xxCaptureService } from '@/modules/proxy-gateway/server/common/upstream-4xx-capture.service';
-import { explicitContextCacheManager } from '@/modules/proxy-gateway/server/modules/gemini/explicit-context-cache.store';
+import { GeminiClient } from '@/server/gateway/modules/gemini/gemini-client.service';
+import { Upstream4xxCaptureService } from '@/server/gateway/common/upstream-4xx-capture.service';
+import { explicitContextCacheManager } from '@/server/gateway/modules/gemini/explicit-context-cache.store';
 import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
 import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
 

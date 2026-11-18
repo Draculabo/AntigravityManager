@@ -5,11 +5,11 @@ import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { of } from 'rxjs';
 
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
 import {
   defaultOpenAIChatCompletionStoreOptions,
   OpenAIChatCompletionService,
-} from '@/modules/proxy-gateway/server/modules/openai/chat/openai-chat-completion.service';
+} from '@/server/gateway/modules/openai/chat/openai-chat-completion.service';
 
 const HOUR_MS = 60 * 60 * 1000;
 

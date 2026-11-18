@@ -20,7 +20,7 @@ import {
   resolveLineageAccountAffinity,
   resolveOpenAISessionScope,
   resolveResponsesSessionScope,
-} from '@/modules/proxy-gateway/server/common/signature-session-scope';
+} from '@/server/gateway/common/signature-session-scope';
 import { thoughtCaptureLeases } from '@/modules/proxy-gateway/thought-store/thought-capture-leases';
 import { createThoughtSessionKey } from '@/modules/proxy-gateway/audit/traffic-audit-http-metadata';
 let app: FastifyInstance;

@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Logger } from '@nestjs/common';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { setServerConfig } from '@/server/server-config';
-import { AnthropicController } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
-import { GeminiController } from '@/modules/proxy-gateway/server/modules/gemini/gemini.controller';
-import { toInternalGeminiRequest } from '@/modules/proxy-gateway/server/modules/gemini/gemini-request-envelope';
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
+import { AnthropicController } from '@/server/gateway/modules/anthropic/anthropic.controller';
+import { GeminiController } from '@/server/gateway/modules/gemini/gemini.controller';
+import { toInternalGeminiRequest } from '@/server/gateway/modules/gemini/gemini-request-envelope';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
 import {
   createAccount,
   createGateway,
@@ -15,7 +15,7 @@ import {
   geminiTextResponse,
 } from './proxy-real-path.harness';
 
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', () => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', () => ({
   resolveRequestUserAgent: async () => 'controlled-prompt-boundary/0.0.0',
   buildContentRequestUserAgent: () => 'controlled-prompt-boundary/0.0.0',
   resolveLocalInstalledVersion: () => '0.0.0',

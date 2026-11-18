@@ -4,19 +4,19 @@ import { Observable } from 'rxjs';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { getServerConfig, setServerConfig } from '@/server/server-config';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
+import { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
 import type {
   AccountLeaseAccountStore,
   AccountLeaseUpstream,
-} from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-adapters';
-import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
+} from '@/server/gateway/modules/account-lease/interfaces/account-lease-adapters';
+import { ModelRoutingService } from '@/server/gateway/shared/services/model-routing.service';
 import {
   NoAvailableAdaptiveModelError,
   resolveAdaptiveModel,
-} from '@/modules/proxy-gateway/server/shared/services/adaptive-model-routing';
-import { tryResolveModelDiscoveryMetadata } from '@/modules/proxy-gateway/server/shared/services/model-discovery-metadata';
-import { ModelAvailabilityService } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
-import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
+} from '@/server/gateway/shared/services/adaptive-model-routing';
+import { tryResolveModelDiscoveryMetadata } from '@/server/gateway/shared/services/model-discovery-metadata';
+import { ModelAvailabilityService } from '@/server/gateway/shared/services/model-availability.service';
+import { UpstreamRequestError } from '@/server/gateway/common/exceptions/upstream-request.exception';
 import {
   collect,
   createAccount,
@@ -26,7 +26,7 @@ import {
   geminiTextResponse,
 } from './proxy-real-path.harness';
 
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', async (original) => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
   ...(await original<object>()),
   resolveRequestUserAgent: async () => 'd22-test/1.0',
 }));

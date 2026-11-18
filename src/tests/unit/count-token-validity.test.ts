@@ -6,13 +6,13 @@ import {
   createReply,
   createUpstream,
 } from './proxy-real-path.harness';
-import { GeminiController } from '@/modules/proxy-gateway/server/modules/gemini/gemini.controller';
-import { AnthropicController } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
-import { UpstreamEndpointConfigurationError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-endpoint-configuration.exception';
+import { GeminiController } from '@/server/gateway/modules/gemini/gemini.controller';
+import { AnthropicController } from '@/server/gateway/modules/anthropic/anthropic.controller';
+import { UpstreamEndpointConfigurationError } from '@/server/gateway/common/exceptions/upstream-endpoint-configuration.exception';
 
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', async (original) => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
   ...(await original<
-    typeof import('@/modules/proxy-gateway/server/common/utils/request-user-agent')
+    typeof import('@/server/gateway/common/utils/request-user-agent')
   >()),
   resolveRequestUserAgent: async () => 'antigravity-count-value-fixture',
 }));

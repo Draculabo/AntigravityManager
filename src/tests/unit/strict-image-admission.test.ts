@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
-import { parseGenerationInputImages } from '@/modules/proxy-gateway/server/modules/openai/media/image-input-validation';
-import { validateResponsesInputImageLimits } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-inline-media';
+import { parseGenerationInputImages } from '@/server/gateway/modules/openai/media/image-input-validation';
+import { validateResponsesInputImageLimits } from '@/server/gateway/modules/openai/responses/openai-responses-inline-media';
 import { extractToolResultImages } from '@/modules/proxy-gateway/antigravity/MarkdownImageParts';
 import {
   createAccount,
@@ -11,9 +11,9 @@ import {
   geminiTextResponse,
 } from './proxy-real-path.harness';
 
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', async (original) => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
   ...(await original<
-    typeof import('@/modules/proxy-gateway/server/common/utils/request-user-agent')
+    typeof import('@/server/gateway/common/utils/request-user-agent')
   >()),
   resolveRequestUserAgent: vi.fn(async () => 'antigravity/test'),
 }));

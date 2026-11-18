@@ -2,28 +2,28 @@ import { describe, expect, it } from 'vitest';
 import { SELF_DECLARED_DEPS_METADATA } from '@nestjs/common/constants';
 import { NestFactory } from '@nestjs/core';
 
-import { ProxyModule } from '@/modules/proxy-gateway/server/proxy.module';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
-import { AnthropicService } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.service';
-import { GeminiService } from '@/modules/proxy-gateway/server/modules/gemini/gemini.service';
-import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
-import { OpenAIChatController } from '@/modules/proxy-gateway/server/modules/openai/openai-chat.controller';
-import { OpenAIMediaController } from '@/modules/proxy-gateway/server/modules/openai/openai-media.controller';
-import { OpenAIModelsController } from '@/modules/proxy-gateway/server/modules/openai/openai-models.controller';
-import { OpenAIService } from '@/modules/proxy-gateway/server/modules/openai/openai.service';
-import { OpenAIResponsesController } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses.controller';
-import { OpenAIUploadsService } from '@/modules/proxy-gateway/server/modules/uploads/openai-uploads.service';
-import { GenerationConstraintsService } from '@/modules/proxy-gateway/server/shared/services/generation-constraints.service';
+import { ProxyModule } from '@/server/gateway/proxy.module';
+import { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
+import { AnthropicService } from '@/server/gateway/modules/anthropic/anthropic.service';
+import { GeminiService } from '@/server/gateway/modules/gemini/gemini.service';
+import { GeminiClient } from '@/server/gateway/modules/gemini/gemini-client.service';
+import { OpenAIChatController } from '@/server/gateway/modules/openai/openai-chat.controller';
+import { OpenAIMediaController } from '@/server/gateway/modules/openai/openai-media.controller';
+import { OpenAIModelsController } from '@/server/gateway/modules/openai/openai-models.controller';
+import { OpenAIService } from '@/server/gateway/modules/openai/openai.service';
+import { OpenAIResponsesController } from '@/server/gateway/modules/openai/responses/openai-responses.controller';
+import { OpenAIUploadsService } from '@/server/gateway/modules/uploads/openai-uploads.service';
+import { GenerationConstraintsService } from '@/server/gateway/shared/services/generation-constraints.service';
 import {
   ModelAvailabilityService,
   proxyModelAvailabilityStore,
-} from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
-import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
-import { ProxyRetryService } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
+} from '@/server/gateway/shared/services/model-availability.service';
+import { ModelRoutingService } from '@/server/gateway/shared/services/model-routing.service';
+import { ProxyRetryService } from '@/server/gateway/shared/services/proxy-retry.service';
 import {
   RateLimitReason,
   RateLimitTrackerService,
-} from '@/modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
+} from '@/server/gateway/shared/services/rate-limit-tracker.service';
 
 /**
  * `server/README.md` rules 2 and 5: shared services and account-lease stores are provided

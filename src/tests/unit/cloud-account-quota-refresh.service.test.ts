@@ -12,8 +12,8 @@ import {
 } from '@/modules/cloud-account/services/CloudAccountRefreshService';
 import { refreshAccountQuotaCore } from '@/modules/cloud-account/services/cloud-account-quota-refresh.service';
 import { clearValidationHealthAfterSuccessfulProbe } from '@/modules/cloud-account/services/CloudAccountHealthService';
-import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
+import { proxyModelAvailabilityStore } from '@/server/gateway/shared/services/model-availability.service';
+import { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
 import { CloudAccountHealthSchema } from '@/modules/cloud-account/types';
 import { CloudAccountHealthService } from '@/modules/cloud-account/services/CloudAccountHealthService';
 
@@ -26,11 +26,11 @@ vi.mock('@/modules/cloud-account/services/CloudAccountHealthService', () => ({
   quarantineAccountInActiveLeaseCache: vi.fn(async (id) => leaseBridge.quarantine(id)),
 }));
 vi.mock(
-  '@/modules/proxy-gateway/server/shared/services/model-availability.service',
+  '@/server/gateway/shared/services/model-availability.service',
   async (importOriginal) => {
     const actual =
       await importOriginal<
-        typeof import('@/modules/proxy-gateway/server/shared/services/model-availability.service')
+        typeof import('@/server/gateway/shared/services/model-availability.service')
       >();
     return { ...actual, proxyModelAvailabilityStore: new actual.ModelAvailabilityService() };
   },

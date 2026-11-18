@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   mergeOpenAIResponsesInputItems,
   OpenAIResponsesSessionStore,
-} from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
+} from '@/server/gateway/modules/openai/responses/openai-responses-session.store';
 
 describe('OpenAIResponsesSessionStore', () => {
   afterEach(() => {

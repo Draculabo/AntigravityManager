@@ -7,9 +7,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   countBatchRequests,
   type BatchJobRecord,
-} from '@/modules/proxy-gateway/server/modules/batch/batch-job.types';
-import { BatchRunnerService } from '@/modules/proxy-gateway/server/modules/batch/batch-runner.service';
-import type { BatchExecutionTarget } from '@/modules/proxy-gateway/server/modules/batch/batch-request-executor';
+} from '@/server/gateway/modules/batch/batch-job.types';
+import { BatchRunnerService } from '@/server/gateway/modules/batch/batch-runner.service';
+import type { BatchExecutionTarget } from '@/server/gateway/modules/batch/batch-request-executor';
 
 interface Deferred {
   promise: Promise<unknown>;

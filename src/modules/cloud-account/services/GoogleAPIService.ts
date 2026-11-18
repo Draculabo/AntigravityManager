@@ -12,7 +12,7 @@ import {
   FALLBACK_VERSION,
   resolveHubClientVersion,
   resolveLocalInstalledVersion,
-} from '@/modules/proxy-gateway/server/common/utils/request-user-agent';
+} from '@/server/gateway/common/utils/request-user-agent';
 import { isNumber, isString } from 'lodash-es';
 import { logger } from '@/shared/logging/logger';
 import {

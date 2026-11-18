@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   MODEL_ROUTE_MISS_JOURNAL_MAX_ENTRIES,
   ModelRouteMissJournalService,
-} from '@/modules/proxy-gateway/server/shared/services/model-route-miss-journal.service';
+} from '@/server/gateway/shared/services/model-route-miss-journal.service';
 
 describe('ModelRouteMissJournalService', () => {
   it('records a normalized miss with timestamp', () => {

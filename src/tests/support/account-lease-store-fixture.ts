@@ -1,5 +1,5 @@
 import type { CloudAccount, CloudTokenData } from '@/modules/cloud-account/types';
-import type { AccountLeaseAccountStore } from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-adapters';
+import type { AccountLeaseAccountStore } from '@/server/gateway/modules/account-lease/interfaces/account-lease-adapters';
 
 export function leaseAccount(id: string, token: Partial<CloudTokenData> = {}): CloudAccount {
   return {

@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { CloudQuotaData, CloudQuotaGroup } from '@/modules/cloud-account/types';
-import { buildAccountLeaseQuotaSnapshot } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-quota.policy';
-import { AccountLeaseQuotaRefreshPolicy } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-quota-refresh.policy';
-import type { AccountLeaseTokenData } from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-token-types';
-import { RateLimitReason } from '@/modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
+import { buildAccountLeaseQuotaSnapshot } from '@/server/gateway/modules/account-lease/policies/account-lease-quota.policy';
+import { AccountLeaseQuotaRefreshPolicy } from '@/server/gateway/modules/account-lease/policies/account-lease-quota-refresh.policy';
+import type { AccountLeaseTokenData } from '@/server/gateway/modules/account-lease/interfaces/account-lease-token-types';
+import { RateLimitReason } from '@/server/gateway/shared/services/rate-limit-tracker.service';
 import {
   mergeQuotaWindows,
   quotaWindowWaitSeconds,

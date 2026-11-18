@@ -6,7 +6,7 @@ import {
   canCacheGeminiToolConfig,
   toSnakeToolConfig,
 } from '@/modules/proxy-gateway/antigravity/GeminiToolConfigCompat';
-import { ExplicitContextCacheManager } from '@/modules/proxy-gateway/server/modules/gemini/explicit-context-cache.store';
+import { ExplicitContextCacheManager } from '@/server/gateway/modules/gemini/explicit-context-cache.store';
 import type { GeminiToolConfig } from '@/modules/proxy-gateway/antigravity/types';
 
 afterEach(() => vi.unstubAllEnvs());

@@ -6,9 +6,9 @@ import {
   getNestServerStatus,
   stopNestServer,
 } from '@/server/main';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
-import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
-import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
+import { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
+import { GeminiClient } from '@/server/gateway/modules/gemini/gemini-client.service';
+import { proxyModelAvailabilityStore } from '@/server/gateway/shared/services/model-availability.service';
 import { trafficAuditService } from '@/modules/proxy-gateway/audit/traffic-audit.service';
 import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
 
@@ -57,7 +57,7 @@ vi.mock('@/shared/logging/logger', () => ({
 }));
 
 vi.mock(
-  '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.server',
+  '@/server/gateway/modules/openai/responses/openai-responses-websocket.server',
   () => ({
     attachOpenAIResponsesWebSocketServer: mockAttachResponsesWebSocketServer,
   }),

@@ -32,7 +32,7 @@ vi.mock(
  *
  * `AGM_V1INTERNAL_PASSTHROUGH=1` is set before `AppModule` is imported so the
  * gated `/v1internal/*` diagnostic routes (off by default, see
- * `src/modules/proxy-gateway/server/README.md` section 4b) are included too:
+ * `src/server/gateway/README.md` section 4b) are included too:
  * the point of this census is the full route surface the codebase can
  * register, not just today's default configuration.
  *
@@ -85,7 +85,7 @@ const CENSUS: readonly CensusEntry[] = [
     routePath,
     testFile: 'observability-controller.integration.test.ts',
   })),
-  // Anthropic message batches (src/modules/proxy-gateway/server/modules/batch/anthropic-message-batches.controller.ts)
+  // Anthropic message batches (src/server/gateway/modules/batch/anthropic-message-batches.controller.ts)
   {
     method: 'POST',
     routePath: '/v1/messages/batches',
@@ -117,7 +117,7 @@ const CENSUS: readonly CensusEntry[] = [
     testFile: 'anthropic-message-batches.controller.test.ts',
   },
 
-  // Gemini batches (src/modules/proxy-gateway/server/modules/batch/gemini-batches.controller.ts)
+  // Gemini batches (src/server/gateway/modules/batch/gemini-batches.controller.ts)
   {
     method: 'GET',
     routePath: '/v1beta/batches',
@@ -125,7 +125,7 @@ const CENSUS: readonly CensusEntry[] = [
   },
   { method: 'GET', routePath: '/v1beta/batches/:name', testFile: 'gemini-batch.test.ts' },
 
-  // OpenAI batches (src/modules/proxy-gateway/server/modules/batch/openai-batches.controller.ts)
+  // OpenAI batches (src/server/gateway/modules/batch/openai-batches.controller.ts)
   { method: 'POST', routePath: '/v1/batches', testFile: 'openai-batches.controller.test.ts' },
   { method: 'GET', routePath: '/v1/batches', testFile: 'openai-batches.controller.test.ts' },
   { method: 'GET', routePath: '/v1/batches/:id', testFile: 'openai-batches.controller.test.ts' },
@@ -135,7 +135,7 @@ const CENSUS: readonly CensusEntry[] = [
     testFile: 'openai-batches.controller.test.ts',
   },
 
-  // Gemini protocol (src/modules/proxy-gateway/server/modules/gemini/gemini.controller.ts)
+  // Gemini protocol (src/server/gateway/modules/gemini/gemini.controller.ts)
   { method: 'GET', routePath: '/v1beta/models', testFile: 'gemini-controller.integration.test.ts' },
   {
     method: 'GET',
@@ -153,10 +153,10 @@ const CENSUS: readonly CensusEntry[] = [
     testFile: 'gemini-count-tokens.test.ts',
   },
 
-  // Anthropic /v1/complete legacy surface (src/modules/proxy-gateway/server/modules/anthropic/anthropic-complete.controller.ts)
+  // Anthropic /v1/complete legacy surface (src/server/gateway/modules/anthropic/anthropic-complete.controller.ts)
   { method: 'POST', routePath: '/v1/complete', testFile: 'anthropic-complete.controller.test.ts' },
 
-  // Anthropic Messages protocol (src/modules/proxy-gateway/server/modules/anthropic/anthropic.controller.ts)
+  // Anthropic Messages protocol (src/server/gateway/modules/anthropic/anthropic.controller.ts)
   { method: 'GET', routePath: '/v1/models/claude', testFile: 'anthropic-models.test.ts' },
   { method: 'GET', routePath: '/v1/models/claude/:model', testFile: 'anthropic-models.test.ts' },
   {
@@ -166,7 +166,7 @@ const CENSUS: readonly CensusEntry[] = [
   },
   { method: 'POST', routePath: '/v1/messages', testFile: 'proxy-real-path-anthropic.test.ts' },
 
-  // Gemini Files API (src/modules/proxy-gateway/server/modules/files/gemini-files.controller.ts)
+  // Gemini Files API (src/server/gateway/modules/files/gemini-files.controller.ts)
   { method: 'POST', routePath: '/upload/v1beta/files', testFile: 'files-api.test.ts' },
   { method: 'GET', routePath: '/v1beta/files', testFile: 'files-api.test.ts' },
   { method: 'GET', routePath: '/v1beta/files/:name', testFile: 'files-api.test.ts' },
@@ -176,7 +176,7 @@ const CENSUS: readonly CensusEntry[] = [
     testFile: 'files-api.test.ts',
   },
 
-  // OpenAI/Anthropic client Files API (src/modules/proxy-gateway/server/modules/files/client-files.controller.ts)
+  // OpenAI/Anthropic client Files API (src/server/gateway/modules/files/client-files.controller.ts)
   { method: 'POST', routePath: '/v1/files', testFile: 'files-api.test.ts' },
   {
     method: 'GET',
@@ -187,13 +187,13 @@ const CENSUS: readonly CensusEntry[] = [
   { method: 'GET', routePath: '/v1/files/:id/content', testFile: 'files-api.test.ts' },
   { method: 'DELETE', routePath: '/v1/files/:id', testFile: 'files-api.test.ts' },
 
-  // OpenAI Uploads (src/modules/proxy-gateway/server/modules/uploads/openai-uploads.controller.ts)
+  // OpenAI Uploads (src/server/gateway/modules/uploads/openai-uploads.controller.ts)
   { method: 'POST', routePath: '/v1/uploads', testFile: 'openai-uploads.test.ts' },
   { method: 'POST', routePath: '/v1/uploads/:id/parts', testFile: 'openai-uploads.test.ts' },
   { method: 'POST', routePath: '/v1/uploads/:id/complete', testFile: 'openai-uploads.test.ts' },
   { method: 'POST', routePath: '/v1/uploads/:id/cancel', testFile: 'openai-uploads.test.ts' },
 
-  // OpenAI protocol entry controllers (src/modules/proxy-gateway/server/modules/openai/openai-*.controller.ts)
+  // OpenAI protocol entry controllers (src/server/gateway/modules/openai/openai-*.controller.ts)
   ...['/props', '/v1/props', '/version', '/v1/version'].map((routePath) => ({
     method: 'GET',
     routePath,
@@ -247,7 +247,7 @@ const CENSUS: readonly CensusEntry[] = [
     testFile: 'openai-audio-translations.test.ts',
   },
 
-  // OpenAI Responses store (src/modules/proxy-gateway/server/modules/openai/responses/openai-responses-store.controller.ts)
+  // OpenAI Responses store (src/server/gateway/modules/openai/responses/openai-responses-store.controller.ts)
   {
     method: 'GET',
     routePath: '/v1/responses/:responseId',
@@ -260,7 +260,7 @@ const CENSUS: readonly CensusEntry[] = [
   },
 
   // v1internal diagnostic passthrough, gated by AGM_V1INTERNAL_PASSTHROUGH
-  // (src/modules/proxy-gateway/server/modules/v1internal-passthrough/v1internal-passthrough.controller.ts)
+  // (src/server/gateway/modules/v1internal-passthrough/v1internal-passthrough.controller.ts)
   {
     method: 'POST',
     routePath: '/v1internal/countTokens',

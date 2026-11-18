@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
+import { UpstreamRequestError } from '@/server/gateway/common/exceptions/upstream-request.exception';
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
 import {
   createAccount,
@@ -8,9 +8,9 @@ import {
   createLease,
   createUpstream,
 } from './proxy-real-path.harness';
-import type { AnthropicChatRequest } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+import type { AnthropicChatRequest } from '@/server/gateway/common/interfaces/request-interfaces';
 
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', () => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', () => ({
   resolveRequestUserAgent: async () => 'controlled-history-rejection/0.0.0',
   buildContentRequestUserAgent: () => 'controlled-history-rejection/0.0.0',
   resolveLocalInstalledVersion: () => '0.0.0',

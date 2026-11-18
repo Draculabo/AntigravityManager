@@ -1,9 +1,9 @@
 // @vitest-environment node
 import Fastify from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
-import type { OpenAIChatRequest } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
-import { OpenAIChatController } from '@/modules/proxy-gateway/server/modules/openai/openai-chat.controller';
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
+import type { OpenAIChatRequest } from '@/server/gateway/common/interfaces/request-interfaces';
+import { OpenAIChatController } from '@/server/gateway/modules/openai/openai-chat.controller';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
 import {
   createAccount,
   createGateway,
@@ -13,9 +13,9 @@ import {
   geminiTextResponse,
 } from './proxy-real-path.harness';
 
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', async (original) => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
   ...(await original<
-    typeof import('@/modules/proxy-gateway/server/common/utils/request-user-agent')
+    typeof import('@/server/gateway/common/utils/request-user-agent')
   >()),
   resolveRequestUserAgent: async () => 'hermes-prompt-fixture/0.0.0',
 }));

@@ -3,8 +3,8 @@ import {
   buildResponsesChatRequest,
   normalizeResponsesMessageContent,
   parseResponsesRequestBody,
-} from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-request';
-import { mergeOpenAIResponsesInputItems } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
+} from '@/server/gateway/modules/openai/responses/openai-responses-request';
+import { mergeOpenAIResponsesInputItems } from '@/server/gateway/modules/openai/responses/openai-responses-session.store';
 
 describe('Responses input compatibility', () => {
   it('validates a WebSocket Responses request before mapping it', () => {

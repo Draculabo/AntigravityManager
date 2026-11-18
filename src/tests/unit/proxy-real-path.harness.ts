@@ -2,21 +2,21 @@ import { Readable } from 'stream';
 import { vi } from 'vitest';
 import { Observable } from 'rxjs';
 
-import { AnthropicService } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.service';
-import { GeminiService } from '@/modules/proxy-gateway/server/modules/gemini/gemini.service';
-import { OpenAIService } from '@/modules/proxy-gateway/server/modules/openai/openai.service';
-import { GenerationConstraintsService } from '@/modules/proxy-gateway/server/shared/services/generation-constraints.service';
-import type { ModelRouteMissJournalService } from '@/modules/proxy-gateway/server/shared/services/model-route-miss-journal.service';
-import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
+import { AnthropicService } from '@/server/gateway/modules/anthropic/anthropic.service';
+import { GeminiService } from '@/server/gateway/modules/gemini/gemini.service';
+import { OpenAIService } from '@/server/gateway/modules/openai/openai.service';
+import { GenerationConstraintsService } from '@/server/gateway/shared/services/generation-constraints.service';
+import type { ModelRouteMissJournalService } from '@/server/gateway/shared/services/model-route-miss-journal.service';
+import { ModelRoutingService } from '@/server/gateway/shared/services/model-routing.service';
 import {
   ModelAvailabilityService,
   proxyModelAvailabilityStore,
-} from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
-import { ProxyRetryService } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
+} from '@/server/gateway/shared/services/model-availability.service';
+import { ProxyRetryService } from '@/server/gateway/shared/services/proxy-retry.service';
 import type { CloudAccount } from '@/modules/cloud-account/types';
-import type { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
+import type { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
 import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
-import type { InternalGenerationOptions } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
+import type { InternalGenerationOptions } from '@/server/gateway/modules/gemini/gemini-client.service';
 
 /**
  * Shared scaffolding for the black-box coverage of the real request path:

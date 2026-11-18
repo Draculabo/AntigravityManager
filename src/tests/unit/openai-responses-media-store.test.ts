@@ -5,8 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   OpenAIResponsesMediaStore,
   ResponsesMediaUnavailableError,
-} from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-media-store';
-import type { PrivateContentStore } from '@/modules/proxy-gateway/server/modules/files/files.service';
+} from '@/server/gateway/modules/openai/responses/openai-responses-media-store';
+import type { PrivateContentStore } from '@/server/gateway/modules/files/files.service';
 
 describe('OpenAIResponsesMediaStore', () => {
   let contents = new Map<string, Buffer>();

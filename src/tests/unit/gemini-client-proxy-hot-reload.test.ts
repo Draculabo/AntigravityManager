@@ -5,13 +5,13 @@ import { logger as diagnosticLogger } from '@/shared/logging/logger';
 
 import { DEFAULT_APP_CONFIG, type ProxyConfig } from '@/modules/config/types';
 import { setServerConfig } from '@/server/server-config';
-import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
-import { Upstream4xxCaptureService } from '@/modules/proxy-gateway/server/common/upstream-4xx-capture.service';
+import { GeminiClient } from '@/server/gateway/modules/gemini/gemini-client.service';
+import { Upstream4xxCaptureService } from '@/server/gateway/common/upstream-4xx-capture.service';
 import { UpstreamProxyConfigurationError } from '@/modules/config/upstream-proxy.schema';
 import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
 import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
-import { explicitContextCacheManager } from '@/modules/proxy-gateway/server/modules/gemini/explicit-context-cache.store';
-import { estimateRequestContext } from '@/modules/proxy-gateway/server/common/request-context-estimate';
+import { explicitContextCacheManager } from '@/server/gateway/modules/gemini/explicit-context-cache.store';
+import { estimateRequestContext } from '@/server/gateway/common/request-context-estimate';
 import { errorProcessOwner } from '@/modules/error-diagnostics/public';
 
 const axiosMock = vi.hoisted(() => ({

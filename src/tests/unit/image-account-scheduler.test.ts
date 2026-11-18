@@ -6,8 +6,8 @@ import {
   ImageAccountUnavailableError,
   ImageQueueAbortedError,
   ImageQueueTimeoutError,
-} from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
-import { ImageAccountSchedulerService } from '@/modules/proxy-gateway/server/modules/account-lease/image-account-scheduler.service';
+} from '@/server/gateway/modules/account-lease/account-lease.service';
+import { ImageAccountSchedulerService } from '@/server/gateway/modules/account-lease/image-account-scheduler.service';
 import { accountLeaseStoreFixture, leaseAccount } from '../support/account-lease-store-fixture';
 
 function configureScheduler(perAccountConcurrency: number, requestTimeout = 1): void {

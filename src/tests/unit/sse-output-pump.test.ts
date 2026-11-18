@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   SseOutputPump,
   getSseOutputRetainedBytes,
-} from '@/modules/proxy-gateway/server/common/sse-output-pump';
+} from '@/server/gateway/common/sse-output-pump';
 
 describe('SSE output retention and drain', () => {
   beforeEach(() => vi.useFakeTimers());

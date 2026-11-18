@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { AnthropicController } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
-import { ModelRouteMissJournalService } from '@/modules/proxy-gateway/server/shared/services/model-route-miss-journal.service';
-import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
-import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
+import { AnthropicController } from '@/server/gateway/modules/anthropic/anthropic.controller';
+import { ModelRouteMissJournalService } from '@/server/gateway/shared/services/model-route-miss-journal.service';
+import { ModelRoutingService } from '@/server/gateway/shared/services/model-routing.service';
+import { proxyModelAvailabilityStore } from '@/server/gateway/shared/services/model-availability.service';
 import {
   createAccount,
   createGateway,
@@ -20,7 +20,7 @@ import {
  */
 
 vi.mock(
-  '@/modules/proxy-gateway/server/common/utils/request-user-agent',
+  '@/server/gateway/common/utils/request-user-agent',
   async (importOriginal) => ({
     ...(await importOriginal<Record<string, unknown>>()),
     resolveRequestUserAgent: async () => 'antigravity-parity-harness/0.0.0',

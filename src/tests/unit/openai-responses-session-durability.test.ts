@@ -8,17 +8,17 @@ import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { lastValueFrom, Observable, of, toArray } from 'rxjs';
 
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
 import { logger } from '@/shared/logging/logger';
-import { resolveResponsesHistoryOwner } from '@/modules/proxy-gateway/server/modules/openai/responses/responses-history-owner';
-import { prepareOpenAIResponsesSessionInput } from '@/modules/proxy-gateway/server/modules/openai/responses/responses-session-input';
-import { buildResponsesChatRequest } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-request';
+import { resolveResponsesHistoryOwner } from '@/server/gateway/modules/openai/responses/responses-history-owner';
+import { prepareOpenAIResponsesSessionInput } from '@/server/gateway/modules/openai/responses/responses-session-input';
+import { buildResponsesChatRequest } from '@/server/gateway/modules/openai/responses/openai-responses-request';
 import {
   defaultOpenAIResponsesSessionStoreOptions,
   OpenAIResponsesSessionService,
-} from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.service';
-import { OpenAIResponsesMediaStore } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-media-store';
-import type { PrivateContentStore } from '@/modules/proxy-gateway/server/modules/files/files.service';
+} from '@/server/gateway/modules/openai/responses/openai-responses-session.service';
+import { OpenAIResponsesMediaStore } from '@/server/gateway/modules/openai/responses/openai-responses-media-store';
+import type { PrivateContentStore } from '@/server/gateway/modules/files/files.service';
 import {
   runWithTrafficAuditRequestContext,
   type TrafficAuditRequestContext,

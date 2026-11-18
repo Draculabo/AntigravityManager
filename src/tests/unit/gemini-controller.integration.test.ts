@@ -13,10 +13,10 @@ vi.mock('@/modules/proxy-gateway/audit/traffic-audit-context', () => ({
   getProxyResponseTimingContext: () => undefined,
 }));
 
-import { GeminiController } from '../../modules/proxy-gateway/server/modules/gemini/gemini.controller';
+import { GeminiController } from '../../server/gateway/modules/gemini/gemini.controller';
 import { DEFAULT_APP_CONFIG } from '../../modules/config/types';
 import { setServerConfig } from '../../server/server-config';
-import { ProxyAccountUnavailableError } from '../../modules/proxy-gateway/server/common/exceptions/proxy-account-unavailable.exception';
+import { ProxyAccountUnavailableError } from '../../server/gateway/common/exceptions/proxy-account-unavailable.exception';
 
 function createReplyMock() {
   const reply: Record<string, any> = {};

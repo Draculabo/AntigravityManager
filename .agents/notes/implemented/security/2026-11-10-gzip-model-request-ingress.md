@@ -14,7 +14,7 @@ The Fastify pre-parsing hook reuses the proxy IP and API key policy before
 starting a gzip stream. It limits both encoded and decoded bytes to the route's
 existing ceiling. Fastify validates content length and parses the resulting JSON.
 Audit reads the parsed value after the hook, and Nest still owns handler admission.
-See [JSON request capacity](../../../../src/modules/proxy-gateway/server/README.md#json-request-capacity).
+See [JSON request capacity](../../../../src/server/gateway/README.md#json-request-capacity).
 
 ## Alternatives considered
 

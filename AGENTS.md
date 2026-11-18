@@ -27,7 +27,7 @@ Instructions in a deeper `AGENTS.md` supplement this file for that subtree. Keep
 - Cross-feature primitives belong in `src/shared`; generic UI belongs in `src/components`. Require a real second consumer before moving feature code into shared infrastructure.
 - Renderer code must not import main-process, filesystem, database, keyring or server implementation modules. Cross-process operations go through the typed preload/IPC/ORPC surface.
 - Feature modules own their IPC schemas, routers and handlers. `src/ipc/router.ts` composes them and applies global transport behavior; do not put feature business logic there.
-- NestJS proxy behavior belongs under `src/modules/proxy-gateway/server`; `src/server` owns bootstrap and process lifecycle only.
+- NestJS proxy implementation lives under `src/server/gateway` and follows the [proxy gateway instructions](src/modules/proxy-gateway/AGENTS.md). Keep gateway bootstrap and process lifecycle in `src/server/main.ts`.
 - Shared database primitives live under `src/shared/persistence/database`; feature repositories and codecs remain in the owning feature.
 - Routes live in `src/routes`. Never edit generated `src/routeTree.gen.ts` manually.
 - Do not create reverse dependencies from `src/shared` to feature modules or deep-import another feature's private implementation.

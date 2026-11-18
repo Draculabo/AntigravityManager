@@ -22,8 +22,8 @@ vi.mock('@/shared/persistence/sqlite-worker/bounded-sqlite-worker', () => ({
 }));
 import { ThoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
-import { OpenAIResponsesSessionService } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.service';
-import { OpenAIResponsesSessionStoreImpl } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
+import { OpenAIResponsesSessionService } from '@/server/gateway/modules/openai/responses/openai-responses-session.service';
+import { OpenAIResponsesSessionStoreImpl } from '@/server/gateway/modules/openai/responses/openai-responses-session.store';
 import { runWithTrafficAuditRequestContext } from '@/modules/proxy-gateway/audit/traffic-audit-context';
 import { responsesIdentityFixture } from './responses-identity.fixture';
 let thoughts: ThoughtStoreService;

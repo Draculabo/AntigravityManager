@@ -7,7 +7,7 @@ import {
   startCurrentUpstreamAttempt,
 } from '@/modules/proxy-gateway/audit/traffic-audit-context';
 import { ResponsesWebSocketAudit } from '@/modules/proxy-gateway/audit/responses-websocket-audit';
-import { attachOpenAIResponsesWebSocketServer } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.server';
+import { attachOpenAIResponsesWebSocketServer } from '@/server/gateway/modules/openai/responses/openai-responses-websocket.server';
 import type { TrafficAuditService } from '@/modules/proxy-gateway/audit/traffic-audit.service';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { BadRequestException } from '@nestjs/common';

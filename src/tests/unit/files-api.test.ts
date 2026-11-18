@@ -4,9 +4,9 @@ import { join } from 'node:path';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { FileContentStore } from '@/modules/proxy-gateway/server/modules/files/file-content-store.service';
-import { FilesService } from '@/modules/proxy-gateway/server/modules/files/files.service';
-import type { FileStoreOptions } from '@/modules/proxy-gateway/server/modules/files/file-store.types';
+import { FileContentStore } from '@/server/gateway/modules/files/file-content-store.service';
+import { FilesService } from '@/server/gateway/modules/files/files.service';
+import type { FileStoreOptions } from '@/server/gateway/modules/files/file-store.types';
 import {
   createFilesHttpApp,
   fileMultipartPayload,

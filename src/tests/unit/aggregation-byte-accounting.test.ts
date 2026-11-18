@@ -1,20 +1,20 @@
 import { Readable } from 'node:stream';
 import { afterEach, expect, it, vi } from 'vitest';
-import { BaseProxyService } from '@/modules/proxy-gateway/server/common/base-proxy.service';
+import { BaseProxyService } from '@/server/gateway/common/base-proxy.service';
 import {
   AggregationAdmission,
   aggregationAdmission,
-} from '@/modules/proxy-gateway/server/common/aggregation-admission';
+} from '@/server/gateway/common/aggregation-admission';
 import {
   AggregationByteAccounting,
   aggregationByteAccounting,
-} from '@/modules/proxy-gateway/server/common/aggregation-byte-accounting';
-import { aggregateGeminiFallback } from '@/modules/proxy-gateway/server/common/aggregate-gemini-fallback';
-import { collectGeminiStream } from '@/modules/proxy-gateway/server/common/collect-gemini-stream';
+} from '@/server/gateway/common/aggregation-byte-accounting';
+import { aggregateGeminiFallback } from '@/server/gateway/common/aggregate-gemini-fallback';
+import { collectGeminiStream } from '@/server/gateway/common/collect-gemini-stream';
 import {
   estimateParsedJsonBytes,
   estimateRetainedJsonBytes,
-} from '@/modules/proxy-gateway/server/common/retained-json-size';
+} from '@/server/gateway/common/retained-json-size';
 import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
 
 class Service extends BaseProxyService {

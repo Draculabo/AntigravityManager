@@ -1,13 +1,13 @@
 import { BadRequestException } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
 import { transformClaudeRequestIn } from '@/modules/proxy-gateway/antigravity/ClaudeRequestMapper';
-import { convertOpenAIToClaude } from '@/modules/proxy-gateway/server/modules/openai/chat/openai-claude-conversion';
+import { convertOpenAIToClaude } from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
 import {
   OPENAI_INPUT_AUDIO_BYTES_LIMIT,
   parseOpenAIInputAudio,
-} from '@/modules/proxy-gateway/server/modules/openai/chat/openai-input-audio';
-import { buildResponsesChatRequest } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-request';
-import type { OpenAIContentPart } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+} from '@/server/gateway/modules/openai/chat/openai-input-audio';
+import { buildResponsesChatRequest } from '@/server/gateway/modules/openai/responses/openai-responses-request';
+import type { OpenAIContentPart } from '@/server/gateway/common/interfaces/request-interfaces';
 
 function audioPart(data: string, format = 'wav'): OpenAIContentPart {
   return { type: 'input_audio', input_audio: { data, format } };

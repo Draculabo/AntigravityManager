@@ -9,11 +9,11 @@ import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { afterEach, expect, it, vi } from 'vitest';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
-import { ProxyGuard } from '@/modules/proxy-gateway/server/guards/proxy.guard';
-import type { GeminiResponse } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
-import { OpenAIChatController } from '@/modules/proxy-gateway/server/modules/openai/openai-chat.controller';
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
-import { OpenAIResponsesController } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses.controller';
+import { ProxyGuard } from '@/server/gateway/guards/proxy.guard';
+import type { GeminiResponse } from '@/server/gateway/common/interfaces/request-interfaces';
+import { OpenAIChatController } from '@/server/gateway/modules/openai/openai-chat.controller';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
+import { OpenAIResponsesController } from '@/server/gateway/modules/openai/responses/openai-responses.controller';
 import { getServerConfig, setServerConfig } from '@/server/server-config';
 import { PIXEL_PNG } from '../fixtures/image-content';
 import {
@@ -28,7 +28,7 @@ import {
 vi.mock('@/modules/proxy-gateway/opencode-sync/opencode-credentials', () => ({
   openCodeCredentialService: { matches: () => false },
 }));
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', () => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', () => ({
   resolveRequestUserAgent: async () => 'tool-declaration-test/1.0',
   resolveLocalInstalledVersion: () => '0.0.0',
 }));

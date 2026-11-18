@@ -3,11 +3,11 @@ import { WebSocket } from 'ws';
 import { describe, expect, it, vi } from 'vitest';
 import { of, type Observable } from 'rxjs';
 import { z } from 'zod';
-import { FlowControlledSseStream } from '@/modules/proxy-gateway/server/common/flow-controlled-sse-stream';
-import { takeSerializedResponsesFrame } from '@/modules/proxy-gateway/server/modules/openai/responses/serialized-responses-frames';
-import { createSyntheticResponsesStream } from '@/modules/proxy-gateway/server/modules/openai/openai-synthetic-streams';
-import { attachOpenAIResponsesWebSocketServer } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.server';
-import { OpenAIResponsesWebSocketProtocol } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.protocol';
+import { FlowControlledSseStream } from '@/server/gateway/common/flow-controlled-sse-stream';
+import { takeSerializedResponsesFrame } from '@/server/gateway/modules/openai/responses/serialized-responses-frames';
+import { createSyntheticResponsesStream } from '@/server/gateway/modules/openai/openai-synthetic-streams';
+import { attachOpenAIResponsesWebSocketServer } from '@/server/gateway/modules/openai/responses/openai-responses-websocket.server';
+import { OpenAIResponsesWebSocketProtocol } from '@/server/gateway/modules/openai/responses/openai-responses-websocket.protocol';
 
 it('sends owned Responses frames without parsing or serializing their JSON again', async () => {
   const server = createServer();

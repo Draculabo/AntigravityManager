@@ -1,4 +1,4 @@
-import { hashSessionAnchor } from '../server/common/session-anchor-hash';
+import { hashSessionAnchor } from '../../../server/gateway/common/session-anchor-hash';
 import type { GeminiContent } from '../antigravity/types';
 
 /** Business-history prefixes are candidates for a round, never proof of a physical invocation. */

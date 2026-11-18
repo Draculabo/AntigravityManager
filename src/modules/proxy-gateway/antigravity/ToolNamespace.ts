@@ -1,4 +1,4 @@
-import type { OpenAITool } from '../server/common/interfaces/request-interfaces';
+import type { OpenAITool } from '../../../server/gateway/common/interfaces/request-interfaces';
 
 export interface SplitToolNamespace {
   name: string;

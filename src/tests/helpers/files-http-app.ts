@@ -6,13 +6,13 @@ import { afterEach, vi } from 'vitest';
 
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { getServerConfig, setServerConfig } from '@/server/server-config';
-import { ProxyGuard } from '@/modules/proxy-gateway/server/guards/proxy.guard';
-import { ClientFilesController } from '@/modules/proxy-gateway/server/modules/files/client-files.controller';
-import { GeminiFilesController } from '@/modules/proxy-gateway/server/modules/files/gemini-files.controller';
-import { FilesService } from '@/modules/proxy-gateway/server/modules/files/files.service';
-import { DEFAULT_MAX_FILE_BYTES } from '@/modules/proxy-gateway/server/modules/files/file-store.types';
-import { OpenAIUploadsController } from '@/modules/proxy-gateway/server/modules/uploads/openai-uploads.controller';
-import { OpenAIUploadsService } from '@/modules/proxy-gateway/server/modules/uploads/openai-uploads.service';
+import { ProxyGuard } from '@/server/gateway/guards/proxy.guard';
+import { ClientFilesController } from '@/server/gateway/modules/files/client-files.controller';
+import { GeminiFilesController } from '@/server/gateway/modules/files/gemini-files.controller';
+import { FilesService } from '@/server/gateway/modules/files/files.service';
+import { DEFAULT_MAX_FILE_BYTES } from '@/server/gateway/modules/files/file-store.types';
+import { OpenAIUploadsController } from '@/server/gateway/modules/uploads/openai-uploads.controller';
+import { OpenAIUploadsService } from '@/server/gateway/modules/uploads/openai-uploads.service';
 
 vi.mock('@/modules/proxy-gateway/opencode-sync/opencode-credentials', () => ({
   openCodeCredentialService: { matches: () => false },

@@ -20,7 +20,7 @@ import type { OpenCodeOperations } from '../opencode-sync/opencode-owner.service
 import { os } from '@orpc/server';
 import { z } from 'zod';
 import { getGatewayAdapter } from './gateway-adapter';
-import { proxyModelAvailabilityStore } from '../server/shared/services/model-availability.service';
+import { proxyModelAvailabilityStore } from '../../../server/gateway/shared/services/model-availability.service';
 import { ipcAuditRecorder } from '../audit/ipc-audit-recorder';
 import { TrafficClassSchema } from '../audit/traffic-classifier';
 import {

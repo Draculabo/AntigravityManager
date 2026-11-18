@@ -1,11 +1,11 @@
 import { Observable } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
-import { OpenAIResponsesSessionStore } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
-import { AnthropicController } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
-import { GeminiController } from '@/modules/proxy-gateway/server/modules/gemini/gemini.controller';
-import { aggregationAdmission } from '@/modules/proxy-gateway/server/common/aggregation-admission';
-import { aggregationByteAccounting } from '@/modules/proxy-gateway/server/common/aggregation-byte-accounting';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
+import { OpenAIResponsesSessionStore } from '@/server/gateway/modules/openai/responses/openai-responses-session.store';
+import { AnthropicController } from '@/server/gateway/modules/anthropic/anthropic.controller';
+import { GeminiController } from '@/server/gateway/modules/gemini/gemini.controller';
+import { aggregationAdmission } from '@/server/gateway/common/aggregation-admission';
+import { aggregationByteAccounting } from '@/server/gateway/common/aggregation-byte-accounting';
 import {
   createAccount,
   createGateway,
@@ -15,10 +15,10 @@ import {
 } from './proxy-real-path.harness';
 
 vi.mock(
-  '@/modules/proxy-gateway/server/common/utils/request-user-agent',
+  '@/server/gateway/common/utils/request-user-agent',
   async (importOriginal) => ({
     ...(await importOriginal<
-      typeof import('@/modules/proxy-gateway/server/common/utils/request-user-agent')
+      typeof import('@/server/gateway/common/utils/request-user-agent')
     >()),
     resolveRequestUserAgent: async () => 'controlled-terminal-test/0.0.0',
   }),

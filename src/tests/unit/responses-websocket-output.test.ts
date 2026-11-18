@@ -1,11 +1,11 @@
 import { WebSocket } from 'ws';
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import { ResponsesWebSocketOutput } from '@/modules/proxy-gateway/server/modules/openai/responses/responses-websocket-output';
-import { FlowControlledSseStream } from '@/modules/proxy-gateway/server/common/flow-controlled-sse-stream';
+import { ResponsesWebSocketOutput } from '@/server/gateway/modules/openai/responses/responses-websocket-output';
+import { FlowControlledSseStream } from '@/server/gateway/common/flow-controlled-sse-stream';
 import {
   SseOutputPump,
   getSseOutputRetainedBytes,
-} from '@/modules/proxy-gateway/server/common/sse-output-pump';
+} from '@/server/gateway/common/sse-output-pump';
 
 function harness() {
   const flow = new FlowControlledSseStream({ pause: vi.fn(), resume: vi.fn() }, () => {});

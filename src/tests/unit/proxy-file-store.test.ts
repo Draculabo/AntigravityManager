@@ -5,17 +5,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { FileContentStore } from '@/modules/proxy-gateway/server/modules/files/file-content-store.service';
-import { FilesService } from '@/modules/proxy-gateway/server/modules/files/files.service';
+import { FileContentStore } from '@/server/gateway/modules/files/file-content-store.service';
+import { FilesService } from '@/server/gateway/modules/files/files.service';
 import {
   FileStoreError,
   parseFileHandle,
   type FileStoreOptions,
-} from '@/modules/proxy-gateway/server/modules/files/file-store.types';
+} from '@/server/gateway/modules/files/file-store.types';
 import {
   resolveEffectiveMimeType,
   sniffMimeType,
-} from '@/modules/proxy-gateway/server/modules/files/file-mime-sniff';
+} from '@/server/gateway/modules/files/file-mime-sniff';
 import { logger } from '@/shared/logging/logger';
 
 const png = Buffer.concat([

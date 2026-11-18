@@ -1,0 +1,267 @@
+import axios from 'axios';
+import { isString } from 'lodash-es';
+import {
+  getAntigravityVersion,
+  getCachedAntigravityVersion,
+} from '@/modules/antigravity-runtime/utils/antigravityVersion';
+import { createAxiosHttpClient } from '@/shared/http/axios-json-client';
+import { logger } from '../../../../shared/logging/logger';
+
+const REMOTE_VERSION_URL = 'https://antigravity-auto-updater-974169037036.us-central1.run.app';
+const CHANGELOG_URL = 'https://antigravity.google/changelog';
+export const FALLBACK_VERSION = '2.0.3';
+/**
+ * Hub release verified to receive every quota-summary group, including Gemini 4 Argon. Google
+ * withholds newer groups from older hub versions, so this is a floor rather than a fallback.
+ */
+export const HUB_CLIENT_MIN_VERSION = '2.26.0';
+const DEFAULT_REMOTE_TIMEOUT_MS = 2500;
+const VERSION_REGEX = /\d+\.\d+\.\d+/g;
+const userAgentHttpClient = createAxiosHttpClient(axios.create());
+
+type UserAgentSource = 'local' | 'remote' | 'changelog' | 'fallback';
+
+interface UserAgentResolution {
+  source: UserAgentSource;
+  userAgent: string;
+  version: string;
+}
+
+let cachedUserAgentResolution: UserAgentResolution | null = null;
+let pendingUserAgentResolution: Promise<UserAgentResolution> | null = null;
+
+function normalizeNonEmptyString(value: string | null | undefined): string | null {
+  if (!isString(value)) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  return trimmed;
+}
+
+function getPlatformTag(): string {
+  switch (process.platform) {
+    case 'win32':
+      return 'windows';
+    case 'darwin':
+      return 'darwin';
+    default:
+      return 'linux';
+  }
+}
+
+function getArchTag(): string {
+  if (process.arch === 'x64') {
+    return 'amd64';
+  }
+
+  if (process.arch === 'arm64') {
+    return 'arm64';
+  }
+
+  return process.arch;
+}
+
+export function buildUserAgent(version: string): string {
+  return `antigravity/cli/${version} ${getPlatformTag()}/${getArchTag()}`;
+}
+
+/**
+ * Builds the `hub` client identity of the Antigravity app's language server. Google gates
+ * model-specific quota groups on the client type; the bare identity does not receive them.
+ */
+export function buildHubUserAgent(version: string): string {
+  return `antigravity/hub/${version} (aidev_client; os_type=${getPlatformTag()}; arch=${getArchTag()})`;
+}
+
+/**
+ * Cloud Code content routing recognizes the Hub identity, independently of the IDE version
+ * used by discovery and request envelopes. Keep this verified version/build pair together;
+ * changing it requires a live-provider probe (see docs/proxy-stream-tool-compatibility.md).
+ */
+export function buildContentRequestUserAgent(): string {
+  return `antigravity/hub/2.17.0 (aidev_client; os_type=${getPlatformTag()}; arch=${getArchTag()}; cl=986210228)`;
+}
+
+function compareSemverVersions(left: string, right: string): number {
+  const leftParts = left.split('.').map((part) => Number.parseInt(part, 10));
+  const rightParts = right.split('.').map((part) => Number.parseInt(part, 10));
+  const maxLength = Math.max(leftParts.length, rightParts.length);
+
+  for (let index = 0; index < maxLength; index += 1) {
+    const leftValue = leftParts[index] ?? 0;
+    const rightValue = rightParts[index] ?? 0;
+
+    if (leftValue > rightValue) {
+      return 1;
+    }
+    if (leftValue < rightValue) {
+      return -1;
+    }
+  }
+
+  return 0;
+}
+
+function extractHighestSemver(text: string): string | null {
+  const matches = text.match(VERSION_REGEX);
+  if (!matches || matches.length === 0) {
+    return null;
+  }
+
+  let best = matches[0];
+  for (const candidate of matches) {
+    if (compareSemverVersions(candidate, best) > 0) {
+      best = candidate;
+    }
+  }
+
+  return best;
+}
+
+function shouldSkipRemoteVersionLookup(): boolean {
+  return process.env.NODE_ENV === 'test' || process.env.VITEST === 'true';
+}
+
+/** Synchronous request builders only use a version already confirmed by an async probe. */
+export function resolveLocalInstalledVersion(): string | null {
+  const version = getCachedAntigravityVersion()?.shortVersion;
+  return version ? extractHighestSemver(version) : null;
+}
+
+/** Uses a confirmed newer local install when available and never reports below the hub floor. */
+export function resolveHubClientVersion(): string {
+  const localVersion = resolveLocalInstalledVersion();
+  return localVersion && compareSemverVersions(localVersion, HUB_CLIENT_MIN_VERSION) > 0
+    ? localVersion
+    : HUB_CLIENT_MIN_VERSION;
+}
+
+async function resolveLocalInstalledVersionAsync(): Promise<string | null> {
+  let localVersionString: string;
+  try {
+    localVersionString = (await getAntigravityVersion()).shortVersion;
+    const rawVersion = normalizeNonEmptyString(localVersionString);
+    if (!rawVersion) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
+  return extractHighestSemver(localVersionString);
+}
+
+async function fetchTextPayload(url: string): Promise<string | null> {
+  try {
+    const discoveryVersion = (await resolveLocalInstalledVersionAsync()) ?? FALLBACK_VERSION;
+    const response = await userAgentHttpClient.requestRaw(url, {
+      operation: 'default-user-agent-discovery',
+      request: {
+        timeout: DEFAULT_REMOTE_TIMEOUT_MS,
+        responseType: 'text',
+        headers: {
+          'User-Agent': buildUserAgent(discoveryVersion),
+        },
+      },
+    });
+
+    if (isString(response.data)) {
+      return response.data;
+    }
+
+    return JSON.stringify(response.data);
+  } catch {
+    return null;
+  }
+}
+
+async function resolveRemoteVersion(): Promise<{
+  source: Extract<UserAgentSource, 'remote' | 'changelog'>;
+  version: string;
+} | null> {
+  if (shouldSkipRemoteVersionLookup()) {
+    return null;
+  }
+
+  const remotePayload = await fetchTextPayload(REMOTE_VERSION_URL);
+  if (remotePayload) {
+    const parsed = extractHighestSemver(remotePayload);
+    if (parsed) {
+      return {
+        source: 'remote',
+        version: parsed,
+      };
+    }
+  }
+
+  const changelogPayload = await fetchTextPayload(CHANGELOG_URL);
+  if (!changelogPayload) {
+    return null;
+  }
+
+  const parsed = extractHighestSemver(changelogPayload);
+  if (!parsed) {
+    return null;
+  }
+
+  return {
+    source: 'changelog',
+    version: parsed,
+  };
+}
+
+async function resolveDefaultUserAgentResolution(): Promise<UserAgentResolution> {
+  let bestVersion = FALLBACK_VERSION;
+  let bestSource: UserAgentSource = 'fallback';
+
+  const localVersion = await resolveLocalInstalledVersionAsync();
+  if (localVersion && compareSemverVersions(localVersion, bestVersion) > 0) {
+    bestVersion = localVersion;
+    bestSource = 'local';
+  }
+
+  const remoteVersion = await resolveRemoteVersion();
+  if (remoteVersion && compareSemverVersions(remoteVersion.version, bestVersion) > 0) {
+    bestVersion = remoteVersion.version;
+    bestSource = remoteVersion.source;
+  }
+
+  return {
+    source: bestSource,
+    version: bestVersion,
+    userAgent: buildUserAgent(bestVersion),
+  };
+}
+
+async function getResolvedDefaultRequestUserAgent(): Promise<string> {
+  if (cachedUserAgentResolution) {
+    return cachedUserAgentResolution.userAgent;
+  }
+
+  if (pendingUserAgentResolution) {
+    return (await pendingUserAgentResolution).userAgent;
+  }
+
+  pendingUserAgentResolution = resolveDefaultUserAgentResolution()
+    .then((resolved) => {
+      cachedUserAgentResolution = resolved;
+      logger.info(
+        `Default request User-Agent resolved (source=${resolved.source}, version=${resolved.version}): ${resolved.userAgent}`,
+      );
+      return resolved;
+    })
+    .finally(() => {
+      pendingUserAgentResolution = null;
+    });
+
+  return (await pendingUserAgentResolution).userAgent;
+}
+
+export async function resolveRequestUserAgent(): Promise<string> {
+  return await getResolvedDefaultRequestUserAgent();
+}

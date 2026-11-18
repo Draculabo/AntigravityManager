@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { InvalidToolResultAssociationError } from '@/modules/proxy-gateway/antigravity/ClaudeToolResultAssociation';
-import type { GeminiRequest } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
-import { GeminiService } from '@/modules/proxy-gateway/server/modules/gemini/gemini.service';
-import { normalizeGeminiToolCallIds } from '@/modules/proxy-gateway/server/modules/gemini/gemini-tool-call-identity';
+import type { GeminiRequest } from '@/server/gateway/common/interfaces/request-interfaces';
+import { GeminiService } from '@/server/gateway/modules/gemini/gemini.service';
+import { normalizeGeminiToolCallIds } from '@/server/gateway/modules/gemini/gemini-tool-call-identity';
 
 function createRequest(contents: unknown[]): GeminiRequest {
   return { contents } as unknown as GeminiRequest;

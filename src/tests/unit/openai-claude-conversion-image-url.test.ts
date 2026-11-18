@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   convertOpenAIPartsToAnthropicContent,
   convertOpenAIToClaude,
-} from '@/modules/proxy-gateway/server/modules/openai/chat/openai-claude-conversion';
-import type { OpenAIContentPart } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+} from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
+import type { OpenAIContentPart } from '@/server/gateway/common/interfaces/request-interfaces';
 
 const pendingToolCall = (id: string) => ({
   role: 'assistant',

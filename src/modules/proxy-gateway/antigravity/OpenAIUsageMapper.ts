@@ -3,7 +3,7 @@ import { getGeminiReasoningTokens } from './GeminiReasoningUsage';
 import type {
   GeminiUsageMetadata,
   OpenAIUsage,
-} from '../server/common/interfaces/request-interfaces';
+} from '../../../server/gateway/common/interfaces/request-interfaces';
 
 export interface OpenAIResponsesUsage {
   input_tokens: number;

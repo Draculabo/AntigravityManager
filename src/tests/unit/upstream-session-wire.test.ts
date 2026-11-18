@@ -1,14 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Readable } from 'node:stream';
 import { z } from 'zod';
-import { createUpstreamSessionIdentity } from '@/modules/proxy-gateway/server/common/upstream-session-identity';
+import { createUpstreamSessionIdentity } from '@/server/gateway/common/upstream-session-identity';
 
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { setServerConfig } from '@/server/server-config';
-import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
-import { Upstream4xxCaptureService } from '@/modules/proxy-gateway/server/common/upstream-4xx-capture.service';
+import { GeminiClient } from '@/server/gateway/modules/gemini/gemini-client.service';
+import { Upstream4xxCaptureService } from '@/server/gateway/common/upstream-4xx-capture.service';
 import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
-import { explicitContextCacheManager } from '@/modules/proxy-gateway/server/modules/gemini/explicit-context-cache.store';
+import { explicitContextCacheManager } from '@/server/gateway/modules/gemini/explicit-context-cache.store';
 
 const axiosMock = vi.hoisted(() => ({
   post: vi.fn(),

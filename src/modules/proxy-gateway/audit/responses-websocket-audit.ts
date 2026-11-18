@@ -1,8 +1,8 @@
 import { HttpException } from '@nestjs/common';
 import { logger } from '@/shared/logging/logger';
 import { SchemaInputError } from '../antigravity/schema/SchemaConversion';
-import type { SignatureScopeContext } from '../server/common/signature-session-scope';
-import { resolveUpstreamErrorHttpStatus } from '../server/common/upstream-error-http-status';
+import type { SignatureScopeContext } from '../../../server/gateway/common/signature-session-scope';
+import { resolveUpstreamErrorHttpStatus } from '../../../server/gateway/common/upstream-error-http-status';
 import { auditJsonObject } from './audit-json-object';
 import { resolveAuditSessionId } from './audit-session-identity';
 import { getTrafficAuditRequestContext } from './traffic-audit-context';

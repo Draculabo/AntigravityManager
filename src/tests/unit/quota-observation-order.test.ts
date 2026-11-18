@@ -15,11 +15,11 @@ import { CloudMonitorService } from '@/modules/cloud-account/services/CloudMonit
 import { AutoSwitchService } from '@/modules/cloud-account/services/AutoSwitchService';
 import { WeeklyWarmupService } from '@/modules/cloud-account/services/WeeklyWarmupService';
 import { cloudAccountWeeklyWarmupRunner } from '@/modules/cloud-account/services/cloud-account-weekly-warmup-runner';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
-import { cloudAccountStoreAdapter } from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-adapters';
-import { ProxyRetryService } from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
-import { ModelAvailabilityService } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
-import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
+import { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
+import { cloudAccountStoreAdapter } from '@/server/gateway/modules/account-lease/interfaces/account-lease-adapters';
+import { ProxyRetryService } from '@/server/gateway/shared/services/proxy-retry.service';
+import { ModelAvailabilityService } from '@/server/gateway/shared/services/model-availability.service';
+import { UpstreamRequestError } from '@/server/gateway/common/exceptions/upstream-request.exception';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { createAccount } from './proxy-real-path.harness';
 

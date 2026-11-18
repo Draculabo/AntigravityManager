@@ -7,7 +7,7 @@ import {
   describeInternalSseError,
   MAX_SSE_EVENT_BYTES,
 } from '@/modules/proxy-gateway/antigravity/internal-sse';
-import { AnthropicService as ProxyService } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.service';
+import { AnthropicService as ProxyService } from '@/server/gateway/modules/anthropic/anthropic.service';
 
 describe('decodeInternalSseData', () => {
   it('unwraps a v1internal-wrapped chunk so candidates/usage/model/id are reachable at the top level', () => {

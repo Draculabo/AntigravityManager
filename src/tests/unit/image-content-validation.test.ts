@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validatedImageMimeType } from '@/modules/proxy-gateway/server/common/image-content-validation';
+import { validatedImageMimeType } from '@/server/gateway/common/image-content-validation';
 import { PIXEL_PNG, PIXEL_GIF, PIXEL_JPEG, PIXEL_BMP } from '../fixtures/image-content';
 
 describe('image signature and minimum container completeness', () => {

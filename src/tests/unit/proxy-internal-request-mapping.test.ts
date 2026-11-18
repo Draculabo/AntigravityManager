@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { createGeminiRequestEnvelope } from '@/modules/proxy-gateway/server/modules/gemini/gemini-request-envelope';
-import type { GeminiRequest } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+import { createGeminiRequestEnvelope } from '@/server/gateway/modules/gemini/gemini-request-envelope';
+import type { GeminiRequest } from '@/server/gateway/common/interfaces/request-interfaces';
 import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
 
 function toInternalRequest(

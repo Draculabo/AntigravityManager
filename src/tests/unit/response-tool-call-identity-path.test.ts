@@ -4,7 +4,7 @@ import { z } from 'zod';
 
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
 import type { FunctionCall } from '@/modules/proxy-gateway/antigravity/types';
-import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
+import { proxyModelAvailabilityStore } from '@/server/gateway/shared/services/model-availability.service';
 import {
   collect,
   createAccount,
@@ -14,9 +14,9 @@ import {
   geminiStreamFrame,
 } from './proxy-real-path.harness';
 
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', async (original) => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
   ...(await original<
-    typeof import('@/modules/proxy-gateway/server/common/utils/request-user-agent')
+    typeof import('@/server/gateway/common/utils/request-user-agent')
   >()),
   resolveRequestUserAgent: async () => 'response-tool-identity-fixture',
 }));

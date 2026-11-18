@@ -7,10 +7,10 @@ import { getServerConfig, setServerConfig } from '@/server/server-config';
 import {
   AuditManagementController,
   ThoughtManagementController,
-} from '@/modules/proxy-gateway/server/modules/observability/observability.controller';
-import { ThinkingController } from '@/modules/proxy-gateway/server/modules/thinking/thinking.controller';
-import { AdminGuard } from '@/modules/proxy-gateway/server/guards/admin.guard';
-import { ProxyGuard } from '@/modules/proxy-gateway/server/guards/proxy.guard';
+} from '@/server/gateway/modules/observability/observability.controller';
+import { ThinkingController } from '@/server/gateway/modules/thinking/thinking.controller';
+import { AdminGuard } from '@/server/gateway/guards/admin.guard';
+import { ProxyGuard } from '@/server/gateway/guards/proxy.guard';
 
 const fixture = vi.hoisted(() => ({
   audit: {

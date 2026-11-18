@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   MediaWindowLimitError,
   planMediaSendWindow,
-} from '@/modules/proxy-gateway/server/common/media-send-window';
+} from '@/server/gateway/common/media-send-window';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 
 const config = {

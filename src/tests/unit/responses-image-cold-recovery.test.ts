@@ -2,11 +2,11 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FileContentStore } from '@/modules/proxy-gateway/server/modules/files/file-content-store.service';
-import { FilesService } from '@/modules/proxy-gateway/server/modules/files/files.service';
-import { OpenAIResponsesMediaStore } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-media-store';
-import { OpenAIResponsesSessionService } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.service';
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
+import { FileContentStore } from '@/server/gateway/modules/files/file-content-store.service';
+import { FilesService } from '@/server/gateway/modules/files/files.service';
+import { OpenAIResponsesMediaStore } from '@/server/gateway/modules/openai/responses/openai-responses-media-store';
+import { OpenAIResponsesSessionService } from '@/server/gateway/modules/openai/responses/openai-responses-session.service';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
 import { PIXEL_PNG, PIXEL_GIF } from '../fixtures/image-content';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import * as serverConfig from '@/server/server-config';
@@ -18,9 +18,9 @@ import {
   geminiTextResponse,
 } from './proxy-real-path.harness';
 
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', async (original) => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
   ...(await original<
-    typeof import('@/modules/proxy-gateway/server/common/utils/request-user-agent')
+    typeof import('@/server/gateway/common/utils/request-user-agent')
   >()),
   resolveRequestUserAgent: vi.fn(async () => 'antigravity/test'),
 }));

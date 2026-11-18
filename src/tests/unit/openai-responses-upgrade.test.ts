@@ -8,9 +8,9 @@ import {
   OpenAIResponsesSessionStoreImpl,
   mergeOpenAIResponsesInputItems,
   prepareOpenAIResponsesSessionInput,
-} from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
-import { OPENAI_RESPONSES_SESSION_FILENAME } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.service';
-import { buildResponsesChatRequest } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-request';
+} from '@/server/gateway/modules/openai/responses/openai-responses-session.store';
+import { OPENAI_RESPONSES_SESSION_FILENAME } from '@/server/gateway/modules/openai/responses/openai-responses-session.service';
+import { buildResponsesChatRequest } from '@/server/gateway/modules/openai/responses/openai-responses-request';
 import { toOpenAIResponsesResponse } from '@/modules/proxy-gateway/antigravity/OpenAIResponsesResponseMapper';
 
 const fixtureText = fs.readFileSync(

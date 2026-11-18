@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   RateLimitReason,
   RateLimitTrackerService,
-} from '../../modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
+} from '../../server/gateway/shared/services/rate-limit-tracker.service';
 
 const backoffSteps = [10, 20, 40, 80];
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { resolveOpenAIImageUrl } from '@/modules/proxy-gateway/server/modules/openai/openai-image-url';
+import { resolveOpenAIImageUrl } from '@/server/gateway/modules/openai/openai-image-url';
 
 describe('resolveOpenAIImageUrl', () => {
   it.each([

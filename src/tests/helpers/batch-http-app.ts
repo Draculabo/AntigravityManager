@@ -5,11 +5,11 @@ import { afterEach, vi } from 'vitest';
 
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { getServerConfig, setServerConfig } from '@/server/server-config';
-import { ProxyGuard } from '@/modules/proxy-gateway/server/guards/proxy.guard';
-import { BatchService } from '@/modules/proxy-gateway/server/modules/batch/batch.service';
-import { OpenAIBatchesController } from '@/modules/proxy-gateway/server/modules/batch/openai-batches.controller';
-import { AnthropicMessageBatchesController } from '@/modules/proxy-gateway/server/modules/batch/anthropic-message-batches.controller';
-import { GeminiBatchesController } from '@/modules/proxy-gateway/server/modules/batch/gemini-batches.controller';
+import { ProxyGuard } from '@/server/gateway/guards/proxy.guard';
+import { BatchService } from '@/server/gateway/modules/batch/batch.service';
+import { OpenAIBatchesController } from '@/server/gateway/modules/batch/openai-batches.controller';
+import { AnthropicMessageBatchesController } from '@/server/gateway/modules/batch/anthropic-message-batches.controller';
+import { GeminiBatchesController } from '@/server/gateway/modules/batch/gemini-batches.controller';
 
 vi.mock('@/modules/proxy-gateway/opencode-sync/opencode-credentials', () => ({
   openCodeCredentialService: { matches: () => false },

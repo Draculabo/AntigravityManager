@@ -2,7 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
 
 import type { GeminiPart } from '@/modules/proxy-gateway/antigravity/types';
-import { assertGeminiThoughtSignatureAliases } from '@/modules/proxy-gateway/server/modules/gemini/gemini-thought-signature-validation';
+import { assertGeminiThoughtSignatureAliases } from '@/server/gateway/modules/gemini/gemini-thought-signature-validation';
 
 describe('Gemini request thought signature aliases', () => {
   it.each([

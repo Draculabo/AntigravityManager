@@ -2,7 +2,7 @@ import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
-import { AdminGuard } from '@/modules/proxy-gateway/server/guards/admin.guard';
+import { AdminGuard } from '@/server/gateway/guards/admin.guard';
 import { setServerConfig } from '@/server/server-config';
 
 function createContext(headers: Record<string, string> = {}): ExecutionContext {

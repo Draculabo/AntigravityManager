@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   geminiFileErrorResponse,
   readGeminiUploadDisplayName,
-} from '@/modules/proxy-gateway/server/modules/files/gemini-file-resource';
+} from '@/server/gateway/modules/files/gemini-file-resource';
 
 describe('Gemini file resource boundaries', () => {
   it('preserves Gemini nested-file fallback semantics while validating metadata', () => {

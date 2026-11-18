@@ -6,16 +6,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_APP_CONFIG, type ModelAliasRoute } from '@/modules/config/types';
 import { getConfiguredModelMapping } from '@/modules/config/model-aliases';
 import { getServerConfig, setServerConfig } from '@/server/server-config';
-import { ProxyGuard } from '@/modules/proxy-gateway/server/guards/proxy.guard';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
-import { GeminiController } from '@/modules/proxy-gateway/server/modules/gemini/gemini.controller';
-import { GeminiService } from '@/modules/proxy-gateway/server/modules/gemini/gemini.service';
-import { AnthropicController } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
-import { AnthropicService } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.service';
-import { OpenAIModelsController } from '@/modules/proxy-gateway/server/modules/openai/openai-models.controller';
-import { OpenAIProbesController } from '@/modules/proxy-gateway/server/modules/openai/openai-probes.controller';
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
-import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
+import { ProxyGuard } from '@/server/gateway/guards/proxy.guard';
+import { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
+import { GeminiController } from '@/server/gateway/modules/gemini/gemini.controller';
+import { GeminiService } from '@/server/gateway/modules/gemini/gemini.service';
+import { AnthropicController } from '@/server/gateway/modules/anthropic/anthropic.controller';
+import { AnthropicService } from '@/server/gateway/modules/anthropic/anthropic.service';
+import { OpenAIModelsController } from '@/server/gateway/modules/openai/openai-models.controller';
+import { OpenAIProbesController } from '@/server/gateway/modules/openai/openai-probes.controller';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
+import { ModelRoutingService } from '@/server/gateway/shared/services/model-routing.service';
 
 vi.mock('@/modules/proxy-gateway/opencode-sync/opencode-credentials', () => ({
   openCodeCredentialService: { matches: () => false },

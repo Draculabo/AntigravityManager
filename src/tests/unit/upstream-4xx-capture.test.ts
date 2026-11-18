@@ -9,8 +9,8 @@ import {
   snapshotCapturePayload,
   type UpstreamCaptureContext,
   UpstreamCaptureContextInterceptor,
-} from '@/modules/proxy-gateway/server/common/upstream-capture-context';
-import { Upstream4xxCaptureService } from '@/modules/proxy-gateway/server/common/upstream-4xx-capture.service';
+} from '@/server/gateway/common/upstream-capture-context';
+import { Upstream4xxCaptureService } from '@/server/gateway/common/upstream-4xx-capture.service';
 
 let agentDirectory = '';
 

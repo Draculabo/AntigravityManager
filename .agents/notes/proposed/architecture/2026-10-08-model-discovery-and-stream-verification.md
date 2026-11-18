@@ -18,7 +18,7 @@ The product requirement is to retain the current filtering of upstream descripto
 
 The remaining improvement is verification: reviewed stream tests cover parsing, malformed input and timeouts, but do not establish systematic equivalence across actual UTF-8 byte partitions of the same upstream fixture. This is a test coverage gap, not a confirmed production parser defect.
 
-Relevant owners are [GoogleAPIService](../../../../src/modules/cloud-account/services/GoogleAPIService.ts), [account model policy](../../../../src/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-model.policy.ts), [model mapping](../../../../src/modules/proxy-gateway/antigravity/ModelMapping.ts) and [the existing real-path harness](../../../../src/tests/unit/proxy-real-path.harness.ts). The [implemented quota and Flash routing decision](../../implemented/bug-fix/2026-10-05-explicit-quota-and-flash-routes.md) remains authoritative.
+Relevant owners are [GoogleAPIService](../../../../src/modules/cloud-account/services/GoogleAPIService.ts), [account model policy](../../../../src/server/gateway/modules/account-lease/policies/account-lease-model.policy.ts), [model mapping](../../../../src/modules/proxy-gateway/antigravity/ModelMapping.ts) and [the existing real-path harness](../../../../src/tests/unit/proxy-real-path.harness.ts). The [implemented quota and Flash routing decision](../../implemented/bug-fix/2026-10-05-explicit-quota-and-flash-routes.md) remains authoritative.
 
 ## Proposal
 

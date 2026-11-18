@@ -3,16 +3,16 @@ import { BadRequestException } from '@nestjs/common';
 import {
   admitAnthropicInlineMedia,
   admitOpenAIInlineMedia,
-} from '@/modules/proxy-gateway/server/common/inline-media-admission';
+} from '@/server/gateway/common/inline-media-admission';
 import type {
   AnthropicContent,
   OpenAIContentPart,
-} from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+} from '@/server/gateway/common/interfaces/request-interfaces';
 import {
   MAX_INPUT_IMAGE_BYTES,
   MAX_TOTAL_INPUT_IMAGE_BYTES,
-} from '@/modules/proxy-gateway/server/modules/openai/media/image-input-validation';
-import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
+} from '@/server/gateway/modules/openai/media/image-input-validation';
+import { proxyModelAvailabilityStore } from '@/server/gateway/shared/services/model-availability.service';
 import {
   createAccount,
   createGateway,
@@ -21,9 +21,9 @@ import {
   geminiTextResponse,
 } from './proxy-real-path.harness';
 
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', async (original) => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
   ...(await original<
-    typeof import('@/modules/proxy-gateway/server/common/utils/request-user-agent')
+    typeof import('@/server/gateway/common/utils/request-user-agent')
   >()),
   resolveRequestUserAgent: vi.fn(async () => 'antigravity/test'),
 }));

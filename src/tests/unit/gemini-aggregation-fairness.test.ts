@@ -1,8 +1,8 @@
 import { Readable } from 'node:stream';
 import { setImmediate as tick } from 'node:timers/promises';
 import { afterEach, expect, it, vi } from 'vitest';
-import { collectGeminiStream } from '@/modules/proxy-gateway/server/common/collect-gemini-stream';
-import { aggregationByteAccounting } from '@/modules/proxy-gateway/server/common/aggregation-byte-accounting';
+import { collectGeminiStream } from '@/server/gateway/common/collect-gemini-stream';
+import { aggregationByteAccounting } from '@/server/gateway/common/aggregation-byte-accounting';
 import type { GeminiPart } from '@/modules/proxy-gateway/antigravity/types';
 
 afterEach(() => {

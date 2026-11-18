@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import {
   RateLimitReason,
   RateLimitTrackerService,
-} from '@/modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
+} from '@/server/gateway/shared/services/rate-limit-tracker.service';
 
 it('resets only the deleted account global/model locks and both escalation counters', () => {
   const tracker = new RateLimitTrackerService();

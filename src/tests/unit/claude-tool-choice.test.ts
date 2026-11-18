@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { transformClaudeRequestIn } from '@/modules/proxy-gateway/antigravity/ClaudeRequestMapper';
 import { ToolConfigurationError } from '@/modules/proxy-gateway/antigravity/ToolChoiceCompat';
 import type { ClaudeRequest } from '@/modules/proxy-gateway/antigravity/types';
-import { AnthropicController } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
+import { AnthropicController } from '@/server/gateway/modules/anthropic/anthropic.controller';
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
 import {
   createGateway,
@@ -14,7 +14,7 @@ import {
 } from './proxy-real-path.harness';
 
 vi.mock(
-  '@/modules/proxy-gateway/server/common/utils/request-user-agent',
+  '@/server/gateway/common/utils/request-user-agent',
   async (importOriginal) => ({
     ...(await importOriginal<object>()),
     resolveRequestUserAgent: async () => 'tool-choice-fixture/1',

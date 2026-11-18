@@ -16,7 +16,7 @@ vi.mock('@/shared/logging/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 vi.mock(
-  '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.server',
+  '@/server/gateway/modules/openai/responses/openai-responses-websocket.server',
   () => ({
     attachOpenAIResponsesWebSocketServer: () => () => {},
   }),

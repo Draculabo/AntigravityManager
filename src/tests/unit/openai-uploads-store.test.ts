@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   OpenAIUploadsStore,
   revivePersistedOpenAIUpload,
-} from '@/modules/proxy-gateway/server/modules/uploads/openai-uploads.store';
+} from '@/server/gateway/modules/uploads/openai-uploads.store';
 const chunkA = Buffer.from('hello ');
 describe('OpenAI Uploads store codecs and capacity', () => {
   it('drops malformed or corrupted records from disk upon revival', () => {

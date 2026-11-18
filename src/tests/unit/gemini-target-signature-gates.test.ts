@@ -3,9 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
-import { GeminiModelSwitchHistory } from '@/modules/proxy-gateway/server/modules/gemini/gemini-thought-signature-model';
-import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
-import { Upstream4xxCaptureService } from '@/modules/proxy-gateway/server/common/upstream-4xx-capture.service';
+import { GeminiModelSwitchHistory } from '@/server/gateway/modules/gemini/gemini-thought-signature-model';
+import { GeminiClient } from '@/server/gateway/modules/gemini/gemini-client.service';
+import { Upstream4xxCaptureService } from '@/server/gateway/common/upstream-4xx-capture.service';
 import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
 import { setServerConfig } from '@/server/server-config';
 

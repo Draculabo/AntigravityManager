@@ -16,7 +16,7 @@ import {
 } from './CloudAccountRefreshService';
 import { clearValidationHealthAfterSuccessfulProbe } from './CloudAccountHealthService';
 import { persistServiceDisabledFromQuotaFailure } from './cloud-account-quota-refresh.service';
-import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
+import { proxyModelAvailabilityStore } from '@/server/gateway/shared/services/model-availability.service';
 import { AutoSwitchService } from './AutoSwitchService';
 import { logger } from '@/shared/logging/logger';
 import { classifyAccountStatusFromError } from '@/modules/cloud-account/utils/account-status';

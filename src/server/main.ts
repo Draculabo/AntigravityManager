@@ -4,26 +4,26 @@ import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify
 import fastifyMultipart from '@fastify/multipart';
 import { AppModule } from './app.module';
 import { logger } from '../shared/logging/logger';
-import { AccountLeaseService } from '../modules/proxy-gateway/server/modules/account-lease/account-lease.service';
-import { GeminiClient } from '../modules/proxy-gateway/server/modules/gemini/gemini-client.service';
-import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
-import { OpenAIOperations } from '../modules/proxy-gateway/server/modules/openai/openai-operations.service';
-import { ProxyService } from '../modules/proxy-gateway/server/proxy.service';
-import { DEFAULT_MAX_FILE_BYTES } from '../modules/proxy-gateway/server/modules/files/file-store.types';
-import { attachOpenAIResponsesWebSocketServer } from '../modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.server';
-import { createResponsesWebSocketOperations } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.operations';
-import { extractApiKeyToken } from '../modules/proxy-gateway/server/guards/api-key-auth.util';
+import { AccountLeaseService } from './gateway/modules/account-lease/account-lease.service';
+import { GeminiClient } from './gateway/modules/gemini/gemini-client.service';
+import { proxyModelAvailabilityStore } from '@/server/gateway/shared/services/model-availability.service';
+import { OpenAIOperations } from './gateway/modules/openai/openai-operations.service';
+import { ProxyService } from './gateway/proxy.service';
+import { DEFAULT_MAX_FILE_BYTES } from './gateway/modules/files/file-store.types';
+import { attachOpenAIResponsesWebSocketServer } from './gateway/modules/openai/responses/openai-responses-websocket.server';
+import { createResponsesWebSocketOperations } from '@/server/gateway/modules/openai/responses/openai-responses-websocket.operations';
+import { extractApiKeyToken } from './gateway/guards/api-key-auth.util';
 import { hasConfiguredApiKey } from '@/shared/security/api-key';
-import { MAX_IMAGE_GENERATION_BODY_BYTES } from '@/modules/proxy-gateway/server/modules/openai/media/image-input-validation';
+import { MAX_IMAGE_GENERATION_BODY_BYTES } from '@/server/gateway/modules/openai/media/image-input-validation';
 import { evaluateClientAddress } from '@/shared/network/client-address';
 import {
   DEFAULT_PROXY_JSON_BODY_LIMIT_BYTES,
   isModelPayloadRoute,
-} from '../modules/proxy-gateway/server/proxy.constants';
+} from './gateway/proxy.constants';
 import { registerTrafficAuditHttpHooks } from '@/modules/proxy-gateway/audit/traffic-audit-context';
 import { ResponsesWebSocketAudit } from '@/modules/proxy-gateway/audit/responses-websocket-audit';
-import { registerGzipJsonIngress } from '@/modules/proxy-gateway/server/common/gzip-json-ingress';
-import { registerGeminiQueryCredentialIngress } from '@/modules/proxy-gateway/server/guards/gemini-query-credential-ingress';
+import { registerGzipJsonIngress } from '@/server/gateway/common/gzip-json-ingress';
+import { registerGeminiQueryCredentialIngress } from '@/server/gateway/guards/gemini-query-credential-ingress';
 import { trafficAuditService } from '@/modules/proxy-gateway/audit/traffic-audit.service';
 import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
 

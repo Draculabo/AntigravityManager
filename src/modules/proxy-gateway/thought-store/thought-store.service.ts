@@ -10,8 +10,8 @@ import type {
   GeminiInternalRequest,
 } from '@/modules/proxy-gateway/antigravity/types';
 import { getTrafficAuditRequestContext } from '@/modules/proxy-gateway/audit/traffic-audit-context';
-import { recordProxyThinkingFill } from '@/modules/proxy-gateway/server/common/proxy-response-timing';
-import { recordThoughtRestoreCompletion } from '../server/common/generation-request-diagnostics';
+import { recordProxyThinkingFill } from '@/server/gateway/common/proxy-response-timing';
+import { recordThoughtRestoreCompletion } from '../../../server/gateway/common/generation-request-diagnostics';
 import {
   recordThoughtRestoreOutcome,
   type ThoughtRestoreUnavailable,

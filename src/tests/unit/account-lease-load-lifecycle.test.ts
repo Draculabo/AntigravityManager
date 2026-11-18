@@ -1,17 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AccountLeaseTokenCache } from '@/modules/proxy-gateway/server/modules/account-lease/stores/account-lease-token.store';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
-import type { AccountLeaseTokenData } from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-token-types';
+import { AccountLeaseTokenCache } from '@/server/gateway/modules/account-lease/stores/account-lease-token.store';
+import { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
+import type { AccountLeaseTokenData } from '@/server/gateway/modules/account-lease/interfaces/account-lease-token-types';
 import type {
   AccountLeaseAccountStore,
   AccountLeaseUpstream,
-} from '@/modules/proxy-gateway/server/modules/account-lease/interfaces/account-lease-adapters';
+} from '@/server/gateway/modules/account-lease/interfaces/account-lease-adapters';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import {
   RateLimitReason,
   RateLimitTrackerService,
-} from '@/modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
-import { ModelAvailabilityService } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
+} from '@/server/gateway/shared/services/rate-limit-tracker.service';
+import { ModelAvailabilityService } from '@/server/gateway/shared/services/model-availability.service';
 import { createAccount } from './proxy-real-path.harness';
 
 const services: AccountLeaseService[] = [];

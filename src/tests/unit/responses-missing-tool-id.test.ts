@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildResponsesChatRequest } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-request';
-import { prepareOpenAIResponsesSessionInput } from '@/modules/proxy-gateway/server/modules/openai/responses/responses-session-input';
-import { OpenAIResponsesSessionStoreImpl } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
+import { buildResponsesChatRequest } from '@/server/gateway/modules/openai/responses/openai-responses-request';
+import { prepareOpenAIResponsesSessionInput } from '@/server/gateway/modules/openai/responses/responses-session-input';
+import { OpenAIResponsesSessionStoreImpl } from '@/server/gateway/modules/openai/responses/openai-responses-session.store';
 import { responsesIdentityFixture } from './responses-identity.fixture';
 import { PIXEL_PNG } from '../fixtures/image-content';
 

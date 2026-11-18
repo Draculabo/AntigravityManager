@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AxiosError, AxiosHeaders } from 'axios';
-import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
+import { GeminiClient } from '@/server/gateway/modules/gemini/gemini-client.service';
 
 /**
  * `shouldFailoverToNextEndpoint` decides whether a failed call is worth retrying against the

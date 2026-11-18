@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { OPENAI_SERVABLE_BATCH_ENDPOINT } from '@/modules/proxy-gateway/server/modules/batch/batch-job.types';
+import { OPENAI_SERVABLE_BATCH_ENDPOINT } from '@/server/gateway/modules/batch/batch-job.types';
 import {
   normalizeBatchMetadata,
   openAIBatchErrorResponse,
   parseBatchInputJsonl,
-} from '@/modules/proxy-gateway/server/modules/batch/openai-batch-resource';
+} from '@/server/gateway/modules/batch/openai-batch-resource';
 
 describe('OpenAI batch resource boundaries', () => {
   it('validates JSONL records while preserving the opaque request body', () => {

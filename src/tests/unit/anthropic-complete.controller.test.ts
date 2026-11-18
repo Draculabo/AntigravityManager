@@ -3,8 +3,8 @@ import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { describe, expect, it, vi } from 'vitest';
 import { of } from 'rxjs';
 
-import { AnthropicService } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.service';
-import type { AnthropicChatResponse } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
+import { AnthropicService } from '@/server/gateway/modules/anthropic/anthropic.service';
+import type { AnthropicChatResponse } from '@/server/gateway/common/interfaces/request-interfaces';
 import {
   createAnthropicCompleteHttpApp,
   completionTestHeaders as headers,

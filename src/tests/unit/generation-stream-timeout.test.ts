@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import {
   GenerationDeadlineScope,
   observeGenerationStreamProgress,
-} from '@/modules/proxy-gateway/server/common/generation-deadline';
+} from '@/server/gateway/common/generation-deadline';
 
 const policy = { initialMs: 180, activityMs: 120, transitionMs: 180 };
 beforeEach(() => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] }));

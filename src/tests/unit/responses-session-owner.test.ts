@@ -8,10 +8,10 @@ vi.mock('@/shared/persistence/durable-store-settings', async (load) => ({
   ...(await load<object>()),
   isDurableStoreTestEnvironment: () => false,
 }));
-import { ResponsesSessionOwner } from '@/modules/proxy-gateway/server/modules/openai/responses/responses-session-owner';
-import { OpenAIResponsesSessionStoreImpl } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
-import { FileContentStore } from '@/modules/proxy-gateway/server/modules/files/file-content-store.service';
-import { FilesService } from '@/modules/proxy-gateway/server/modules/files/files.service';
+import { ResponsesSessionOwner } from '@/server/gateway/modules/openai/responses/responses-session-owner';
+import { OpenAIResponsesSessionStoreImpl } from '@/server/gateway/modules/openai/responses/openai-responses-session.store';
+import { FileContentStore } from '@/server/gateway/modules/files/file-content-store.service';
+import { FilesService } from '@/server/gateway/modules/files/files.service';
 import { invalidateThoughtRecoveryPeers } from '@/modules/proxy-gateway/thought-store/thought-recovery-peers';
 import { responsesIdentityFixture } from './responses-identity.fixture';
 let filePath: string;

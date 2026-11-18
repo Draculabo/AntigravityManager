@@ -5,10 +5,10 @@ import {
   GEMINI_SERVABLE_BATCH_ACTION,
   OPENAI_SERVABLE_BATCH_ENDPOINT,
   SERVABLE_BATCH_ENDPOINTS,
-} from '@/modules/proxy-gateway/server/modules/batch/batch-job.types';
-import { BatchRunnerService } from '@/modules/proxy-gateway/server/modules/batch/batch-runner.service';
-import type { BatchExecutionTarget } from '@/modules/proxy-gateway/server/modules/batch/batch-request-executor';
-import { buildGeminiBatchEndpoint } from '@/modules/proxy-gateway/server/modules/batch/gemini-batch-resource';
+} from '@/server/gateway/modules/batch/batch-job.types';
+import { BatchRunnerService } from '@/server/gateway/modules/batch/batch-runner.service';
+import type { BatchExecutionTarget } from '@/server/gateway/modules/batch/batch-request-executor';
+import { buildGeminiBatchEndpoint } from '@/server/gateway/modules/batch/gemini-batch-resource';
 
 /** Every advertised endpoint needs a dispatch test proving the Batch runner can execute it. */
 function createTarget(handler: (dialect: string, request: unknown) => Promise<unknown>) {
@@ -117,7 +117,7 @@ describe('SERVABLE_BATCH_ENDPOINTS', () => {
 
   it('refuses an OpenAI batch aimed at /v1/responses, naming what it can serve', async () => {
     const { requireServableEndpoint } =
-      await import('@/modules/proxy-gateway/server/modules/batch/openai-batch-resource');
+      await import('@/server/gateway/modules/batch/openai-batch-resource');
 
     expect(() => requireServableEndpoint('/v1/responses')).toThrow(
       expect.objectContaining({
@@ -131,7 +131,7 @@ describe('SERVABLE_BATCH_ENDPOINTS', () => {
 
   it('refuses to dispatch a job that already carries /v1/responses', async () => {
     const { executeBatchRequest } =
-      await import('@/modules/proxy-gateway/server/modules/batch/batch-request-executor');
+      await import('@/server/gateway/modules/batch/batch-request-executor');
     const target = createTarget(async () => ({ id: 'chatcmpl-1', choices: [] }));
 
     const result = await executeBatchRequest(

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AccountLeaseLimitPolicy } from '@/modules/proxy-gateway/server/modules/account-lease/policies/account-lease-limit.policy';
-import { RateLimitTrackerService } from '@/modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
+import { AccountLeaseLimitPolicy } from '@/server/gateway/modules/account-lease/policies/account-lease-limit.policy';
+import { RateLimitTrackerService } from '@/server/gateway/shared/services/rate-limit-tracker.service';
 
 describe('AccountLeaseLimitPolicy structured retry delays', () => {
   it('honors an upstream retryDelay without replacing it with a quota refresh decision', async () => {

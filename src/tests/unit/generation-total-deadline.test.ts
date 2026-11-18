@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PassThrough } from 'node:stream';
 import { Observable } from 'rxjs';
-import { FlowControlledSseStream } from '@/modules/proxy-gateway/server/common/flow-controlled-sse-stream';
+import { FlowControlledSseStream } from '@/server/gateway/common/flow-controlled-sse-stream';
 import { setServerConfig } from '@/server/server-config';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import {

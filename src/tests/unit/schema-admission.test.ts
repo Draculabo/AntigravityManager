@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { OpenAIOperations } from '@/modules/proxy-gateway/server/modules/openai/openai-operations.service';
-import { AnthropicController } from '@/modules/proxy-gateway/server/modules/anthropic/anthropic.controller';
+import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
+import { AnthropicController } from '@/server/gateway/modules/anthropic/anthropic.controller';
 import { logger } from '@/shared/logging/logger';
 import * as schemaUtils from '@/modules/proxy-gateway/antigravity/JsonSchemaUtils';
 import { STRING_SCHEMA_FALLBACK } from '@/modules/proxy-gateway/antigravity/schema/JsonSchemaReferenceResolver';
-import { OpenAIResponsesSessionStore } from '@/modules/proxy-gateway/server/modules/openai/responses/openai-responses-session.store';
+import { OpenAIResponsesSessionStore } from '@/server/gateway/modules/openai/responses/openai-responses-session.store';
 import {
   createAccount,
   createGateway,
@@ -15,7 +15,7 @@ import {
 } from './proxy-real-path.harness';
 
 vi.mock(
-  '@/modules/proxy-gateway/server/common/utils/request-user-agent',
+  '@/server/gateway/common/utils/request-user-agent',
   async (importOriginal) => ({
     ...(await importOriginal<object>()),
     resolveRequestUserAgent: async () => 'schema-test/1',

@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { setServerConfig } from '@/server/server-config';
 import { transformClaudeRequestIn } from '@/modules/proxy-gateway/antigravity/ClaudeRequestMapper';
-import { convertOpenAIToClaude } from '@/modules/proxy-gateway/server/modules/openai/chat/openai-claude-conversion';
-import { toInternalGeminiRequest } from '@/modules/proxy-gateway/server/modules/gemini/gemini-request-envelope';
+import { convertOpenAIToClaude } from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
+import { toInternalGeminiRequest } from '@/server/gateway/modules/gemini/gemini-request-envelope';
 import { stripClaudeBillingMetadata } from '@/modules/proxy-gateway/antigravity/ClientBillingMetadata';
 
 const billing = 'x-anthropic-billing-header: cc_entrypoint=controlled;';

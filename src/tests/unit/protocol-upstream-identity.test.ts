@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createUpstreamSessionIdentity } from '@/modules/proxy-gateway/server/common/upstream-session-identity';
+import { createUpstreamSessionIdentity } from '@/server/gateway/common/upstream-session-identity';
 import {
   resolveAnthropicSessionScope,
   resolveGeminiSessionScope,
   resolveOpenAISessionScope,
-} from '@/modules/proxy-gateway/server/common/signature-session-scope';
-import { proxyModelAvailabilityStore } from '@/modules/proxy-gateway/server/shared/services/model-availability.service';
+} from '@/server/gateway/common/signature-session-scope';
+import { proxyModelAvailabilityStore } from '@/server/gateway/shared/services/model-availability.service';
 import {
   collect,
   createAccount,
@@ -16,7 +16,7 @@ import {
   geminiStreamFrame,
 } from './proxy-real-path.harness';
 
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', async (original) => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
   ...(await original<object>()),
   resolveRequestUserAgent: async () => 'upstream-identity-test/1.0',
 }));

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const captured = vi.hoisted(() => ({ capture: vi.fn() }));
 vi.mock('@/modules/error-diagnostics/public', () => ({ errorProcessOwner: captured }));
 import { trafficAuditService } from '@/modules/proxy-gateway/audit/traffic-audit.service';
-import { UpstreamRequestError } from '@/modules/proxy-gateway/server/common/exceptions/upstream-request.exception';
+import { UpstreamRequestError } from '@/server/gateway/common/exceptions/upstream-request.exception';
 import {
   completeCurrentUpstreamAttempt,
   runWithTrafficAuditRequestContext,

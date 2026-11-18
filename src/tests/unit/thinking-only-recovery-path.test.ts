@@ -3,11 +3,11 @@ import axios, { AxiosError, AxiosHeaders } from 'axios';
 import { Logger } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
+import { GeminiClient } from '@/server/gateway/modules/gemini/gemini-client.service';
 import {
   getStreamOutputRetainedBytes,
   StreamOutputBudget,
-} from '@/modules/proxy-gateway/server/common/stream-output-budget';
+} from '@/server/gateway/common/stream-output-budget';
 import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
 import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
 import { runWithTrafficAuditRequestContext } from '@/modules/proxy-gateway/audit/traffic-audit-context';
@@ -32,7 +32,7 @@ vi.mock('@/server/server-config', async (importOriginal) => {
     }),
   };
 });
-vi.mock('@/modules/proxy-gateway/server/common/utils/request-user-agent', () => ({
+vi.mock('@/server/gateway/common/utils/request-user-agent', () => ({
   resolveRequestUserAgent: async () => 'controlled-thinking-recovery/0.0.0',
   buildContentRequestUserAgent: () => 'controlled-thinking-recovery/0.0.0',
   resolveLocalInstalledVersion: () => '0.0.0',
