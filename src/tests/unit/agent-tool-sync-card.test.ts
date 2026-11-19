@@ -40,6 +40,7 @@ function mount() {
       createElement(AgentToolSyncCard, {
         tool: 'codex',
         baseUrl,
+        quickModel: 'gemini-3.1-pro-high',
         models: [{ id: 'gemini-3.1-pro-high', name: 'Gemini Pro' }],
       }),
     ),
@@ -61,9 +62,33 @@ describe('coding tool card', () => {
       model: 'other-model',
     });
     mount();
-    await screen.findByText('https://other-provider.test/v1');
-    fireEvent.click(screen.getByRole('button', { name: 'agent-tools.configure' }));
+    const configure = screen.getByRole('button', { name: 'client-config.quick-configure' });
+    await waitFor(() => expect(configure).toHaveProperty('disabled', false));
+    fireEvent.click(configure);
+    await screen.findByRole('dialog');
+    expect(fixture.configure).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'agent-tools.confirm' }));
+    await waitFor(() =>
+      expect(fixture.configure).toHaveBeenCalledExactlyOnceWith({
+        tool: 'codex',
+        baseUrl,
+        model: 'gemini-3.1-pro-high',
+      }),
+    );
+  });
+  it('sets up a fresh Codex installation without opening the editor', async () => {
+    fixture.status.mockResolvedValueOnce({
+      ...status,
+      isConfigured: false,
+      isSynced: false,
+      currentBaseUrl: null,
+      model: null,
+    });
+    mount();
+    const configure = screen.getByRole('button', { name: 'client-config.quick-configure' });
+    await waitFor(() => expect(configure).toHaveProperty('disabled', false));
+    fireEvent.click(configure);
+    expect(screen.queryByRole('dialog')).toBeNull();
     await waitFor(() =>
       expect(fixture.configure).toHaveBeenCalledExactlyOnceWith({
         tool: 'codex',
@@ -75,23 +100,24 @@ describe('coding tool card', () => {
   it('blocks edits after a read failure and allows a successful retry', async () => {
     fixture.status.mockRejectedValueOnce(new Error('fixture private details'));
     mount();
+    fireEvent.click(screen.getByRole('button', { name: 'client-config.manage-tool' }));
     await screen.findByRole('alert');
-    expect(screen.getByRole('button', { name: 'agent-tools.configure' })).toHaveProperty(
+    expect(screen.getByRole('button', { name: 'client-config.edit-settings' })).toHaveProperty(
       'disabled',
       true,
     );
     expect(screen.queryByText('fixture private details')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'agent-tools.retry' }));
     await screen.findByText(baseUrl);
-    expect(screen.getByRole('button', { name: 'agent-tools.update' })).toHaveProperty(
+    expect(screen.getByRole('button', { name: 'client-config.edit-settings' })).toHaveProperty(
       'disabled',
       false,
     );
   });
   it('distinguishes configuration from verification and cancels recovery without a write', async () => {
     mount();
-    await screen.findByText('agent-tools.configured');
-    expect(screen.getByText('agent-tools.not-verified')).toBeTruthy();
+    await screen.findByText('client-config.connection-unverified');
+    fireEvent.click(screen.getByRole('button', { name: 'client-config.manage-tool' }));
     fireEvent.click(screen.getByRole('button', { name: 'agent-tools.restore' }));
     await screen.findByRole('dialog');
     fireEvent.click(screen.getByRole('button', { name: 'common.cancel' }));
@@ -105,8 +131,9 @@ describe('coding tool card', () => {
     };
     fixture.configure.mockRejectedValueOnce(error);
     mount();
+    fireEvent.click(screen.getByRole('button', { name: 'client-config.manage-tool' }));
     await screen.findByText(baseUrl);
-    fireEvent.click(screen.getByRole('button', { name: 'agent-tools.update' }));
+    fireEvent.click(screen.getByRole('button', { name: 'client-config.edit-settings' }));
     fireEvent.click(screen.getByRole('button', { name: 'agent-tools.confirm' }));
     await waitFor(() =>
       expect(fixture.toast).toHaveBeenCalledWith({
@@ -129,8 +156,9 @@ describe('coding tool card', () => {
     'explains invalid address %s and prevents configuration until it is corrected',
     async (value) => {
       mount();
+      fireEvent.click(screen.getByRole('button', { name: 'client-config.manage-tool' }));
       await screen.findByText(baseUrl);
-      fireEvent.click(screen.getByRole('button', { name: 'agent-tools.update' }));
+      fireEvent.click(screen.getByRole('button', { name: 'client-config.edit-settings' }));
       fireEvent.click(screen.getByText('agent-tools.advanced'));
       const address = screen.getByLabelText('agent-tools.address');
       fireEvent.change(address, { target: { value } });
@@ -161,6 +189,7 @@ describe('coding tool card', () => {
         configPath: '/synthetic/config',
       });
     mount();
+    fireEvent.click(screen.getByRole('button', { name: 'client-config.manage-tool' }));
     await screen.findByText(baseUrl);
     fireEvent.click(screen.getByRole('button', { name: 'agent-tools.view' }));
     expect((await screen.findByRole('alert')).textContent).toContain(

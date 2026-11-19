@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
-import { AgentToolCardFrame } from './AgentToolCardFrame';
+import { NativeClientSetupCard, type ToolManagement } from './NativeClientSetupCard';
 import {
   Dialog,
   DialogContent,
@@ -21,9 +21,16 @@ import type { ProxyExampleModel } from './proxy-example-models';
 interface OpenCodeSyncCardProps {
   baseUrl: string;
   models: readonly ProxyExampleModel[];
+  quickModels?: readonly string[];
+  management?: ToolManagement;
 }
 
-export function OpenCodeSyncCard({ baseUrl, models }: OpenCodeSyncCardProps) {
+export function OpenCodeSyncCard({
+  baseUrl,
+  models,
+  quickModels = [],
+  management,
+}: OpenCodeSyncCardProps) {
   const { t } = useTranslation();
   const { toast } = useToast();
   const [pendingAction, setPendingAction] = useState<
@@ -44,7 +51,7 @@ export function OpenCodeSyncCard({ baseUrl, models }: OpenCodeSyncCardProps) {
     action: NonNullable<typeof pendingAction>,
     callback: () => Promise<unknown>,
   ): Promise<boolean> => {
-    if (running.current) {
+    if (running.current || (action === 'restore' && management?.nativeRestoreBlocked)) {
       return false;
     }
     running.current = true;
@@ -80,34 +87,65 @@ export function OpenCodeSyncCard({ baseUrl, models }: OpenCodeSyncCardProps) {
 
   return (
     <>
-      <AgentToolCardFrame
-        title="OpenCode"
-        installed={status?.installed}
-        version={status?.version}
-        loading={statusQuery.isPending}
-        failed={statusQuery.isError}
+      <NativeClientSetupCard
+        name="OpenCode"
+        defaultModel={quickModels[0]}
+        busy={pendingAction !== null}
+        ready={!!status && !statusQuery.isError}
         configured={isConfigured}
-        synced={status?.isSynced ?? false}
-        address={status?.currentBaseUrl}
-        model={
-          status?.models.length
-            ? t('agent-tools.model-count', { count: status.models.length })
-            : null
+        management={management}
+        status={
+          statusQuery.isPending
+            ? t('agent-tools.loading')
+            : isConfigured
+              ? t(
+                  status?.isSynced
+                    ? 'client-config.connection-unverified'
+                    : 'agent-tools.custom-address',
+                )
+              : undefined
         }
-        retry={() => {
-          void statusQuery.refetch();
+        onConfigure={() => {
+          void runAction('sync', () =>
+            ipc.client.gateway.syncOpenCode({
+              baseUrl,
+              models: quickModels.slice(0, 256).map((id) => ({ id })),
+              syncAccounts: false,
+            }),
+          );
         }}
       >
+        {statusQuery.isError ? (
+          <div role="alert" className="space-y-2 text-sm">
+            <p>{t('agent-tools.read-error')}</p>
+            <Button variant="outline" size="sm" onClick={() => void statusQuery.refetch()}>
+              {t('agent-tools.retry')}
+            </Button>
+          </div>
+        ) : null}
+        {status && !statusQuery.isError ? (
+          <div className="text-muted-foreground space-y-1 text-xs break-all">
+            <p>
+              {status.installed
+                ? `${t('agent-tools.installed')}${status.version ? ` · ${status.version}` : ''}`
+                : t('agent-tools.not-installed')}
+            </p>
+            {status.currentBaseUrl ? <p>{status.currentBaseUrl}</p> : null}
+            {status.models.length ? (
+              <p>{t('agent-tools.model-count', { count: status.models.length })}</p>
+            ) : null}
+          </div>
+        ) : null}
         {status?.hasAuthPlugin ? (
           <p className="rounded-lg bg-amber-500/10 p-3 text-xs">{t('agent-tools.plugin-notice')}</p>
         ) : null}
         <Button
-          className="w-full"
+          variant="outline"
           onClick={() => setIsSyncDialogOpen(true)}
           disabled={pendingAction !== null || !status || statusQuery.isError}
         >
           {pendingAction === 'sync' ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
-          {isConfigured ? t('agent-tools.update') : t('agent-tools.configure')}
+          {t('client-config.edit-settings')}
         </Button>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -122,7 +160,12 @@ export function OpenCodeSyncCard({ baseUrl, models }: OpenCodeSyncCardProps) {
             variant="outline"
             size="sm"
             onClick={() => setIsRestoreDialogOpen(true)}
-            disabled={!status?.hasBackup || pendingAction !== null || statusQuery.isError}
+            disabled={
+              !status?.hasBackup ||
+              pendingAction !== null ||
+              statusQuery.isError ||
+              management?.nativeRestoreBlocked
+            }
           >
             {t('agent-tools.restore')}
           </Button>
@@ -151,7 +194,7 @@ export function OpenCodeSyncCard({ baseUrl, models }: OpenCodeSyncCardProps) {
             {t('agent-tools.revoke-key')}
           </Button>
         </details>
-      </AgentToolCardFrame>
+      </NativeClientSetupCard>
       {isSyncDialogOpen && status ? (
         <OpenCodeModelSyncDialog
           availableModels={models}

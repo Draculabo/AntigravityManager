@@ -218,7 +218,7 @@ export function createConnectionProfilesOwner() {
         const path = ['agents', 'defaults', 'modelPolicy', 'allow'];
         const values = z.array(z.string()).parse(document.get(path) ?? []);
         const token = `${connectionProviderId(profile)}/*`;
-        if (!values.includes(token)) {
+        if (values.length > 0 && !values.includes(token)) {
           allowWasAbsent = document.get(path) === undefined;
           document.set(path, [...values, token]);
           allowToken = token;

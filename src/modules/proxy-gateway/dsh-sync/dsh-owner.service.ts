@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { lstat, open, unlink } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
+import { dshProfilePath } from './dsh-profile-location';
 import { DshCredentialReceiptSchema, planDshCredentials, readDshCredentialSource, withDshCredentialLock, writeDshCredentials } from './dsh-credentials';
 import { isMap, parseDocument } from 'yaml';
 import { z } from 'zod';
@@ -34,13 +35,6 @@ const provider = z.strictObject({
 });
 function hash(source: string): string {
   return createHash('sha256').update(source).digest('hex');
-}
-function location(profile: string): string {
-  const home = process.env.DSH_HOME?.trim();
-  if (!home) {
-    throw new DshOwnerError('home-missing');
-  }
-  return join(resolve(home), 'profiles', profile, 'cordis.patch.yml');
 }
 function missing(error: unknown): boolean {
   return error instanceof Error && 'code' in error && error.code === 'ENOENT';
@@ -141,7 +135,7 @@ function snapshotHash(source: string, receiptSource: string | null, credentialSo
 }
 async function plan(input: DshPreviewInput, options?: ConnectionOptions) {
   const managedId = options?.providerId ?? providerId;
-  const patchPath = location(input.profile);
+  const patchPath = dshProfilePath(input.profile);
   const source = await read(patchPath);
   const current = inspect(source, managedId);
   const ownership = await readReceipt(patchPath, options);
@@ -278,7 +272,7 @@ async function mutateUnderLock(input: DshPreviewInput, expectedSourceHash: strin
   return DshWriteResultSchema.parse({ patchPath: result.patchPath, sourceHash: snapshotHash(updated, result.nextReceipt ? JSON.stringify(result.nextReceipt) : null, result.credentialPlan.updated), changed: true, restartRequired: false });
 }
 async function mutate(input: DshPreviewInput, expectedSourceHash: string, options?: ConnectionOptions) {
-  const patchPath = location(input.profile);
+  const patchPath = dshProfilePath(input.profile);
   const credentialsPath = join(dirname(dirname(dirname(patchPath))), '.credentials.yaml');
   return withDshCredentialLock(credentialsPath, () =>
     withDshCredentialLock(patchPath, () => mutateUnderLock(input, expectedSourceHash, options)),
@@ -310,7 +304,7 @@ export function createDshOwner(options?: ConnectionOptions): DshOperations & { c
     closeAdmission: () => { accepting = false; },
     drain: async () => { await tail.catch(() => undefined); },
     status: (input) => execute(async () => {
-      const patchPath = location(input.profile);
+      const patchPath = dshProfilePath(input.profile);
       try {
         const source = await readDshCredentialSource(patchPath);
         if (source === null) {

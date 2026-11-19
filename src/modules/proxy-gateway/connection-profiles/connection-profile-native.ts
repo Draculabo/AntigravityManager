@@ -1,6 +1,6 @@
 import { lstat, open } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { parse, stringify, TomlDate, type TomlTable, type TomlValue } from 'smol-toml';
 import { parseDocument } from 'yaml';
 import { z } from 'zod';
@@ -8,6 +8,7 @@ import { hasErrorCode } from '@/shared/errors/error-guards';
 import { clientConfigDocument, type ClientConfigDocument, type ClientConfigValue } from '../agent-tools/client-config-document';
 import { ConnectionProfileError, type ConnectionProfileView } from './connection-profiles.schema';
 import { readDshCredentialReference } from '../dsh-sync/dsh-credentials';
+import { dshProfilePath } from '../dsh-sync/dsh-profile-location';
 import {
   kimiCodeConfigPath,
   readKimiCodeConfiguredKey,
@@ -76,8 +77,8 @@ export async function connectionNativePath(profile: ConnectionProfileView) {
       return await readConnectionFile(json) !== null ? json : join(directory, 'opencode.jsonc');
     }
     case 'dsh': {
-      if (!process.env.DSH_HOME?.trim() || !profile.dshProfile) { throw new ConnectionProfileError('invalid-config'); }
-      return join(resolve(process.env.DSH_HOME), 'profiles', profile.dshProfile, 'cordis.patch.yml');
+      if (!profile.dshProfile) { throw new ConnectionProfileError('invalid-config'); }
+      return dshProfilePath(profile.dshProfile);
     }
   }
 }
@@ -230,7 +231,8 @@ export function connectionFields(profile: ConnectionProfileView, key: string): A
   return fields;
 }
 export async function captureConnectionKey(profile: ConnectionProfileView): Promise<string> {
-  const source = await readConnectionFile(await connectionNativePath(profile));
+  const path = await connectionNativePath(profile);
+  const source = await readConnectionFile(path);
   if (source === null) { throw new ConnectionProfileError('key-missing'); }
   if (profile.client === 'dsh') {
     const document = parseDocument(source, { stringKeys: true });
@@ -244,8 +246,8 @@ export async function captureConnectionKey(profile: ConnectionProfileView): Prom
     const selected = config.success ? config.data.providers[selection.success ? selection.data.provider : 'antigravity-manager'] : undefined;
     const parsedProvider = z.object({ apiKeyEnv: z.string() }).safeParse(selected);
     const ref = parsedProvider.success ? parsedProvider.data.apiKeyEnv : undefined;
-    if (!ref || !process.env.DSH_HOME) { throw new ConnectionProfileError('key-missing'); }
-    const value = await readDshCredentialReference(resolve(process.env.DSH_HOME), await connectionNativePath(profile), ref);
+    if (!ref) { throw new ConnectionProfileError('key-missing'); }
+    const value = await readDshCredentialReference(dirname(dirname(dirname(path))), path, ref);
     if (!value) { throw new ConnectionProfileError('key-missing'); }
     return value;
   }

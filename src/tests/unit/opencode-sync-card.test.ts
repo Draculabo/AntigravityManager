@@ -57,6 +57,7 @@ function renderCard() {
       createElement(OpenCodeSyncCard, {
         baseUrl: 'http://127.0.0.1:8045',
         models: [{ id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash' }],
+        quickModels: ['gemini-3.5-flash'],
       }),
     ),
   );
@@ -90,8 +91,25 @@ describe('OpenCodeSyncCard', () => {
     mocks.syncOpenCode.mockResolvedValue({ configPath: 'opencode.jsonc' });
   });
 
+  it('configures the gateway without opening a dialog or copying accounts', async () => {
+    mocks.openCodeStatus.mockResolvedValueOnce({ exists: false, isConfigured: false, models: [] });
+    renderCard();
+    const configure = screen.getByRole('button', { name: en['client-config']['quick-configure'] });
+    await waitFor(() => expect(configure).toHaveProperty('disabled', false));
+    fireEvent.click(configure);
+    await waitFor(() =>
+      expect(mocks.syncOpenCode).toHaveBeenCalledExactlyOnceWith({
+        baseUrl: 'http://127.0.0.1:8045',
+        models: [{ id: 'gemini-3.5-flash' }],
+        syncAccounts: false,
+      }),
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
   it('requires confirmation before restoring the one-time backup', async () => {
     renderCard();
+    fireEvent.click(screen.getByRole('button', { name: en['client-config']['manage-tool'] }));
 
     await screen.findByText('C:/Users/test/.config/opencode/opencode.jsonc');
     fireEvent.click(screen.getByRole('button', { name: 'Restore backup' }));
@@ -104,6 +122,7 @@ describe('OpenCodeSyncCard', () => {
 
   it('shows the detected version and confirms removal of only the Manager connection', async () => {
     renderCard();
+    fireEvent.click(screen.getByRole('button', { name: en['client-config']['manage-tool'] }));
 
     expect(await screen.findByText(`${en['agent-tools'].installed} · 1.2.3`)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: en['agent-tools'].remove }));
@@ -121,9 +140,10 @@ describe('OpenCodeSyncCard', () => {
 
   it('persists the account-sync opt-in across model dialog openings', async () => {
     renderCard();
+    fireEvent.click(screen.getByRole('button', { name: en['client-config']['manage-tool'] }));
 
     await screen.findByText('C:/Users/test/.config/opencode/opencode.jsonc');
-    fireEvent.click(screen.getByRole('button', { name: en['agent-tools'].update }));
+    fireEvent.click(screen.getByRole('button', { name: en['client-config']['edit-settings'] }));
     const syncAccounts = screen.getByRole('checkbox', {
       name: `${en.proxy['open-code']['sync-accounts']} ${en.proxy['open-code']['sync-accounts-description']}`,
     });
@@ -140,7 +160,7 @@ describe('OpenCodeSyncCard', () => {
     );
     await waitFor(() => expect(screen.queryByText('Choose OpenCode models')).toBeNull());
 
-    fireEvent.click(screen.getByRole('button', { name: en['agent-tools'].update }));
+    fireEvent.click(screen.getByRole('button', { name: en['client-config']['edit-settings'] }));
     expect(
       screen
         .getByRole('checkbox', {
@@ -165,6 +185,7 @@ describe('OpenCodeSyncCard', () => {
       models: [],
     }));
     renderCard();
+    fireEvent.click(screen.getByRole('button', { name: en['client-config']['manage-tool'] }));
 
     expect(await screen.findByText(en['agent-tools']['plugin-notice'])).toBeTruthy();
     expect(mocks.readOpenCodeConfig).not.toHaveBeenCalled();
@@ -177,6 +198,7 @@ describe('OpenCodeSyncCard', () => {
   it('offers a safe retry when the configuration preview cannot be read', async () => {
     mocks.readOpenCodeConfig.mockRejectedValueOnce(new Error('private-config-path'));
     renderCard();
+    fireEvent.click(screen.getByRole('button', { name: en['client-config']['manage-tool'] }));
     await screen.findByText('C:/Users/test/.config/opencode/opencode.jsonc');
     fireEvent.click(screen.getByRole('button', { name: en['agent-tools'].view }));
     expect((await screen.findByRole('alert')).textContent).toContain(

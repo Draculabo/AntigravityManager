@@ -25,10 +25,13 @@ afterEach(async () => {
   }
 });
 
-async function fixture() {
+async function fixture(useDefaultHome = false) {
   home = await mkdtemp(path.join(os.tmpdir(), 'dsh-owner-'));
-  vi.stubEnv('DSH_HOME', home);
-  const profile = path.join(home, 'profiles', 'web');
+  vi.stubEnv('DSH_HOME', useDefaultHome ? undefined : home);
+  if (useDefaultHome) {
+    vi.stubEnv(process.platform === 'win32' ? 'USERPROFILE' : 'HOME', home);
+  }
+  const profile = path.join(useDefaultHome ? path.join(home, '.dsh') : home, 'profiles', 'web');
   await mkdir(profile, { recursive: true });
   const patchPath = path.join(profile, 'cordis.patch.yml');
   const original = [
@@ -44,6 +47,19 @@ async function fixture() {
 }
 
 describe('DSH owner lifecycle', () => {
+  it('finds and configures the default web profile without DSH_HOME', async () => {
+    const { patchPath } = await fixture(true);
+    const owner = createDshOwner();
+    expect(await owner.status({ profile: 'web' })).toMatchObject({ patchPath, exists: true });
+    const preview = await owner.preview(plan);
+    await expect(
+      owner.sync({ ...plan, expectedSourceHash: preview.sourceHash }),
+    ).resolves.toMatchObject({
+      patchPath,
+      changed: true,
+    });
+  });
+
   it.each([false, true])(
     'releases the credential lock after a work failure (async: %s)',
     async (asyncFailure) => {

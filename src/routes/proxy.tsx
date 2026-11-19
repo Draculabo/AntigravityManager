@@ -1,4 +1,4 @@
-import { ConnectionProfilesCard } from '@/modules/proxy-gateway/components/ConnectionProfilesCard';
+import { GatewayTools } from '@/modules/proxy-gateway/components/GatewayTools';
 import { SettingsSaveFeedback } from '@/modules/config/components/SettingsSaveFeedback';
 /**
  * API Proxy Service Page
@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button';
 import { FeedbackState } from '@/components/ui/feedback-state';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { ExistingClientSettings } from '@/modules/proxy-gateway/components/ExistingClientSettings';
+import { quickClientModels } from '@/modules/proxy-gateway/components/quick-client-models';
 import { UpstreamProxySettings } from '@/modules/config/components/UpstreamProxySettings';
 import { ImageSendWindowSettings } from '@/modules/proxy-gateway/ui';
 import { AuditAndThoughtStoreCard } from '@/modules/proxy-gateway/components/AuditAndThoughtStoreCard';
@@ -67,6 +67,7 @@ function ProxyPage() {
   };
 
   const exampleModels = useMemo(() => buildProxyExampleModels(cloudAccounts), [cloudAccounts]);
+  const quickModels = useMemo(() => quickClientModels(cloudAccounts), [cloudAccounts]);
   const activePort = runtimeStatus.data?.running ? runtimeStatus.data.port : undefined;
   const baseUrl = `http://localhost:${activePort || proxyConfig?.port || 8045}`;
 
@@ -157,8 +158,14 @@ function ProxyPage() {
             )}
           </CardContent>
         </Card>
-        <ConnectionProfilesCard baseUrl={baseUrl} models={exampleModels} />
-        <ExistingClientSettings baseUrl={baseUrl} models={exampleModels} />
+        {!showSettings && (
+          <GatewayTools
+            baseUrl={baseUrl}
+            models={exampleModels}
+            quickModels={quickModels}
+            hasGatewayKey={proxyConfig.api_key_configured}
+          />
+        )}
         {!showSettings && (
           <GatewayManualSetup
             proxyConfig={proxyConfig}

@@ -30,16 +30,18 @@ import {
   AgentToolErrorCodeSchema,
   type AgentTool,
 } from '../agent-tools/agent-tools.schema';
-import { AgentToolCardFrame } from './AgentToolCardFrame';
+import { NativeClientSetupCard, type ToolManagement } from './NativeClientSetupCard';
 import { isImageProxyExampleModel, type ProxyExampleModel } from './proxy-example-models';
 
 interface Props {
   tool: AgentTool;
   baseUrl: string;
   models: readonly ProxyExampleModel[];
+  quickModel?: string;
+  management?: ToolManagement;
 }
 type Action = 'configure' | 'preview' | 'restore' | 'remove';
-export function AgentToolSyncCard({ tool, baseUrl, models }: Props) {
+export function AgentToolSyncCard({ tool, baseUrl, models, quickModel, management }: Props) {
   const { t } = useTranslation();
   const { toast } = useToast();
   const title = tool === 'claude' ? 'Claude Code' : 'Codex';
@@ -95,18 +97,27 @@ export function AgentToolSyncCard({ tool, baseUrl, models }: Props) {
       setBusy(false);
     }
   };
-  const submit = async () => {
-    if (!action || running.current) {
+  const submit = async (operation: Action | null, targetAddress = address, targetModel = model) => {
+    if (
+      !operation ||
+      running.current ||
+      (operation === 'configure' && management?.nativeSetupBlocked) ||
+      (operation === 'restore' && management?.nativeRestoreBlocked)
+    ) {
       return;
     }
-    const parsed = AgentToolConfigureSchema.safeParse({ tool, baseUrl: address, model });
-    if (action === 'configure' && !parsed.success) {
+    const parsed = AgentToolConfigureSchema.safeParse({
+      tool,
+      baseUrl: targetAddress,
+      model: targetModel,
+    });
+    if (operation === 'configure' && !parsed.success) {
       return;
     }
     running.current = true;
     setBusy(true);
     try {
-      switch (action) {
+      switch (operation) {
         case 'configure':
           if (parsed.success) {
             await ipc.client.gateway.agentTools.configure(parsed.data);
@@ -144,28 +155,65 @@ export function AgentToolSyncCard({ tool, baseUrl, models }: Props) {
   const invalidAddress = !AgentToolConfigureSchema.shape.baseUrl.safeParse(address).success;
   return (
     <>
-      <AgentToolCardFrame
-        title={title}
-        installed={status?.installed}
-        version={status?.version}
-        loading={query.isPending}
-        failed={query.isError}
-        configured={status?.isConfigured ?? false}
-        synced={status?.isSynced ?? false}
-        address={status?.currentBaseUrl}
-        model={status?.model}
-        retry={() => {
-          void query.refetch();
+      <NativeClientSetupCard
+        name={title}
+        defaultModel={quickModel}
+        busy={busy}
+        ready={!!status && !query.isError}
+        configured={status?.isConfigured}
+        management={management}
+        status={
+          query.isPending
+            ? t('agent-tools.loading')
+            : query.isError
+              ? t('agent-tools.read-error')
+              : status?.isConfigured || status?.currentBaseUrl
+                ? t(
+                    status.isSynced
+                      ? 'client-config.connection-unverified'
+                      : 'agent-tools.custom-address',
+                  )
+                : undefined
+        }
+        onConfigure={() => {
+          if (status?.currentBaseUrl) {
+            void open('configure');
+            if (quickModel) {
+              setModel(quickModel);
+            }
+          } else {
+            void submit('configure', baseUrl, quickModel);
+          }
         }}
       >
+        {query.isError ? (
+          <div role="alert" className="space-y-2 text-sm">
+            <p>{t('agent-tools.read-error')}</p>
+            <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
+              {t('agent-tools.retry')}
+            </Button>
+          </div>
+        ) : null}
+        {status && !query.isError ? (
+          <div className="text-muted-foreground space-y-1 text-xs break-all">
+            <p>
+              {status.installed
+                ? `${t('agent-tools.installed')}${status.version ? ` · ${status.version}` : ''}`
+                : t('agent-tools.not-installed')}
+            </p>
+            <p>{status.configPath}</p>
+            {status.currentBaseUrl ? <p>{status.currentBaseUrl}</p> : null}
+            {status.model ? <p>{status.model}</p> : null}
+          </div>
+        ) : null}
         <Button
-          className="w-full"
-          disabled={!status || query.isError || busy}
+          variant="outline"
+          disabled={!status || query.isError || busy || management?.nativeSetupBlocked}
           onClick={() => {
             void open('configure');
           }}
         >
-          {status?.isConfigured ? t('agent-tools.update') : t('agent-tools.configure')}
+          {t('client-config.edit-settings')}
         </Button>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -181,7 +229,9 @@ export function AgentToolSyncCard({ tool, baseUrl, models }: Props) {
           <Button
             variant="outline"
             size="sm"
-            disabled={!status?.hasBackup || query.isError || busy}
+            disabled={
+              !status?.hasBackup || query.isError || busy || management?.nativeRestoreBlocked
+            }
             onClick={() => {
               void open('restore');
             }}
@@ -202,7 +252,7 @@ export function AgentToolSyncCard({ tool, baseUrl, models }: Props) {
         {!status?.installed && !query.isPending && !query.isError ? (
           <p className="text-muted-foreground text-xs">{t('agent-tools.install-notice')}</p>
         ) : null}
-      </AgentToolCardFrame>
+      </NativeClientSetupCard>
       <Dialog
         open={action !== null}
         onOpenChange={(value) => {
@@ -332,7 +382,7 @@ export function AgentToolSyncCard({ tool, baseUrl, models }: Props) {
                 aria-busy={busy}
                 variant={action === 'restore' || action === 'remove' ? 'destructive' : 'default'}
                 onClick={() => {
-                  void submit();
+                  void submit(action);
                 }}
               >
                 {busy ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}

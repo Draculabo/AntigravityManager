@@ -8,53 +8,33 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  ConnectionProfileClientSchema,
   ConnectionProfileSaveInputSchema,
   type ConnectionProfileSaveInput,
   type ConnectionProfileView,
 } from '../connection-profiles/connection-profiles.schema';
 import { readClientConfigFailure } from './client-config-failure';
 import { ConnectionProfileOptions } from './ConnectionProfileOptions';
+import { gatewayToolNames, gatewayToolOptions } from './gateway-tool-defaults';
 import { isImageProxyExampleModel, type ProxyExampleModel } from './proxy-example-models';
 
-const clients = ConnectionProfileClientSchema.options;
-const clientLabelKeys: Partial<Record<ConnectionProfileView['client'], string>> = {
-  'kimi-code': 'client-config.kimi-code',
-  'qwen-code': 'client-config.qwen-code',
-  'gemini-cli': 'client-config.gemini-cli',
-  pi: 'client-config.pi',
-};
-const nativeClientNames: Record<ConnectionProfileView['client'], string> = {
-  claude: 'Claude Code',
-  codex: 'Codex',
-  opencode: 'OpenCode',
-  hermes: 'Hermes',
-  openclaw: 'OpenClaw',
-  dsh: 'DSH',
-  'kimi-code': 'Kimi Code',
-  'qwen-code': 'Qwen Code',
-  'gemini-cli': 'Gemini CLI',
-  pi: 'Pi',
-};
-function initial(baseUrl: string): ConnectionProfileSaveInput {
+export function useConnectionProfiles() {
+  return useQuery({
+    queryKey: ['gateway', 'connectionProfiles'],
+    queryFn: () => ipc.client.gateway.connectionProfiles.list({}),
+    retry: false,
+  });
+}
+
+function initial(
+  baseUrl: string,
+  client: ConnectionProfileView['client'],
+): ConnectionProfileSaveInput {
   return {
     name: '',
-    client: 'claude',
     baseUrl,
-    protocol: 'anthropic-messages',
-    sdk: null,
+    ...gatewayToolOptions(client),
     models: [],
     activateModel: null,
-    version: null,
-    discoverModels: false,
-    dshProfile: null,
     credentialSource: 'manager-default',
   };
 }
@@ -69,13 +49,19 @@ type Review = Awaited<ReturnType<typeof ipc.client.gateway.connectionProfiles.pr
 export function ConnectionProfilesCard({
   baseUrl,
   models = [],
+  client,
+  nativeConfigured = false,
+  onBusyChange,
 }: {
   baseUrl: string;
   models?: readonly ProxyExampleModel[];
+  client: ConnectionProfileView['client'];
+  nativeConfigured?: boolean;
+  onBusyChange?(busy: boolean): void;
 }) {
   const { t } = useTranslation();
   const id = useId();
-  const [draft, setDraft] = useState<ConnectionProfileSaveInput>(() => initial(baseUrl));
+  const [draft, setDraft] = useState<ConnectionProfileSaveInput>(() => initial(baseUrl, client));
   const [modelText, setModelText] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -84,17 +70,11 @@ export function ConnectionProfilesCard({
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const pending = useRef(false);
-  const profiles = useQuery({
-    queryKey: ['gateway', 'connectionProfiles'],
-    queryFn: () => ipc.client.gateway.connectionProfiles.list({}),
-    retry: false,
-  });
-  const selected = profiles.data?.find((profile) => profile.id === draft.id);
+  const profiles = useConnectionProfiles();
+  const toolProfiles = profiles.data?.filter((profile) => profile.client === client) ?? [];
+  const selected = toolProfiles.find((profile) => profile.id === draft.id);
   const availableModels = models.filter((model) => !isImageProxyExampleModel(model.id));
-  const clientName = (client: ConnectionProfileView['client']) => {
-    const key = clientLabelKeys[client];
-    return key ? t(key) : nativeClientNames[client];
-  };
+  const clientName = gatewayToolNames[client];
   function edit(patch: Partial<ConnectionProfileSaveInput>) {
     setDraft((value) => ({ ...value, ...patch }));
     setDirty(true);
@@ -120,7 +100,7 @@ export function ConnectionProfilesCard({
             dshProfile: profile.dshProfile,
             credentialSource: 'keep',
           }
-        : initial(baseUrl),
+        : initial(baseUrl, client),
     );
     setModelText(profile?.models.join('\n') ?? '');
     setDirty(false);
@@ -138,6 +118,7 @@ export function ConnectionProfilesCard({
     }
     pending.current = true;
     setBusy(true);
+    onBusyChange?.(true);
     setNotice(null);
     try {
       await work();
@@ -146,9 +127,13 @@ export function ConnectionProfilesCard({
     } finally {
       pending.current = false;
       setBusy(false);
+      onBusyChange?.(false);
     }
   }
   function saveAndPreview() {
+    if (nativeConfigured) {
+      return;
+    }
     const activateModel = draft.activateModel?.trim() || null;
     const explicitModels = modelText
       .split(/[\n,]/u)
@@ -160,7 +145,7 @@ export function ConnectionProfilesCard({
         : availableModels.map((model) => model.id);
     const parsed = ConnectionProfileSaveInputSchema.safeParse({
       ...draft,
-      name: draft.name.trim() || nativeClientNames[draft.client],
+      name: draft.name.trim() || clientName,
       models: [...new Set(modelIds)],
       activateModel,
     });
@@ -179,7 +164,7 @@ export function ConnectionProfilesCard({
   }
   function preview(action: 'apply' | 'remove') {
     const profileId = draft.id;
-    if (!profileId || dirty) {
+    if (!profileId || dirty || (nativeConfigured && action === 'apply')) {
       return;
     }
     setReview(null);
@@ -190,7 +175,7 @@ export function ConnectionProfilesCard({
   }
   function apply() {
     const captured = review;
-    if (!captured) {
+    if (!captured || (nativeConfigured && captured.action === 'apply')) {
       return;
     }
     setReview(null);
@@ -221,35 +206,13 @@ export function ConnectionProfilesCard({
       await profiles.refetch();
     });
   }
-  function changeClient(value: string) {
-    const client = clients.find((item) => item === value);
-    if (!client) {
-      return;
-    }
-    edit({
-      client,
-      ...(client !== draft.client ? { activateModel: null } : {}),
-      protocol:
-        client === 'claude'
-          ? 'anthropic-messages'
-          : client === 'codex'
-            ? 'openai-responses'
-            : client === 'gemini-cli'
-              ? 'gemini-native'
-              : 'openai-completions',
-      sdk: client === 'opencode' ? '@ai-sdk/openai-compatible' : null,
-      version: client === 'openclaw' ? 'v2' : null,
-      discoverModels: client === 'hermes',
-      dshProfile: client === 'dsh' ? 'web' : null,
-    });
-  }
   return (
     <Card className="shadow-none">
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 border-b p-4">
         <CardTitle>{t('client-config.connections-title')}</CardTitle>
         <Button
           type="button"
-          disabled={busy || profiles.isPending || profiles.isError}
+          disabled={busy || profiles.isPending || profiles.isError || nativeConfigured}
           onClick={() => openEditor()}
         >
           {t('client-config.add-connection')}
@@ -265,12 +228,17 @@ export function ConnectionProfilesCard({
             </Button>
           </div>
         ) : null}
-        {profiles.data?.length === 0 && !editorOpen ? (
+        {nativeConfigured ? (
+          <p className="text-muted-foreground text-sm">
+            {t('client-config.remove-before-profile')}
+          </p>
+        ) : null}
+        {!toolProfiles.length && profiles.isSuccess && !editorOpen && !nativeConfigured ? (
           <p className="text-muted-foreground text-sm">{t('client-config.connections-empty')}</p>
         ) : null}
-        {!!profiles.data?.length && (
+        {!!toolProfiles.length && (
           <ul className="divide-border divide-y">
-            {profiles.data.map((profile) => (
+            {toolProfiles.map((profile) => (
               <li
                 key={profile.id}
                 className="flex flex-wrap items-center justify-between gap-3 py-2"
@@ -278,7 +246,6 @@ export function ConnectionProfilesCard({
                 <div className="min-w-0">
                   <p className="text-sm font-medium break-words">{profile.name}</p>
                   <p className="text-muted-foreground text-xs">
-                    {clientName(profile.client)} ·{' '}
                     {t(
                       !profile.credentialConfigured
                         ? 'client-config.config-key-missing'
@@ -324,25 +291,6 @@ export function ConnectionProfilesCard({
             </div>
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-1">
-                <Label htmlFor={id + '-client'}>{t('client-config.profile-client')}</Label>
-                <Select
-                  value={draft.client}
-                  onValueChange={changeClient}
-                  disabled={selected?.applied}
-                >
-                  <SelectTrigger id={id + '-client'}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {clients.map((client) => (
-                      <SelectItem key={client} value={client}>
-                        {clientName(client)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
                 <Label htmlFor={id + '-default'}>{t('client-config.default-model')}</Label>
                 <Input
                   id={id + '-default'}
@@ -369,13 +317,15 @@ export function ConnectionProfilesCard({
               id={id}
               draft={draft}
               modelText={modelText}
-              clientName={nativeClientNames[draft.client]}
+              clientName={clientName}
               edit={edit}
               setModelText={setModelText}
             />
             <div className="flex flex-wrap gap-2">
               <Button
-                disabled={Boolean(draft.id && !dirty && !selected?.credentialConfigured)}
+                disabled={
+                  nativeConfigured || Boolean(draft.id && !dirty && !selected?.credentialConfigured)
+                }
                 onClick={!draft.id || dirty ? saveAndPreview : () => preview('apply')}
               >
                 {t(
@@ -438,7 +388,7 @@ export function ConnectionProfilesCard({
             ) : null}
             <p className="text-muted-foreground text-xs">{t('client-config.review-help')}</p>
             <Button
-              disabled={busy || !review.changed}
+              disabled={busy || !review.changed || (nativeConfigured && review.action === 'apply')}
               variant={review.action === 'remove' ? 'destructive' : 'default'}
               onClick={apply}
             >
@@ -472,7 +422,7 @@ export function ConnectionProfilesCard({
             className="text-sm"
           >
             {t('client-config.' + notice, {
-              name: notice === 'saved-client' ? clientName(draft.client) : draft.name,
+              name: notice === 'saved-client' ? clientName : draft.name,
             })}
           </p>
         ) : null}

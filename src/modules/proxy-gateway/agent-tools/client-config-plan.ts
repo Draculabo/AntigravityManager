@@ -134,7 +134,7 @@ export function planClientConfig(
         }
       } else {
         const allow = allowValues();
-        if (!allow.includes(allowToken)) {
+        if (allow.length > 0 && !allow.includes(allowToken)) {
           if (!allowAdded) {
             allowWasAbsent = document.get(allowPath) === undefined;
           }

@@ -50,6 +50,44 @@ afterEach(async () => {
   }
 });
 
+it.each([{ allow: undefined }, { allow: [] }, { allow: ['personal/*'] }])(
+  'preserves OpenClaw allow policy $allow through setup and removal',
+  async ({ allow }) => {
+    fixture.directory = await mkdtemp(join(tmpdir(), 'agm-native-openclaw-'));
+    const settings = join(fixture.directory, 'openclaw.json');
+    vi.stubEnv('OPENCLAW_CONFIG_PATH', settings);
+    const original = {
+      agents: { defaults: { modelPolicy: { allow } } },
+      models: { providers: {} },
+    };
+    await writeFile(settings, JSON.stringify(original));
+    const owner = createConnectionProfilesOwner();
+    const profile = await owner.save({
+      name: 'Local gateway',
+      client: 'openclaw',
+      baseUrl: 'http://127.0.0.1:3080',
+      protocol: 'openai-completions',
+      sdk: null,
+      models: ['gemini-3-flash'],
+      activateModel: null,
+      version: 'v2',
+      discoverModels: false,
+      dshProfile: null,
+      credentialSource: 'manager-default',
+    });
+    const apply = await owner.preview({ id: profile.id, action: 'apply' });
+    await owner.mutate({ id: profile.id, action: 'apply', expectedSourceHash: apply.sourceHash });
+    expect(JSON.parse(await readFile(settings, 'utf8')).agents.defaults.modelPolicy.allow).toEqual(
+      allow?.length ? [...allow, `antigravity-manager-${profile.id}/*`] : allow,
+    );
+    const remove = await owner.preview({ id: profile.id, action: 'remove' });
+    await owner.mutate({ id: profile.id, action: 'remove', expectedSourceHash: remove.sourceHash });
+    expect(JSON.parse(await readFile(settings, 'utf8')).agents.defaults.modelPolicy.allow).toEqual(
+      allow,
+    );
+  },
+);
+
 it.each(['qwen-code', 'pi', 'gemini-cli'] as const)(
   'previews, applies and restores the native %s configuration',
   async (client) => {

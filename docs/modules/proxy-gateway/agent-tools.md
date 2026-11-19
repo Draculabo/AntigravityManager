@@ -7,18 +7,27 @@ before installing a client. Reopen the client after applying changes.
 
 ## Configure and recover
 
-Open **Gateway**, select **Add connection**, and choose a tool. Choose a default model when
-the client requires one. **Save and preview** saves the connection and shows which
-native files will change. Apply the preview to write the client settings. Open **Details**
-to edit or remove an existing saved connection. Address, credentials and protocol are under
-**Advanced connection options**. The connection list reports managed settings. Send a
-request from the client and check its result in Traffic to verify that it works.
+In **Gateway → Coding tools**, each tool has one entry. **Set up** writes the current
+local gateway address and Manager-managed credentials, using models from eligible
+accounts with observed quota. Set the Manager proxy key under **Manual setup** for tools that use it.
+OpenCode registers the available models using its dedicated key with account-plugin export off.
+DSH setup requires an initialized `web` profile. Review an existing Claude Code or Codex
+provider before replacing it.
+
+Open **Manage** on the same tool to edit its connection, inspect its configuration, or
+remove or restore settings where supported. Saved connections are listed under their
+own tool. For a custom connection, **Save and preview** stores the plan and identifies
+the native files it will change. Apply the preview to write those files. Claude Code, Codex and Hermes have one active connection. Remove the current Manager
+configuration before applying a separate saved connection for those tools.
+Existing saved connections and their credentials remain available.
+
+A saved configuration indicates that Manager wrote settings. Reopen the tool, send a
+request and check **Traffic** to verify that it uses the gateway.
 
 **Manual setup** contains the service address, API key and request examples. Edit listener
 settings, request policies and record retention in **Gateway settings**. Application settings
 links to the same page.
 
-Use **Manage previous client settings** to inspect or restore a previous direct configuration.
 Claude uses the gateway root; Codex uses its `/v1` endpoint. Environment
 variables, command-line overrides and direct-login plugins can override client settings.
 
@@ -164,7 +173,9 @@ Use its normal workspace trust flow and check for local environment overrides wh
 OpenClaw targets `OPENCLAW_CONFIG_PATH`, otherwise `OPENCLAW_DIR/openclaw.json` or
 `~/.openclaw/openclaw.json`. JSONC edits keep comments and unrelated nodes. The selected `v1`
 format owns individual Manager entries in `agents.defaults.models`; `v2` owns only its
-`antigravity-manager/*` token in `agents.defaults.modelPolicy.allow`. Changing formats removes
+`antigravity-manager/*` token in an existing restrictive `agents.defaults.modelPolicy.allow`.
+An absent or empty allow list stays unrestricted. Quick setup uses `v2` and preserves `models.mode`.
+Changing formats removes
 only entries recorded by Manager. Personal allow entries remain. Provider fields use `baseUrl`,
 `apiKey`, `api: openai-completions` and the selected model IDs. Model capabilities are not guessed.
 `models.mode` stays unchanged by default. The separate merge option previews and changes that
@@ -192,8 +203,9 @@ error means that rollback completed. Both clients must be reopened after configu
 
 ## DSH profile configuration
 
-The DSH card targets the selected backend user's DSH_HOME/profiles/<profile>/cordis.patch.yml.
-Set DSH_HOME in that backend's environment. The selected profile must contain one supported
+The DSH card uses the selected backend user's `DSH_HOME` or `~/.dsh`, and reads
+`profiles/<profile>/cordis.patch.yml` inside that directory. Quick setup targets the existing
+`web` profile. The selected profile must contain one supported
 llm-pi-ai entry with a providers mapping. Preview shows the Manager provider, protocol, endpoint,
 models and credential reference. Existing-reference mode leaves credential provisioning to DSH.
 The explicit Manager-key option supports only the declared native version-1 credentials-local
@@ -252,7 +264,8 @@ and fixed error categories rather than file contents or credentials.
 
 ### Configure a DSH profile from the CLI
 
-Set `DSH_HOME` in the standalone Core environment before starting it. Use the name of an existing
+Set `DSH_HOME` in the standalone Core environment before starting it if the DSH directory differs
+from `~/.dsh`. Use the name of an existing
 DSH profile. The CLI uses the same selected Core owner as the desktop DSH card.
 
 1. Check the profile and preview the change. Repeat `--model` to offer multiple models.
