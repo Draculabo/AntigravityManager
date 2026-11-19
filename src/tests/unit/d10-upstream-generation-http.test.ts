@@ -25,9 +25,7 @@ import {
 } from './proxy-real-path.harness';
 
 vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
-  ...(await original<
-    typeof import('@/server/gateway/common/utils/request-user-agent')
-  >()),
+  ...(await original<typeof import('@/server/gateway/common/utils/request-user-agent')>()),
   resolveRequestUserAgent: async () => 'd10-loopback-fixture',
   buildContentRequestUserAgent: () => 'd10-loopback-fixture',
 }));
@@ -125,81 +123,91 @@ async function upstream(listener: RequestListener, endpoints = ['first']) {
   return client;
 }
 
-it('blocks the fourth large UTF-8 send and allows a fourth small send through Chat HTTP', async () => {
-  const received: Array<{ path: string | undefined; bytes: number }> = [];
-  const client = await upstream(
-    (request, response) => {
-      let bytes = 0;
-      request.on('data', (chunk: Buffer) => {
-        bytes += chunk.length;
-      });
-      request.on('end', () => {
-        received.push({ path: request.url, bytes });
-        if (request.url?.startsWith('/fourth:')) {
-          response.writeHead(200, { 'content-type': 'application/json' });
-          response.end(JSON.stringify({ response: geminiTextResponse('D10 accepted') }));
-          return;
-        }
-        response.writeHead(503, { 'content-type': 'application/json' });
-        response.end(
-          JSON.stringify({ error: { code: 503, message: 'Synthetic endpoint failure' } }),
-        );
-      });
-    },
-    ['first', 'second', 'third', 'fourth'],
-  );
-  const lease = createLease([createAccount('d10-first'), createAccount('d10-spare')]);
-  const gateway = createGateway(client as never, lease);
-  @Module({
-    controllers: [OpenAIChatController],
-    providers: [
-      ProxyGuard,
-      OpenAIOperations,
-      { provide: OpenAIService, useValue: gateway.openAIService },
-    ],
-  })
-  class ReplayHttpModule {}
-  const app = await NestFactory.create<NestFastifyApplication>(
-    ReplayHttpModule,
-    new FastifyAdapter({ bodyLimit: 8 * 1024 * 1024 }),
-    { logger: false },
-  );
-  cleanup.push(() => app.close());
-  await app.listen(0, '127.0.0.1');
-  const url = `${await app.getUrl()}/v1/chat/completions`;
+it.each([
+  {
+    status: 502,
+    largeEndpoints: ['first', 'second', 'third'],
+    smallEndpoints: ['first', 'second', 'third', 'fourth'],
+  },
+  {
+    status: 503,
+    largeEndpoints: ['first', 'first', 'second'],
+    smallEndpoints: ['first', 'first', 'second', 'third', 'fourth'],
+  },
+])(
+  'caps large UTF-8 physical sends and allows small sends after upstream $status',
+  async ({ status, largeEndpoints, smallEndpoints }) => {
+    const received: Array<{ path: string | undefined; bytes: number }> = [];
+    const client = await upstream(
+      (request, response) => {
+        let bytes = 0;
+        request.on('data', (chunk: Buffer) => {
+          bytes += chunk.length;
+        });
+        request.on('end', () => {
+          received.push({ path: request.url, bytes });
+          if (request.url?.startsWith('/fourth:')) {
+            response.writeHead(200, { 'content-type': 'application/json' });
+            response.end(JSON.stringify({ response: geminiTextResponse('D10 accepted') }));
+            return;
+          }
+          response.writeHead(status, { 'content-type': 'application/json' });
+          response.end(
+            JSON.stringify({ error: { code: status, message: 'Synthetic endpoint failure' } }),
+          );
+        });
+      },
+      ['first', 'second', 'third', 'fourth'],
+    );
+    const lease = createLease([createAccount('d10-first'), createAccount('d10-spare')]);
+    const gateway = createGateway(client as never, lease);
+    @Module({
+      controllers: [OpenAIChatController],
+      providers: [
+        ProxyGuard,
+        OpenAIOperations,
+        { provide: OpenAIService, useValue: gateway.openAIService },
+      ],
+    })
+    class ReplayHttpModule {}
+    const app = await NestFactory.create<NestFastifyApplication>(
+      ReplayHttpModule,
+      new FastifyAdapter({ bodyLimit: 8 * 1024 * 1024 }),
+      { logger: false },
+    );
+    cleanup.push(() => app.close());
+    await app.listen(0, '127.0.0.1');
+    const url = `${await app.getUrl()}/v1/chat/completions`;
 
-  const limit = 4 * 1024 * 1024;
-  const large = await sendChat(url, '界'.repeat(Math.ceil(limit / 3)));
-  expect(large.status).toBe(503);
-  expect(await large.json()).toEqual({
-    error: {
-      message: 'The generation replay limit for large upstream requests was reached.',
-      type: 'server_error',
-      code: 'generation_replay_limit',
-      param: null,
-    },
-  });
-  expect(received.map(({ path }) => path)).toEqual([
-    '/first:generateContent',
-    '/second:generateContent',
-    '/third:generateContent',
-  ]);
-  expect(received.every(({ bytes }) => bytes >= limit)).toBe(true);
-  expect(lease.markModelSuccess).not.toHaveBeenCalled();
-  expect(lease.markFromUpstreamError).not.toHaveBeenCalled();
+    const limit = 4 * 1024 * 1024;
+    const large = await sendChat(url, '界'.repeat(Math.ceil(limit / 3)));
+    expect(large.status).toBe(503);
+    expect(await large.json()).toEqual({
+      error: {
+        message: 'The generation replay limit for large upstream requests was reached.',
+        type: 'server_error',
+        code: 'generation_replay_limit',
+        param: null,
+      },
+    });
+    expect(received.map(({ path }) => path)).toEqual(
+      largeEndpoints.map((endpoint) => `/${endpoint}:generateContent`),
+    );
+    expect(received.every(({ bytes }) => bytes >= limit)).toBe(true);
+    expect(lease.markModelSuccess).not.toHaveBeenCalled();
+    expect(lease.markFromUpstreamError).not.toHaveBeenCalled();
 
-  received.length = 0;
-  const small = await sendChat(url, 'Small request');
-  expect(small.status).toBe(200);
-  expect(await small.text()).toContain('D10 accepted');
-  expect(received.map(({ path }) => path)).toEqual([
-    '/first:generateContent',
-    '/second:generateContent',
-    '/third:generateContent',
-    '/fourth:generateContent',
-  ]);
-  expect(received.every(({ bytes }) => bytes < limit)).toBe(true);
-}, 30_000);
+    received.length = 0;
+    const small = await sendChat(url, 'Small request');
+    expect(small.status).toBe(200);
+    expect(await small.text()).toContain('D10 accepted');
+    expect(received.map(({ path }) => path)).toEqual(
+      smallEndpoints.map((endpoint) => `/${endpoint}:generateContent`),
+    );
+    expect(received.every(({ bytes }) => bytes < limit)).toBe(true);
+  },
+  30_000,
+);
 
 it('keeps an automatic HTTP redirect from resending a large generation body', async () => {
   const paths: Array<string | undefined> = [];

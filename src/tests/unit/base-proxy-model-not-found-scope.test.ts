@@ -1,10 +1,10 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { BaseProxyService } from '@/server/gateway/common/base-proxy.service';
 import { UpstreamRequestError } from '@/server/gateway/common/exceptions/upstream-request.exception';
 import type { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
 import type { GeminiClient } from '@/server/gateway/modules/gemini/gemini-client.service';
 import type { GenerationConstraintsService } from '@/server/gateway/shared/services/generation-constraints.service';
-import { proxyModelAvailabilityStore } from '@/server/gateway/shared/services/model-availability.service';
+import { ModelAvailabilityService } from '@/server/gateway/shared/services/model-availability.service';
 import type { ModelRoutingService } from '@/server/gateway/shared/services/model-routing.service';
 import { ProxyRetryService } from '@/server/gateway/shared/services/proxy-retry.service';
 import { createAccount } from './proxy-real-path.harness';
@@ -28,14 +28,16 @@ function createService() {
     getRemainingRateLimitWait: vi.fn(),
     markModelSuccess: vi.fn(),
   } as unknown as AccountLeaseService;
+  const modelAvailability = new ModelAvailabilityService();
   const retryPolicy = new ProxyRetryService(
     accountLeaseService,
     { log: vi.fn(), warn: vi.fn() },
-    proxyModelAvailabilityStore,
+    modelAvailability,
   );
 
   return {
     accountLeaseService,
+    modelAvailability,
     service: new TestProxyService(
       accountLeaseService,
       {} as GeminiClient,
@@ -48,13 +50,9 @@ function createService() {
 
 const imageModel = 'gemini-3-pro-image';
 
-afterEach(() => {
-  proxyModelAvailabilityStore.clearModel('acc-a', imageModel);
-});
-
 describe('BaseProxyService model-not-found penalty scope', () => {
   it('keeps image model 404 failures scoped to the failing account', async () => {
-    const { accountLeaseService, service } = createService();
+    const { accountLeaseService, modelAvailability, service } = createService();
     const error = new UpstreamRequestError({
       message: `Model ${imageModel} is not supported`,
       status: 404,
@@ -63,19 +61,15 @@ describe('BaseProxyService model-not-found penalty scope', () => {
     await service.applyPenalty('acc-a', imageModel, error);
 
     expect(accountLeaseService.markAsForbidden).not.toHaveBeenCalled();
-    expect(proxyModelAvailabilityStore.getSnapshot()).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          accountId: 'acc-a',
-          modelId: imageModel,
-          reason: 'model_not_supported',
-        }),
-      ]),
-    );
+    expect(modelAvailability.isCapabilityBlocked('acc-a', imageModel)).toBe(true);
+    expect(modelAvailability.isCapabilityBlocked('acc-b', imageModel)).toBe(false);
+    expect(modelAvailability.getSnapshot()).toMatchObject([
+      { accountId: 'acc-a', modelId: 'gemini-pro-image', reason: 'model_not_supported' },
+    ]);
   });
 
   it('does not publish a capability failure for an ambiguous text-model 404', async () => {
-    const { accountLeaseService, service } = createService();
+    const { accountLeaseService, modelAvailability, service } = createService();
     const error = new UpstreamRequestError({
       message: 'Requested entity was not found',
       status: 404,
@@ -84,10 +78,6 @@ describe('BaseProxyService model-not-found penalty scope', () => {
     await service.applyPenalty('acc-a', 'gemini-3.6-flash-low', error);
 
     expect(accountLeaseService.markFromUpstreamError).toHaveBeenCalled();
-    expect(
-      proxyModelAvailabilityStore
-        .getSnapshot()
-        .filter((row) => row.accountId === 'acc-a' && row.modelId === 'gemini-3.6-flash-low'),
-    ).toEqual([]);
+    expect(modelAvailability.getSnapshot()).toEqual([]);
   });
 });

@@ -2,7 +2,10 @@ import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { UpstreamProxyConfigurationError } from '@/modules/config/upstream-proxy.schema';
 import { isString } from 'lodash-es';
 import type { CloudAccount } from '@/modules/cloud-account/types';
-import { calculateRetryDelay, sleep } from '../../../../modules/proxy-gateway/antigravity/retry-utils';
+import {
+  calculateRetryDelay,
+  sleep,
+} from '../../../../modules/proxy-gateway/antigravity/retry-utils';
 import {
   hasExplicitQuotaExhaustedSignal,
   hasStrictQuotaExhaustedMarker,
@@ -32,7 +35,6 @@ export interface ProxyTokenRetryState {
   graceRetriedAccountIds: Set<string>;
   lastNonRateLimitError: unknown | null;
   failureCount: number;
-  projectDowngraded?: boolean;
   allFailuresRateLimited: boolean;
   retryAfterSeconds?: number;
   model?: string;

@@ -35,6 +35,7 @@ import {
   type TrafficAuditRequestContext,
 } from '@/modules/proxy-gateway/audit/traffic-audit-context';
 import { MAX_SSE_EVENT_BYTES } from '@/modules/proxy-gateway/antigravity/internal-sse';
+import { collectAntigravityResponse } from '@/server/gateway/common/antigravity-generation-executor';
 import { PIXEL_PNG } from '../fixtures/image-content';
 
 // The three services the protocol services used to build for themselves. Real instances:
@@ -159,10 +160,6 @@ class TestableGeminiService extends GeminiService {
       imagePermit,
     ) as Observable<string>;
   }
-
-  public testCollectStream(stream: any): Promise<unknown> {
-    return (this as any).collectGeminiStreamAsResponse(stream) as Promise<unknown>;
-  }
 }
 
 function createToken(id: string = 'acc-1') {
@@ -188,6 +185,8 @@ describe('ProxyService Empty Stream Retry Logic', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGeminiClient.generateInternal.mockReset();
+    mockGeminiClient.streamGenerateInternal.mockReset();
     setServerConfig(createProxyConfig());
   });
 
@@ -531,9 +530,8 @@ describe('ProxyService Empty Stream Retry Logic', () => {
 
   it('does not let upstream SSE comments extend the Gemini aggregation idle deadline', async () => {
     vi.useFakeTimers();
-    const service = new TestableGeminiService();
     const stream = new PassThrough();
-    const result = service.testCollectStream(stream);
+    const result = collectAntigravityResponse(stream, { error: vi.fn() });
     const rejection = expect(result).rejects.toThrow('Stream idle timeout');
 
     await vi.advanceTimersByTimeAsync(299_999);
@@ -546,9 +544,8 @@ describe('ProxyService Empty Stream Retry Logic', () => {
   });
 
   it('rejects Gemini aggregation when upstream closes before end', async () => {
-    const service = new TestableGeminiService();
     const stream = new PassThrough();
-    const result = service.testCollectStream(stream);
+    const result = collectAntigravityResponse(stream, { error: vi.fn() });
 
     stream.emit('close');
 
@@ -655,27 +652,21 @@ describe('ProxyService Empty Stream Retry Logic', () => {
 
   it('joins multiline Gemini data fields and accepts a complete EOF tail', async () => {
     const service = new TestableGeminiService();
-    const stream = new PassThrough();
+    const stream = Readable.from([
+      Buffer.from('data: {"response":\n'),
+      Buffer.from(
+        'data: {"candidates":[{"content":{"parts":[{"text":"multiline tail"}]},"finishReason":"STOP"}]}}',
+      ),
+    ]);
     mockAccountLeaseService.getNextToken.mockResolvedValue(createToken());
     mockGeminiClient.generateInternal.mockResolvedValueOnce({ candidates: [] });
     mockGeminiClient.streamGenerateInternal.mockResolvedValueOnce(stream);
 
-    const promise = service.handleGeminiGenerateContent('models/gemini-2.5-flash', {
+    const result = await service.handleGeminiGenerateContent('models/gemini-2.5-flash', {
       contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
     });
 
-    setTimeout(() => {
-      stream.emit('data', Buffer.from('data: {"response":\n'));
-      stream.emit(
-        'data',
-        Buffer.from(
-          'data: {"candidates":[{"content":{"parts":[{"text":"multiline tail"}]},"finishReason":"STOP"}]}}',
-        ),
-      );
-      stream.emit('end');
-    }, 10);
-
-    const result = await promise;
+    expect(mockGeminiClient.streamGenerateInternal).toHaveBeenCalledOnce();
     expect(result.candidates?.[0]?.content?.parts[0]?.text).toBe('multiline tail');
     expect(result.candidates?.[0]?.finishReason).toBe('STOP');
   });
@@ -815,7 +806,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     );
   });
 
-  it('recognizes multiline Gemini SSE fields while passing the original bytes through', async () => {
+  it('joins multiline Gemini SSE fields and emits the unwrapped native response', async () => {
     const service = new TestableGeminiService();
     const stream = new PassThrough();
     const chunks: string[] = [];
@@ -835,8 +826,9 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     );
     await finished;
 
-    expect(chunks.join('')).toContain('data: {"response":\n');
-    expect(chunks.join('')).toContain('multiline answer');
+    expect(chunks.join('')).toBe(
+      'data: {"candidates":[{"content":{"parts":[{"text":"multiline answer"}]},"finishReason":"STOP"}]}\n\n',
+    );
   });
 
   it.each([
@@ -871,9 +863,8 @@ describe('ProxyService Empty Stream Retry Logic', () => {
       /Upstream SSE line exceeds decode budget/,
     ],
   ])('rejects Gemini aggregation for %s', async (_label, bytes, error) => {
-    const service = new TestableGeminiService();
     const stream = new PassThrough();
-    const result = service.testCollectStream(stream);
+    const result = collectAntigravityResponse(stream, { error: vi.fn() });
 
     stream.end(bytes);
 
@@ -982,6 +973,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
       body: '429 quota exceeded',
       model: 'gemini-3-flash-agent',
       effort: undefined,
+      statusInferred: true,
     });
     expect((result as any).choices?.[0]?.message?.content).toBeDefined();
   });
@@ -1293,7 +1285,9 @@ describe('ProxyService Empty Stream Retry Logic', () => {
       status: 429,
       body: '429 rate limit exceeded',
       model: 'claude-sonnet-4-6-thinking',
+      effort: undefined,
       isCurrent: expect.any(Function),
+      statusInferred: true,
     });
     expect((result as any).type).toBe('message');
   });
@@ -1322,7 +1316,9 @@ describe('ProxyService Empty Stream Retry Logic', () => {
       status: 429,
       body: '429 quota exceeded',
       model: 'gemini-3-flash-agent',
+      effort: undefined,
       isCurrent: expect.any(Function),
+      statusInferred: true,
     });
     expect(
       mockAccountLeaseService.getNextToken.mock.calls.map(([options]) => options.model),

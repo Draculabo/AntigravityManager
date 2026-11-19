@@ -1,6 +1,6 @@
 import { Readable } from 'node:stream';
 import { afterEach, expect, it, vi } from 'vitest';
-import { BaseProxyService } from '@/server/gateway/common/base-proxy.service';
+import { AntigravityGenerationExecutor } from '@/server/gateway/common/antigravity-generation-executor';
 import {
   AggregationAdmission,
   aggregationAdmission,
@@ -16,24 +16,6 @@ import {
   estimateRetainedJsonBytes,
 } from '@/server/gateway/common/retained-json-size';
 import type { GeminiInternalRequest } from '@/modules/proxy-gateway/antigravity/types';
-
-class Service extends BaseProxyService {
-  constructor() {
-    super(
-      {} as never,
-      {
-        generateInternal: async () => ({ candidates: [] }),
-        streamGenerateInternal: async () => Readable.from([]),
-      } as never,
-      {} as never,
-      {} as never,
-      {} as never,
-    );
-  }
-  run(body: GeminiInternalRequest, signal: AbortSignal) {
-    return this.generateInternalWithStreamFallback(body, 'fixture', undefined, undefined, signal);
-  }
-}
 
 it('accounts the complete waiting request without another JSON serialization and removes it on cancellation', async () => {
   const releases = await Promise.all([
@@ -60,7 +42,14 @@ it('accounts the complete waiting request without another JSON serialization and
     },
   };
   const stringify = vi.spyOn(JSON, 'stringify');
-  const operation = new Service().run(body, abort.signal);
+  const executor = new AntigravityGenerationExecutor(
+    {
+      generateInternal: async () => ({ candidates: [] }),
+      streamGenerateInternal: async () => Readable.from([]),
+    },
+    { debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  );
+  const operation = executor.generate({ body, accessToken: 'fixture', signal: abort.signal });
   const rejected = expect(operation).rejects.toMatchObject({ name: 'AbortError' });
   try {
     await vi.waitFor(() => expect(aggregationAdmission.snapshot.waiting).toBe(1));

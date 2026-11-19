@@ -1,5 +1,9 @@
+import {
+  GenerationAccountExecution,
+  throwIfTerminalGenerationFailure,
+} from '../../common/generation-account-execution';
+import { createStreamIdleTimer } from '../../common/stream-idle-timer';
 import { getGenerationTimeoutMs } from '../../common/generation-timeout-policy';
-import { OverloadThinkingRecovery } from '../../common/overload-thinking-recovery';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { runGenerationWithDeadline } from '../../common/generation-deadline';
 import { isUpstreamStreamInterruption } from '../../common/stream-interruption';
@@ -206,7 +210,6 @@ export class GeminiService extends BaseProxyService {
     assertGeminiThoughtSignatureAliases(request.contents);
     request = admitGeminiInlineMedia(request);
     request = normalizeGeminiToolCallIds(request);
-    const recoveryBudget = { attempted: false };
     const scope = resolveGeminiSessionScope(request, requestContext?.headers, requestContext?.url);
     captureCurrentAuditSession(scope);
     const modelSwitchKey =
@@ -232,7 +235,6 @@ export class GeminiService extends BaseProxyService {
     const enforceAuthoritativeThinkingBudget = usesAuthoritativeThinkingBudget(
       routeResolution.resolvedModel,
     );
-    const overloadThinkingRecovery = new OverloadThinkingRecovery();
     const targetModel = variantRequest.model;
     const effort = request.generationConfig?.thinkingConfig?.thinkingLevel;
     const contents = this.modelSwitchHistory.prepare(
@@ -254,49 +256,29 @@ export class GeminiService extends BaseProxyService {
     );
     markProxyCleanComplete();
 
-    let lastError: unknown = null;
-    const retryState = this.createTokenRetryState(
-      effort,
-      appliedVariantRequest.variant !== null || explicitPhysicalTarget,
-    );
-    const maxRetries = await this.getMaxRetryAttempts(
-      retryState,
-      targetModel,
-      isImageRequest,
-      signal,
-      effort,
-    );
-
-    for (let i = 0; i < maxRetries; i++) {
-      await this.waitBeforeRetry(
-        i,
-        maxRetries,
-        'Gemini',
-        retryState.graceRetryToken !== null,
-        isImageRequest,
-      );
-
-      const token = await this.selectRetryToken(
-        retryState,
-        targetModel,
-        scope.affinityKey,
-        isImageRequest,
+    const accountExecution = new GenerationAccountExecution(
+      this.retryPolicy,
+      this.accountLeaseService,
+      {
+        model: targetModel,
+        physicalTarget: appliedVariantRequest.variant !== null || explicitPhysicalTarget,
+        sessionKey: scope.affinityKey,
+        storeKey: scope.storeKey,
         signal,
         effort,
-      );
-      if (!token) {
-        if (lastError !== null) {
-          throw this.resolveTerminalRetryError(retryState, lastError);
-        }
+        label: 'Gemini',
+        exhaustedMessage: 'Gemini request failed after retries',
+        retry: {
+          kind: 'scheduled',
+          imageRequest: isImageRequest,
+          allowImageGrace: true,
+          imagePenaltyMode: imageRetryPenaltyMode,
+        },
+      },
+    );
 
-        throw new Error('No available accounts (all exhausted or rate limited)');
-      }
-      const effectiveTargetModel = this.accountLeaseService.resolveDynamicModelForAccount(
-        token.id,
-        targetModel,
-        effort,
-        retryState.physicalTarget,
-      );
+    for await (const token of accountExecution.accounts()) {
+      const effectiveTargetModel = accountExecution.modelFor(token);
       const effectiveVariantRequest = rebindGeminiModelVariant(
         appliedVariantRequest,
         effectiveTargetModel,
@@ -323,37 +305,30 @@ export class GeminiService extends BaseProxyService {
         );
 
         const accountTelemetryHeaders = this.resolveAccountTelemetryHeaders(token, extraHeaders);
-        const response = await this.generateInternalWithStreamFallback(
-          internalBody,
-          token.token.access_token,
-          token.token.upstream_proxy_url,
-          accountTelemetryHeaders,
-          signal,
-          this.createScopedGenerationOptions(
-            token,
-            scope.storeKey,
-            recoveryBudget,
+        const response = await this.upstreamGeneration.generate(
+          {
+            body: internalBody,
+            accessToken: token.token.access_token,
+            upstreamProxyUrl: token.token.upstream_proxy_url,
+            headers: accountTelemetryHeaders,
             signal,
-            overloadThinkingRecovery,
-          ),
+            options: accountExecution.upstreamOptions(token),
+          },
           observeResponse,
         );
 
         this.commitUpstreamSession(token, signal);
         this.markUpstreamSuccessForResponse(token, accountTargetModel, response);
         this.modelSwitchHistory.recordSuccess(modelSwitchKey, accountTargetModel);
-        this.releaseImagePermit(retryState);
+        accountExecution.releaseImagePermit();
         return this.normalizeGeminiGenerateResponse(response);
       } catch (err) {
         if (err instanceof UpstreamProxyConfigurationError) {
-          this.releaseImagePermit(retryState);
           throw err;
         }
-        this.rethrowTerminalGenerationFailure(err, retryState);
-        if (
-          !this.retryPolicy.isFatalCircuitBreakError(err) &&
-          this.admitProjectDowngrade(retryState, err, token.token.project_id, signal)
-        ) {
+        throwIfTerminalGenerationFailure(err);
+        let lastError: unknown;
+        if (accountExecution.admitProjectDowngrade(err, token.token.project_id)) {
           this.logger.warn('Gemini project context rejected. Retrying once without project.');
           try {
             markProxyNormalizationStarted();
@@ -377,83 +352,37 @@ export class GeminiService extends BaseProxyService {
               token,
               extraHeaders,
             );
-            const response = await this.generateInternalWithStreamFallback(
-              fallbackBody,
-              token.token.access_token,
-              token.token.upstream_proxy_url,
-              accountTelemetryHeaders,
-              signal,
-              this.createScopedGenerationOptions(
-                token,
-                scope.storeKey,
-                recoveryBudget,
+            const response = await this.upstreamGeneration.generate(
+              {
+                body: fallbackBody,
+                accessToken: token.token.access_token,
+                upstreamProxyUrl: token.token.upstream_proxy_url,
+                headers: accountTelemetryHeaders,
                 signal,
-                overloadThinkingRecovery,
-              ),
+                options: accountExecution.upstreamOptions(token),
+              },
               observeResponse,
             );
             this.commitUpstreamSession(token, signal);
             this.markUpstreamSuccessForResponse(token, accountTargetModel, response);
             this.modelSwitchHistory.recordSuccess(modelSwitchKey, accountTargetModel);
-            this.releaseImagePermit(retryState);
+            accountExecution.releaseImagePermit();
             return this.normalizeGeminiGenerateResponse(response);
           } catch (fallbackErr) {
             if (fallbackErr instanceof UpstreamProxyConfigurationError) {
-              this.releaseImagePermit(retryState);
               throw fallbackErr;
             }
-            this.rethrowTerminalGenerationFailure(fallbackErr, retryState);
+            throwIfTerminalGenerationFailure(fallbackErr);
             lastError = fallbackErr;
           }
         } else {
           lastError = err;
         }
 
-        this.recordRetryFailure(retryState, lastError);
-        if (retryState.abortRetry) {
-          this.releaseImagePermit(retryState);
-          await this.applyUpstreamPenalty(token, accountTargetModel, lastError, effort);
-          break;
-        }
-        if (isImageRequest) {
-          if (
-            await this.prepareScheduledImageRetry(
-              retryState,
-              token,
-              accountTargetModel,
-              lastError,
-              'Gemini',
-              true,
-              signal,
-              imageRetryPenaltyMode,
-            )
-          ) {
-            i -= 1;
-          }
-          continue;
-        }
-        const penaltyRecordedBeforeGrace = this.shouldRecordImagePenaltyBeforeGrace(
-          accountTargetModel,
-          lastError,
-        );
-        if (penaltyRecordedBeforeGrace) {
-          await this.applyUpstreamPenalty(token, accountTargetModel, lastError, effort);
-        }
-        if (await this.prepareCurrentGraceRetry(retryState, token, lastError, 'Gemini', signal)) {
-          i -= 1;
-          continue;
-        }
-        if (!penaltyRecordedBeforeGrace) {
-          await this.applyUpstreamPenalty(token, accountTargetModel, lastError, effort);
-        }
+        await accountExecution.fail(token, accountTargetModel, lastError);
       }
     }
-
-    this.releaseImagePermit(retryState);
-    throw this.resolveTerminalRetryError(
-      retryState,
-      lastError || new Error('Gemini request failed after retries'),
-    );
+    throw accountExecution.exhaustedError();
   }
 
   async handleGeminiStreamGenerateContent(
@@ -488,7 +417,6 @@ export class GeminiService extends BaseProxyService {
     assertGeminiThoughtSignatureAliases(request.contents);
     request = admitGeminiInlineMedia(request);
     request = normalizeGeminiToolCallIds(request);
-    const recoveryBudget = { attempted: false };
     const scope = resolveGeminiSessionScope(request, requestContext?.headers, requestContext?.url);
     captureCurrentAuditSession(scope);
     const modelSwitchKey =
@@ -514,7 +442,6 @@ export class GeminiService extends BaseProxyService {
     const enforceAuthoritativeThinkingBudget = usesAuthoritativeThinkingBudget(
       routeResolution.resolvedModel,
     );
-    const overloadThinkingRecovery = new OverloadThinkingRecovery();
     const targetModel = variantRequest.model;
     const effort = request.generationConfig?.thinkingConfig?.thinkingLevel;
     const contents = this.modelSwitchHistory.prepare(
@@ -536,49 +463,29 @@ export class GeminiService extends BaseProxyService {
     );
     markProxyCleanComplete();
 
-    let lastError: unknown = null;
-    const retryState = this.createTokenRetryState(
-      effort,
-      appliedVariantRequest.variant !== null || explicitPhysicalTarget,
-    );
-    const maxRetries = await this.getMaxRetryAttempts(
-      retryState,
-      targetModel,
-      isImageRequest,
-      signal,
-      effort,
-    );
-
-    for (let i = 0; i < maxRetries; i++) {
-      await this.waitBeforeRetry(
-        i,
-        maxRetries,
-        'Gemini stream',
-        retryState.graceRetryToken !== null,
-        isImageRequest,
-      );
-
-      const token = await this.selectRetryToken(
-        retryState,
-        targetModel,
-        scope.affinityKey,
-        isImageRequest,
+    const accountExecution = new GenerationAccountExecution(
+      this.retryPolicy,
+      this.accountLeaseService,
+      {
+        model: targetModel,
+        physicalTarget: appliedVariantRequest.variant !== null || explicitPhysicalTarget,
+        sessionKey: scope.affinityKey,
+        storeKey: scope.storeKey,
         signal,
         effort,
-      );
-      if (!token) {
-        if (lastError !== null) {
-          throw this.resolveTerminalRetryError(retryState, lastError);
-        }
+        label: 'Gemini stream',
+        exhaustedMessage: 'Gemini stream request failed after retries',
+        retry: {
+          kind: 'scheduled',
+          imageRequest: isImageRequest,
+          allowImageGrace: true,
+          imagePenaltyMode: 'gemini',
+        },
+      },
+    );
 
-        throw new Error('No available accounts (all exhausted or rate limited)');
-      }
-      const effectiveTargetModel = this.accountLeaseService.resolveDynamicModelForAccount(
-        token.id,
-        targetModel,
-        effort,
-        retryState.physicalTarget,
-      );
+    for await (const token of accountExecution.accounts()) {
+      const effectiveTargetModel = accountExecution.modelFor(token);
       const effectiveVariantRequest = rebindGeminiModelVariant(
         appliedVariantRequest,
         effectiveTargetModel,
@@ -605,38 +512,29 @@ export class GeminiService extends BaseProxyService {
         );
 
         const accountTelemetryHeaders = this.resolveAccountTelemetryHeaders(token, extraHeaders);
-        const stream = await this.streamGenerateInternalWithRecovery(
-          internalBody,
-          token.token.access_token,
-          token.token.upstream_proxy_url,
-          accountTelemetryHeaders,
+        const stream = await this.upstreamGeneration.stream({
+          body: internalBody,
+          accessToken: token.token.access_token,
+          upstreamProxyUrl: token.token.upstream_proxy_url,
+          headers: accountTelemetryHeaders,
           signal,
-          this.createScopedGenerationOptions(
-            token,
-            scope.storeKey,
-            recoveryBudget,
-            signal,
-            overloadThinkingRecovery,
-          ),
-        );
+          options: accountExecution.upstreamOptions(token),
+        });
         this.commitUpstreamSession(token, signal);
         return this.passthroughSseStream(
           stream,
           token,
           accountTargetModel,
-          this.takeImagePermit(retryState),
+          accountExecution.takeImagePermit(),
           () => this.modelSwitchHistory.recordSuccess(modelSwitchKey, accountTargetModel),
         );
       } catch (err) {
         if (err instanceof UpstreamProxyConfigurationError) {
-          this.releaseImagePermit(retryState);
           throw err;
         }
-        this.rethrowTerminalGenerationFailure(err, retryState);
-        if (
-          !this.retryPolicy.isFatalCircuitBreakError(err) &&
-          this.admitProjectDowngrade(retryState, err, token.token.project_id, signal)
-        ) {
+        throwIfTerminalGenerationFailure(err);
+        let lastError: unknown;
+        if (accountExecution.admitProjectDowngrade(err, token.token.project_id)) {
           this.logger.warn(
             'Gemini stream project context rejected. Retrying once without project.',
           );
@@ -662,86 +560,37 @@ export class GeminiService extends BaseProxyService {
               token,
               extraHeaders,
             );
-            const stream = await this.streamGenerateInternalWithRecovery(
-              fallbackBody,
-              token.token.access_token,
-              token.token.upstream_proxy_url,
-              accountTelemetryHeaders,
+            const stream = await this.upstreamGeneration.stream({
+              body: fallbackBody,
+              accessToken: token.token.access_token,
+              upstreamProxyUrl: token.token.upstream_proxy_url,
+              headers: accountTelemetryHeaders,
               signal,
-              this.createScopedGenerationOptions(
-                token,
-                scope.storeKey,
-                recoveryBudget,
-                signal,
-                overloadThinkingRecovery,
-              ),
-            );
+              options: accountExecution.upstreamOptions(token),
+            });
             this.commitUpstreamSession(token, signal);
             return this.passthroughSseStream(
               stream,
               token,
               accountTargetModel,
-              this.takeImagePermit(retryState),
+              accountExecution.takeImagePermit(),
               () => this.modelSwitchHistory.recordSuccess(modelSwitchKey, accountTargetModel),
             );
           } catch (fallbackErr) {
             if (fallbackErr instanceof UpstreamProxyConfigurationError) {
-              this.releaseImagePermit(retryState);
               throw fallbackErr;
             }
-            this.rethrowTerminalGenerationFailure(fallbackErr, retryState);
+            throwIfTerminalGenerationFailure(fallbackErr);
             lastError = fallbackErr;
           }
         } else {
           lastError = err;
         }
 
-        this.recordRetryFailure(retryState, lastError);
-        if (retryState.abortRetry) {
-          this.releaseImagePermit(retryState);
-          await this.applyUpstreamPenalty(token, accountTargetModel, lastError, effort);
-          break;
-        }
-        if (isImageRequest) {
-          if (
-            await this.prepareScheduledImageRetry(
-              retryState,
-              token,
-              accountTargetModel,
-              lastError,
-              'Gemini stream',
-              true,
-              signal,
-            )
-          ) {
-            i -= 1;
-          }
-          continue;
-        }
-        const penaltyRecordedBeforeGrace = this.shouldRecordImagePenaltyBeforeGrace(
-          accountTargetModel,
-          lastError,
-        );
-        if (penaltyRecordedBeforeGrace) {
-          await this.applyUpstreamPenalty(token, accountTargetModel, lastError, effort);
-        }
-        if (
-          await this.prepareCurrentGraceRetry(retryState, token, lastError, 'Gemini stream', signal)
-        ) {
-          i -= 1;
-          continue;
-        }
-        if (!penaltyRecordedBeforeGrace) {
-          await this.applyUpstreamPenalty(token, accountTargetModel, lastError, effort);
-        }
+        await accountExecution.fail(token, accountTargetModel, lastError);
       }
     }
-
-    this.releaseImagePermit(retryState);
-    throw this.resolveTerminalRetryError(
-      retryState,
-      lastError || new Error('Gemini stream request failed after retries'),
-    );
+    throw accountExecution.exhaustedError();
   }
 
   private passthroughSseStream(
@@ -900,7 +749,7 @@ export class GeminiService extends BaseProxyService {
         emitData(inspection.publicData ?? data);
         return true;
       };
-      const idleTimer = this.createStreamIdleTimer(upstreamStream, 'Gemini-SSE', () => {
+      const idleTimer = createStreamIdleTimer(this.logger, upstreamStream, 'Gemini-SSE', () => {
         if (finishInterrupted()) {
           return;
         }

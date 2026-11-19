@@ -47,9 +47,14 @@ function createResponsesStream(
 
 describe('ProxyService Responses streaming', () => {
   it.each([
-    ['incomplete UTF-8', Buffer.from([0xe2, 0x82])],
-    ['oversized unterminated line', Buffer.from(`data: ${'x'.repeat(MAX_SSE_EVENT_BYTES)}`)],
-  ])('reports %s as a decoding failure', async (_label, bytes) => {
+    ['incomplete UTF-8', Buffer.from([0xe2, 0x82]), 'stream_decode_error'],
+    [
+      'oversized unterminated line',
+      Buffer.from(`data: ${'x'.repeat(MAX_SSE_EVENT_BYTES)}`),
+      'stream_decode_error',
+    ],
+    ['invalid provider JSON', Buffer.from('data: not json\n\n'), 'invalid_upstream_response'],
+  ])('reports %s as a decoding failure', async (_label, bytes, errorCode) => {
     const service = new ProxyService(
       {} as never,
       {} as never,
@@ -72,12 +77,12 @@ describe('ProxyService Responses streaming', () => {
     await completed;
 
     const events = chunks.filter((chunk) => chunk.includes('data: ')).map(parseEvent);
-    expect(
-      events.some(
-        (event) =>
-          event.type === 'response.failed' && JSON.stringify(event).includes('stream_decode_error'),
-      ),
-    ).toBe(true);
+    expect(events.map((event) => event.type)).toEqual([
+      'response.created',
+      'response.in_progress',
+      'response.failed',
+    ]);
+    expect(events.at(-1)).toMatchObject({ response: { error: { code: errorCode } } });
   });
 
   it('uses the caller-owned response id for every lifecycle event', async () => {
@@ -153,7 +158,6 @@ describe('ProxyService Responses streaming', () => {
       {} as never,
     );
     const upstreamStream = Readable.from([
-      Buffer.from('data: not json\n\n'),
       Buffer.from(
         'data: {"response":{"candidates":[{"content":{"parts":[{"text":"Checking docs"},{"functionCall":{"id":"call_search_1","name":"search_docs","args":{"query":"Gemini API"}}}]},"groundingMetadata":{"webSearchQueries":["Gemini API"]}}]}}\n\n',
       ),

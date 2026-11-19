@@ -383,6 +383,6 @@ it.runIf(Boolean(process.env.AGM_D08_CURL_EXE))(
     expect(JSON.parse(stdout)).toMatchObject({
       choices: [{ message: { content: 'D08 accepted' } }],
     });
-    expect(wire.map((entry) => entry.body.model)).toEqual(['gemini-3.1-pro-high']);
+    expect(wire.map((entry) => entry.body.model)).toEqual(['gemini-3.1-pro-low']);
   },
 );

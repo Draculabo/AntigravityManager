@@ -1,4 +1,4 @@
-import { Readable } from 'node:stream';
+import { PassThrough, Readable } from 'node:stream';
 import { Observable } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -16,9 +16,7 @@ import {
 } from './proxy-real-path.harness';
 
 vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
-  ...(await original<
-    typeof import('@/server/gateway/common/utils/request-user-agent')
-  >()),
+  ...(await original<typeof import('@/server/gateway/common/utils/request-user-agent')>()),
   resolveRequestUserAgent: async () => 'protocol-compatibility-test',
 }));
 
@@ -320,7 +318,7 @@ describe('stream options and tool failure through production request paths', () 
   });
 
   it('does not emit final usage after the client unsubscribes', async () => {
-    const source = new Readable({ read() {} });
+    const source = new PassThrough();
     const upstream = createUpstream({ streamFrames: [] });
     upstream.streamGenerateInternal.mockResolvedValue(source);
     const result = await createGateway(
@@ -331,17 +329,34 @@ describe('stream options and tool failure through production request paths', () 
       throw new Error('Expected a stream');
     }
     const received: string[] = [];
-    const subscription = result.subscribe((chunk) => received.push(chunk));
-    source.emit('data', Buffer.from(`data: ${JSON.stringify(terminal())}\n\n`));
-    subscription.unsubscribe();
-    source.emit(
-      'data',
-      Buffer.from(`data: ${JSON.stringify(geminiStreamFrame({ usageMetadata }))}\n\n`),
-    );
-    source.emit('end');
-    expect(chunks(received.join('')).at(-1)?.choices?.[0]?.finish_reason).toBe('stop');
-    expect(chunks(received.join('')).every((event) => event.usage === null)).toBe(true);
-    expect(received.join('')).not.toContain('[DONE]');
-    source.destroy();
+    const finish = Promise.withResolvers<void>();
+    const subscription = result.subscribe({
+      next: (chunk) => {
+        received.push(chunk);
+        if (chunks(chunk).some((event) => event.choices?.[0]?.finish_reason === 'stop')) {
+          finish.resolve();
+        }
+      },
+      error: finish.reject,
+    });
+    try {
+      source.write(`data: ${JSON.stringify(terminal())}\n\n`);
+      await finish.promise;
+      subscription.unsubscribe();
+      expect(source.destroyed).toBe(true);
+
+      // Simulate data already queued by the provider when the client disconnected.
+      source.emit(
+        'data',
+        Buffer.from(`data: ${JSON.stringify(geminiStreamFrame({ usageMetadata }))}\n\n`),
+      );
+      source.emit('end');
+      expect(chunks(received.join('')).at(-1)?.choices?.[0]?.finish_reason).toBe('stop');
+      expect(chunks(received.join('')).every((event) => event.usage === null)).toBe(true);
+      expect(received.join('')).not.toContain('[DONE]');
+    } finally {
+      subscription.unsubscribe();
+      source.destroy();
+    }
   });
 });

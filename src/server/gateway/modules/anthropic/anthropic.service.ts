@@ -1,5 +1,9 @@
+import {
+  GenerationAccountExecution,
+  throwIfTerminalGenerationFailure,
+} from '../../common/generation-account-execution';
+import { createStreamIdleTimer } from '../../common/stream-idle-timer';
 import { getGenerationTimeoutMs } from '../../common/generation-timeout-policy';
-import { OverloadThinkingRecovery } from '../../common/overload-thinking-recovery';
 import { AggregationAdmissionError } from '../../common/aggregation-admission';
 import { captureCurrentAuditSession } from '../../../../modules/proxy-gateway/audit/traffic-audit-context';
 import { runGenerationWithDeadline, generationDeadlineAt } from '../../common/generation-deadline';
@@ -80,8 +84,7 @@ import { ModelRoutingService } from '@/server/gateway/shared/services/model-rout
 import { ProxyRetryService } from '@/server/gateway/shared/services/proxy-retry.service';
 import { classifyInvalidThoughtSignatureError } from './invalid-thought-signature-error';
 import { registerObservableFlowControl } from '../../common/observable-flow-control';
-import { awaitRequestOperation, throwIfRequestAborted } from '../../common/request-cancellation';
-import { isGeminiImageModel } from '../../shared/services/rate-limit-tracker.service';
+import { throwIfRequestAborted } from '../../common/request-cancellation';
 import {
   createCoworkCompactionRequest,
   clearCoworkCompactionState,
@@ -237,7 +240,6 @@ export class AnthropicService extends BaseProxyService {
       explicitPhysicalTarget,
     );
     const routedRequest = appliedVariantRequest.request;
-    const overloadThinkingRecovery = new OverloadThinkingRecovery();
     const effort = routedRequest.output_config?.effort;
     const toolCallIdentity = new ResponseToolCallIdentity(() =>
       hashSessionAnchor([
@@ -248,7 +250,6 @@ export class AnthropicService extends BaseProxyService {
         routedRequest.tools,
       ]),
     );
-    const recoveryBudget = { attempted: false };
     const scope = resolveAnthropicSessionScope(
       request,
       requestContext?.headers,
@@ -269,48 +270,24 @@ export class AnthropicService extends BaseProxyService {
       `Anthropic request received: model=${request.model}, mappedModel=${targetModel}, stream=${request.stream}, routeSource=${routeResolution.source}`,
     );
 
-    // Retry loop
-    let lastError: unknown = null;
-    const retryState = this.createTokenRetryState(
-      effort,
-      appliedVariantRequest.variant !== null || explicitPhysicalTarget,
-    );
-    const maxRetries = await this.getMaxRetryAttempts(
-      retryState,
-      targetModel,
-      false,
-      signal,
-      effort,
-    );
-
-    for (let i = 0; i < maxRetries; i++) {
-      await awaitRequestOperation(
-        this.waitBeforeRetry(i, maxRetries, 'Anthropic', retryState.graceRetryToken !== null),
-        signal,
-      );
-      throwIfRequestAborted(signal);
-
-      const token = await this.selectRetryToken(
-        retryState,
-        targetModel,
-        scope.affinityKey,
-        false,
+    const accountExecution = new GenerationAccountExecution(
+      this.retryPolicy,
+      this.accountLeaseService,
+      {
+        model: targetModel,
+        physicalTarget: appliedVariantRequest.variant !== null || explicitPhysicalTarget,
+        sessionKey: scope.affinityKey,
+        storeKey: scope.storeKey,
         signal,
         effort,
-      );
-      if (!token) {
-        if (lastError !== null) {
-          throw this.resolveTerminalRetryError(retryState, lastError);
-        }
+        label: 'Anthropic',
+        unavailableMessage: 'No available accounts',
+        retry: { kind: 'anthropic', allowImageGrace: !appliedVariantRequest.variant },
+      },
+    );
 
-        throw new Error('No available accounts');
-      }
-      const effectiveTargetModel = this.accountLeaseService.resolveDynamicModelForAccount(
-        token.id,
-        targetModel,
-        effort,
-        retryState.physicalTarget,
-      );
+    for await (const token of accountExecution.accounts()) {
+      const effectiveTargetModel = accountExecution.modelFor(token);
       const effectiveVariantRequest = rebindAnthropicModelVariant(
         appliedVariantRequest,
         effectiveTargetModel,
@@ -329,13 +306,7 @@ export class AnthropicService extends BaseProxyService {
       try {
         const execution = await this.executeAnthropicAccountRequest({
           compaction,
-          upstreamOptions: this.createScopedGenerationOptions(
-            token,
-            scope.storeKey,
-            recoveryBudget,
-            signal,
-            overloadThinkingRecovery,
-          ),
+          upstreamOptions: accountExecution.upstreamOptions(token),
           globalSystemPrompt,
           signal,
           accountId: token.id,
@@ -381,30 +352,20 @@ export class AnthropicService extends BaseProxyService {
         );
       } catch (error) {
         if (error instanceof UpstreamProxyConfigurationError) {
-          this.releaseImagePermit(retryState);
           throw error;
         }
-        this.rethrowTerminalGenerationFailure(error, retryState);
+        throwIfTerminalGenerationFailure(error);
         throwIfRequestAborted(signal);
         if (classifyInvalidThoughtSignatureError(error)) {
           throw error;
         }
-        lastError = error;
-        if (
-          !this.retryPolicy.isFatalCircuitBreakError(error) &&
-          this.admitProjectDowngrade(retryState, error, token.token.project_id, signal)
-        ) {
+        let lastError: unknown = error;
+        if (accountExecution.admitProjectDowngrade(error, token.token.project_id)) {
           this.logger.warn('Anthropic project context rejected. Retrying once without project.');
           try {
             const execution = await this.executeAnthropicAccountRequest({
               compaction,
-              upstreamOptions: this.createScopedGenerationOptions(
-                token,
-                scope.storeKey,
-                recoveryBudget,
-                signal,
-                overloadThinkingRecovery,
-              ),
+              upstreamOptions: accountExecution.upstreamOptions(token),
               signal,
               globalSystemPrompt,
               accountId: token.id,
@@ -450,13 +411,11 @@ export class AnthropicService extends BaseProxyService {
             );
           } catch (fallbackErr) {
             if (fallbackErr instanceof UpstreamProxyConfigurationError) {
-              this.releaseImagePermit(retryState);
               throw fallbackErr;
             }
-            this.rethrowTerminalGenerationFailure(fallbackErr, retryState);
+            throwIfTerminalGenerationFailure(fallbackErr);
             throwIfRequestAborted(signal);
             if (fallbackErr instanceof AggregationAdmissionError) {
-              this.releaseImagePermit(retryState);
               throw fallbackErr;
             }
             if (classifyInvalidThoughtSignatureError(fallbackErr)) {
@@ -494,13 +453,7 @@ export class AnthropicService extends BaseProxyService {
               null;
             const execution = await this.executeAnthropicAccountRequest({
               compaction,
-              upstreamOptions: this.createScopedGenerationOptions(
-                token,
-                scope.storeKey,
-                recoveryBudget,
-                signal,
-                overloadThinkingRecovery,
-              ),
+              upstreamOptions: accountExecution.upstreamOptions(token),
               signal,
               accountId: token.id,
               accessToken: token.token.access_token,
@@ -550,13 +503,11 @@ export class AnthropicService extends BaseProxyService {
             };
           } catch (downgradeErr) {
             if (downgradeErr instanceof UpstreamProxyConfigurationError) {
-              this.releaseImagePermit(retryState);
               throw downgradeErr;
             }
-            this.rethrowTerminalGenerationFailure(downgradeErr, retryState);
+            throwIfTerminalGenerationFailure(downgradeErr);
             throwIfRequestAborted(signal);
             if (downgradeErr instanceof AggregationAdmissionError) {
-              this.releaseImagePermit(retryState);
               throw downgradeErr;
             }
             if (classifyInvalidThoughtSignatureError(downgradeErr)) {
@@ -566,28 +517,10 @@ export class AnthropicService extends BaseProxyService {
           }
         }
 
-        this.recordRetryFailure(retryState, lastError);
-        if (retryState.abortRetry) {
-          this.releaseImagePermit(retryState);
-          await this.applyUpstreamPenalty(token, accountTargetModel, lastError, effort);
-          break;
-        }
-        if (
-          (!appliedVariantRequest.variant || !isGeminiImageModel(targetModel)) &&
-          (await this.prepareGraceRetry(retryState, token, lastError, 'Anthropic', signal))
-        ) {
-          if (!isGeminiImageModel(targetModel)) {
-            i -= 1;
-          }
-          continue;
-        }
-        await this.applyUpstreamPenalty(token, accountTargetModel, lastError, effort);
+        await accountExecution.fail(token, accountTargetModel, lastError);
       }
     }
-    throw this.resolveTerminalRetryError(
-      retryState,
-      lastError || new Error('Request failed after retries'),
-    );
+    throw accountExecution.exhaustedError();
   }
 
   private async executeAnthropicAccountRequest(params: {
@@ -632,39 +565,27 @@ export class AnthropicService extends BaseProxyService {
         usesAuthoritativeThinkingBudget(params.request.model),
       );
 
+      const attempt = {
+        body,
+        accessToken: params.accessToken,
+        upstreamProxyUrl: params.upstreamProxyUrl,
+        headers: params.extraHeaders,
+        signal: params.signal,
+        options: { ...params.upstreamOptions, onSemanticInput: params.compaction?.admit },
+      };
       if (params.stream) {
         return {
           body,
-          stream: await this.streamGenerateInternalWithRecovery(
-            body,
-            params.accessToken,
-            params.upstreamProxyUrl,
-            params.extraHeaders,
-            params.signal,
-            {
-              ...params.upstreamOptions,
-              onSemanticInput: params.compaction?.admit,
-            },
-          ),
+          stream: await this.upstreamGeneration.stream(attempt),
         };
       }
 
       return {
         body,
-        response: await this.generateAnthropicInternalWithStreamFallback(
-          body,
-          params.accessToken,
-          params.upstreamProxyUrl,
-          params.extraHeaders,
-          {
-            ...params.upstreamOptions,
-            onSemanticInput: params.compaction?.admit,
-          },
-          params.signal,
-        ),
+        response: await this.upstreamGeneration.generate(attempt),
       };
     } catch (error) {
-      this.rethrowTerminalGenerationFailure(error);
+      throwIfTerminalGenerationFailure(error);
       throwIfRequestAborted(params.signal);
       const classification = classifyInvalidThoughtSignatureError(error);
       if (classification) {
@@ -675,24 +596,6 @@ export class AnthropicService extends BaseProxyService {
       // A general provider rejection does not identify a repairable part or cache record.
       throw error;
     }
-  }
-
-  private async generateAnthropicInternalWithStreamFallback(
-    body: GeminiInternalRequest,
-    accessToken: string,
-    upstreamProxyUrl?: string,
-    extraHeaders?: Record<string, string>,
-    options?: InternalGenerationOptions,
-    signal?: AbortSignal,
-  ): Promise<GeminiResponse> {
-    return this.generateInternalWithStreamFallback(
-      body,
-      accessToken,
-      upstreamProxyUrl,
-      extraHeaders,
-      signal,
-      options,
-    );
   }
 
   private processAnthropicInternalStream(
@@ -779,7 +682,8 @@ export class AnthropicService extends BaseProxyService {
         return true;
       };
 
-      const idleTimer = this.createStreamIdleTimer(
+      const idleTimer = createStreamIdleTimer(
+        this.logger,
         upstreamStream,
         'Claude-SSE',
         () => {

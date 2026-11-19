@@ -4,7 +4,7 @@ vi.mock('@/server/gateway/common/utils/request-user-agent', () => ({
 }));
 import { Readable } from 'node:stream';
 import { afterEach, expect, it, vi } from 'vitest';
-import { BaseProxyService } from '@/server/gateway/common/base-proxy.service';
+import { AntigravityGenerationExecutor } from '@/server/gateway/common/antigravity-generation-executor';
 import {
   AggregationAdmission,
   AggregationAdmissionError,
@@ -21,25 +21,27 @@ import {
 const frame = Buffer.from(
   'data: {"response":{"candidates":[{"content":{"parts":[{"text":"done"}]},"finishReason":"STOP"}]}}\n\n',
 );
-class Service extends BaseProxyService {
-  constructor(client: object) {
-    super({} as never, client as never, {} as never, {} as never, {} as never);
-  }
-  run(signal?: AbortSignal) {
-    return this.generateInternalWithStreamFallback(
-      {
-        model: 'fixture',
-        project: '',
-        requestId: 'fixture',
-        userAgent: 'fixture',
-        request: { contents: [] },
-      },
-      'fixture',
-      undefined,
-      undefined,
-      signal,
-    );
-  }
+function generateWithStream(
+  client: ConstructorParameters<typeof AntigravityGenerationExecutor>[0],
+  signal?: AbortSignal,
+) {
+  const executor = new AntigravityGenerationExecutor(client, {
+    debug: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  });
+  return executor.generate({
+    body: {
+      model: 'fixture',
+      project: '',
+      requestId: 'fixture',
+      userAgent: 'fixture',
+      request: { contents: [] },
+    },
+    accessToken: 'fixture',
+    signal,
+    options: { recoveryBudget: { attempted: false, thinkingOnlyEnabled: false } },
+  });
 }
 afterEach(() => {
   vi.useRealTimers();
@@ -50,14 +52,16 @@ it('normalizes provider cancellation before the fallback starts', async () => {
   const abort = new AbortController();
   let fail: ((error: Error) => void) | undefined;
   const start = vi.fn();
-  const service = new Service({
-    generateInternal: () =>
-      new Promise((_resolve, reject) => {
-        fail = reject;
-      }),
-    streamGenerateInternal: start,
-  });
-  const operation = service.run(abort.signal);
+  const operation = generateWithStream(
+    {
+      generateInternal: () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+      streamGenerateInternal: start,
+    },
+    abort.signal,
+  );
   const rejected = expect(operation).rejects.toMatchObject({ name: 'AbortError' });
   await vi.waitFor(() => expect(fail).toBeTypeOf('function'));
   abort.abort();
@@ -82,7 +86,7 @@ it('admits only two shared fallback streams and cancels waiting work before upst
     streamGenerateInternal: start,
   };
   const signals = Array.from({ length: 4 }, () => new AbortController());
-  const operations = signals.map((signal) => new Service(client).run(signal.signal));
+  const operations = signals.map((signal) => generateWithStream(client, signal.signal));
   const outcomes = operations.map((operation) =>
     operation.then(
       () => 'completed',
@@ -179,18 +183,25 @@ it('holds a cancelled unresolved start credit until the late stream is destroyed
 it('cancels an active collector even when the provider ignores its signal', async () => {
   const stream = new Readable({ read() {} });
   const abort = new AbortController();
-  const service = new Service({
-    generateInternal: async () => ({ candidates: [] }),
-    streamGenerateInternal: async () => stream,
-  });
-  const operation = service.run(abort.signal);
+  const operation = generateWithStream(
+    {
+      generateInternal: async () => ({ candidates: [] }),
+      streamGenerateInternal: async () => stream,
+    },
+    abort.signal,
+  );
   const rejected = expect(operation).rejects.toMatchObject({ name: 'AbortError' });
-  await vi.waitFor(() => expect(stream.listenerCount('data')).toBe(1));
-  abort.abort();
-  await rejected;
-  expect(stream.destroyed).toBe(true);
-  expect(stream.listenerCount('data')).toBe(0);
-  expect(aggregationAdmission.snapshot).toEqual({ active: 0, waiting: 0 });
+  try {
+    await vi.waitFor(() => expect(stream.listenerCount('data')).toBe(1));
+    abort.abort();
+    await rejected;
+    expect(stream.destroyed).toBe(true);
+    expect(stream.listenerCount('data')).toBe(0);
+    expect(aggregationAdmission.snapshot).toEqual({ active: 0, waiting: 0 });
+  } finally {
+    abort.abort();
+    stream.destroy();
+  }
 });
 
 it.each(['openai', 'gemini', 'anthropic'] as const)(

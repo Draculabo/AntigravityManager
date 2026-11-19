@@ -1,5 +1,9 @@
+import {
+  GenerationAccountExecution,
+  throwIfTerminalGenerationFailure,
+} from '../../common/generation-account-execution';
+import { createStreamIdleTimer } from '../../common/stream-idle-timer';
 import { getGenerationTimeoutMs } from '../../common/generation-timeout-policy';
-import { OverloadThinkingRecovery } from '../../common/overload-thinking-recovery';
 import { MediaWindowLimitError } from '../../common/media-send-window';
 import { classifyMissingImage, type ImageOutputFailure } from './media/image-output-failure';
 import type { CloudAccount } from '@/modules/cloud-account/types';
@@ -214,7 +218,6 @@ export class OpenAIService extends BaseProxyService {
       explicitPhysicalTarget,
     );
     const routedRequest = appliedVariantRequest.request;
-    const overloadThinkingRecovery = new OverloadThinkingRecovery();
     const toolCallIdentity = new ResponseToolCallIdentity(() =>
       hashSessionAnchor([
         'openai-response:v1',
@@ -227,7 +230,6 @@ export class OpenAIService extends BaseProxyService {
     const { schemas: preparedSchemas, batch: schemaBatch } =
       schemaPreparation ?? prepareOpenAIRequestSchemas(routedRequest, schemaProtocol);
     validateOpenAIRequestTools(routedRequest.tool_choice, preparedSchemas, schemaProtocol);
-    const recoveryBudget = { attempted: false };
     const scope = responsesContext
       ? resolveResponsesSessionScope(
           request,
@@ -266,56 +268,29 @@ export class OpenAIService extends BaseProxyService {
     );
     markProxyCleanComplete();
 
-    // Retry loop for account selection
-    let lastError: unknown = null;
-    const retryState = this.createTokenRetryState(
-      effort,
-      appliedVariantRequest.variant !== null || explicitPhysicalTarget,
-    );
-    const maxRetries = await this.getMaxRetryAttempts(
-      retryState,
-      targetModel,
-      isImageRequest,
-      signal,
-      effort,
-    );
-
-    for (let i = 0; i < maxRetries; i++) {
-      await this.waitBeforeRetry(
-        i,
-        maxRetries,
-        'OpenAI-compatible',
-        retryState.graceRetryToken !== null,
-        isImageRequest,
-      );
-
-      // 1. Get Token
-      const token = await this.selectRetryToken(
-        retryState,
-        targetModel,
-        routingSessionKey,
-        isImageRequest,
+    const accountExecution = new GenerationAccountExecution(
+      this.retryPolicy,
+      this.accountLeaseService,
+      {
+        model: targetModel,
+        physicalTarget: appliedVariantRequest.variant !== null || explicitPhysicalTarget,
+        sessionKey: routingSessionKey,
+        storeKey: scope.storeKey,
         signal,
         effort,
+        label: 'OpenAI-compatible',
         targetAccountId,
-      );
-      if (!token) {
-        if (targetAccountId) {
-          throw new Error(
-            `Target account '${targetAccountId}' is unavailable or does not support model '${targetModel}'`,
-          );
-        }
-        if (lastError !== null) {
-          throw this.resolveTerminalRetryError(retryState, lastError);
-        }
-        throw new Error('No available accounts (all exhausted or rate limited)');
-      }
-      const effectiveTargetModel = this.accountLeaseService.resolveDynamicModelForAccount(
-        token.id,
-        targetModel,
-        effort,
-        retryState.physicalTarget,
-      );
+        retry: {
+          kind: 'scheduled',
+          imageRequest: isImageRequest,
+          allowImageGrace: !appliedVariantRequest.variant,
+          imagePenaltyMode: 'openai',
+        },
+      },
+    );
+
+    for await (const token of accountExecution.accounts()) {
+      const effectiveTargetModel = accountExecution.modelFor(token);
       const effectiveVariantRequest = rebindOpenAIModelVariant(
         appliedVariantRequest,
         effectiveTargetModel,
@@ -362,20 +337,14 @@ export class OpenAIService extends BaseProxyService {
         // Use v1internal API (same as Anthropic handler)
         if (request.stream) {
           try {
-            const stream = await this.streamGenerateInternalWithRecovery(
-              geminiBody,
-              token.token.access_token,
-              token.token.upstream_proxy_url,
-              accountTelemetryHeaders,
+            const stream = await this.upstreamGeneration.stream({
+              body: geminiBody,
+              accessToken: token.token.access_token,
+              upstreamProxyUrl: token.token.upstream_proxy_url,
+              headers: accountTelemetryHeaders,
               signal,
-              this.createScopedGenerationOptions(
-                token,
-                scope.storeKey,
-                recoveryBudget,
-                signal,
-                overloadThinkingRecovery,
-              ),
-            );
+              options: accountExecution.upstreamOptions(token),
+            });
             this.commitUpstreamSession(token, signal);
             return this.createOpenAIProtocolStream(
               stream,
@@ -387,7 +356,7 @@ export class OpenAIService extends BaseProxyService {
               effectiveVariantRequest.variant?.canonicalModel ?? null,
               accountTargetModel,
               token,
-              this.takeImagePermit(retryState),
+              accountExecution.takeImagePermit(),
               responsesContext?.responseId,
               routedRequest.tools,
               includeUsage,
@@ -397,7 +366,7 @@ export class OpenAIService extends BaseProxyService {
             if (this.retryPolicy.isFatalCircuitBreakError(streamError)) {
               throw streamError;
             }
-            this.rethrowTerminalGenerationFailure(streamError, retryState);
+            throwIfTerminalGenerationFailure(streamError);
             if (
               !isImageRequest &&
               streamError instanceof UpstreamRequestError &&
@@ -411,23 +380,17 @@ export class OpenAIService extends BaseProxyService {
               }`,
             );
 
-            const response = await this.generateInternalWithStreamFallback(
-              geminiBody,
-              token.token.access_token,
-              token.token.upstream_proxy_url,
-              accountTelemetryHeaders,
+            const response = await this.upstreamGeneration.generate({
+              body: geminiBody,
+              accessToken: token.token.access_token,
+              upstreamProxyUrl: token.token.upstream_proxy_url,
+              headers: accountTelemetryHeaders,
               signal,
-              this.createScopedGenerationOptions(
-                token,
-                scope.storeKey,
-                recoveryBudget,
-                signal,
-                overloadThinkingRecovery,
-              ),
-            );
+              options: accountExecution.upstreamOptions(token),
+            });
             this.commitUpstreamSession(token, signal);
             this.markUpstreamSuccessForResponse(token, geminiBody.model, response);
-            this.releaseImagePermit(retryState);
+            accountExecution.releaseImagePermit();
             this.logger.log(
               `Upstream response snippet after stream fallback: ${safeStringifyPacket(response).substring(0, 500)}`,
             );
@@ -455,24 +418,20 @@ export class OpenAIService extends BaseProxyService {
                 );
           }
         } else {
-          const response = await this.generateInternalWithStreamFallback(
-            geminiBody,
-            token.token.access_token,
-            token.token.upstream_proxy_url,
-            accountTelemetryHeaders,
-            signal,
-            this.createScopedGenerationOptions(
-              token,
-              scope.storeKey,
-              recoveryBudget,
+          const response = await this.upstreamGeneration.generate(
+            {
+              body: geminiBody,
+              accessToken: token.token.access_token,
+              upstreamProxyUrl: token.token.upstream_proxy_url,
+              headers: accountTelemetryHeaders,
               signal,
-              overloadThinkingRecovery,
-            ),
+              options: accountExecution.upstreamOptions(token),
+            },
             observeResponse,
           );
           this.commitUpstreamSession(token, signal);
           this.markUpstreamSuccessForResponse(token, geminiBody.model, response);
-          this.releaseImagePermit(retryState);
+          accountExecution.releaseImagePermit();
           this.logger.log(
             `Upstream response snippet (non-stream): ${safeStringifyPacket(response).substring(0, 500)}`,
           );
@@ -491,18 +450,14 @@ export class OpenAIService extends BaseProxyService {
         }
       } catch (err) {
         if (err instanceof MediaWindowLimitError) {
-          this.releaseImagePermit(retryState);
           throw new BadRequestException(err.message);
         }
         if (err instanceof UpstreamProxyConfigurationError) {
-          this.releaseImagePermit(retryState);
           throw err;
         }
-        this.rethrowTerminalGenerationFailure(err, retryState);
-        if (
-          !this.retryPolicy.isFatalCircuitBreakError(err) &&
-          this.admitProjectDowngrade(retryState, err, token.token.project_id, signal)
-        ) {
+        throwIfTerminalGenerationFailure(err);
+        let lastError: unknown;
+        if (accountExecution.admitProjectDowngrade(err, token.token.project_id)) {
           this.logger.warn(
             'OpenAI compatibility project context rejected. Retrying once without project.',
           );
@@ -548,20 +503,14 @@ export class OpenAIService extends BaseProxyService {
               extraHeaders,
             );
             if (request.stream) {
-              const stream = await this.streamGenerateInternalWithRecovery(
-                fallbackBody,
-                token.token.access_token,
-                token.token.upstream_proxy_url,
-                accountTelemetryHeaders,
+              const stream = await this.upstreamGeneration.stream({
+                body: fallbackBody,
+                accessToken: token.token.access_token,
+                upstreamProxyUrl: token.token.upstream_proxy_url,
+                headers: accountTelemetryHeaders,
                 signal,
-                this.createScopedGenerationOptions(
-                  token,
-                  scope.storeKey,
-                  recoveryBudget,
-                  signal,
-                  overloadThinkingRecovery,
-                ),
-              );
+                options: accountExecution.upstreamOptions(token),
+              });
               this.commitUpstreamSession(token, signal);
               return this.createOpenAIProtocolStream(
                 stream,
@@ -573,7 +522,7 @@ export class OpenAIService extends BaseProxyService {
                 effectiveVariantRequest.variant?.canonicalModel ?? null,
                 accountTargetModel,
                 token,
-                this.takeImagePermit(retryState),
+                accountExecution.takeImagePermit(),
                 responsesContext?.responseId,
                 routedRequest.tools,
                 includeUsage,
@@ -581,24 +530,20 @@ export class OpenAIService extends BaseProxyService {
               );
             }
 
-            const response = await this.generateInternalWithStreamFallback(
-              fallbackBody,
-              token.token.access_token,
-              token.token.upstream_proxy_url,
-              accountTelemetryHeaders,
-              signal,
-              this.createScopedGenerationOptions(
-                token,
-                scope.storeKey,
-                recoveryBudget,
+            const response = await this.upstreamGeneration.generate(
+              {
+                body: fallbackBody,
+                accessToken: token.token.access_token,
+                upstreamProxyUrl: token.token.upstream_proxy_url,
+                headers: accountTelemetryHeaders,
                 signal,
-                overloadThinkingRecovery,
-              ),
+                options: accountExecution.upstreamOptions(token),
+              },
               observeResponse,
             );
             this.commitUpstreamSession(token, signal);
             this.markUpstreamSuccessForResponse(token, fallbackBody.model, response);
-            this.releaseImagePermit(retryState);
+            accountExecution.releaseImagePermit();
             const result = decodeAntigravityGenerationResult(response, {
               toolCallIdentity,
               model: fallbackBody.model,
@@ -610,74 +555,19 @@ export class OpenAIService extends BaseProxyService {
             return toOpenAIChatResponse(result, request.model, routedRequest.tools);
           } catch (fallbackErr) {
             if (fallbackErr instanceof UpstreamProxyConfigurationError) {
-              this.releaseImagePermit(retryState);
               throw fallbackErr;
             }
-            this.rethrowTerminalGenerationFailure(fallbackErr, retryState);
+            throwIfTerminalGenerationFailure(fallbackErr);
             lastError = fallbackErr;
           }
         } else {
           lastError = err;
         }
 
-        this.recordRetryFailure(retryState, lastError);
-        if (retryState.abortRetry) {
-          this.releaseImagePermit(retryState);
-          await this.applyUpstreamPenalty(token, accountTargetModel, lastError, effort);
-          break;
-        }
-        if (isImageRequest) {
-          if (
-            await this.prepareScheduledImageRetry(
-              retryState,
-              token,
-              accountTargetModel,
-              lastError,
-              'OpenAI-compatible',
-              !appliedVariantRequest.variant,
-              signal,
-              'openai',
-            )
-          ) {
-            i -= 1;
-          }
-          continue;
-        }
-        const penaltyRecordedBeforeGrace = this.shouldRecordImagePenaltyBeforeGrace(
-          accountTargetModel,
-          lastError,
-        );
-        if (penaltyRecordedBeforeGrace) {
-          await this.applyUpstreamPenalty(token, accountTargetModel, lastError, effort);
-        }
-        if (
-          await this.prepareCurrentGraceRetry(
-            retryState,
-            token,
-            lastError,
-            'OpenAI-compatible',
-            signal,
-          )
-        ) {
-          i -= 1;
-          continue;
-        }
-        if (!penaltyRecordedBeforeGrace) {
-          await this.applyUpstreamPenalty(token, accountTargetModel, lastError, effort);
-        }
-        if (targetAccountId) {
-          throw this.resolveTerminalRetryError(
-            retryState,
-            lastError || new Error(`Request failed for target account '${targetAccountId}'`),
-          );
-        }
+        await accountExecution.fail(token, accountTargetModel, lastError);
       }
     }
-    this.releaseImagePermit(retryState);
-    throw this.resolveTerminalRetryError(
-      retryState,
-      lastError || new Error('Request failed after retries'),
-    );
+    throw accountExecution.exhaustedError();
   }
 
   private createOpenAIProtocolStream(
@@ -768,7 +658,7 @@ export class OpenAIService extends BaseProxyService {
             `OpenAI Responses stream error: ${publicProxyErrorMessage(error.message)}`,
           ),
         createIdleTimer: (onTimeout) =>
-          this.createStreamIdleTimer(upstreamStream, 'OpenAI-Responses-SSE', onTimeout),
+          createStreamIdleTimer(this.logger, upstreamStream, 'OpenAI-Responses-SSE', onTimeout),
       },
     );
   }
@@ -910,7 +800,7 @@ export class OpenAIService extends BaseProxyService {
         }
       };
 
-      const idleTimer = this.createStreamIdleTimer(upstreamStream, 'OpenAI-SSE', () => {
+      const idleTimer = createStreamIdleTimer(this.logger, upstreamStream, 'OpenAI-SSE', () => {
         if (finishInterrupted()) {
           return;
         }

@@ -10,6 +10,8 @@ import type {
 } from '@/server/gateway/modules/account-lease/interfaces/account-lease-adapters';
 
 const previous = getServerConfig() ?? DEFAULT_APP_CONFIG.proxy;
+const flashModel = 'gemini-3.8-flash-high';
+const sonnetModel = 'claude-sonnet-4-6';
 afterEach(() => {
   setServerConfig(previous);
 });
@@ -33,8 +35,8 @@ function fixture() {
       },
       quota: {
         models: {
-          'gemini-3-flash': { percentage: 100, resetTime: '' },
-          'claude-sonnet': { percentage: 100, resetTime: '' },
+          [flashModel]: { percentage: 100, resetTime: '' },
+          [sonnetModel]: { percentage: 100, resetTime: '' },
         },
       },
     },
@@ -54,7 +56,7 @@ function fixture() {
       },
       quota: {
         models: {
-          'gemini-3-flash': { percentage: 50, resetTime: '' },
+          [flashModel]: { percentage: 50, resetTime: '' },
         },
       },
     },
@@ -263,17 +265,17 @@ describe('AccountLeaseService targetAccountId', () => {
   it('honors model-specific upstream lockouts for targeted leases', async () => {
     const { service } = fixture();
     await service.loadAccounts();
+    const target = { targetAccountId: 'acc-beta', model: flashModel };
+    expect((await service.getNextToken(target))?.id).toBe('acc-beta');
     await service.markFromUpstreamError({
       accountIdOrEmail: 'acc-beta',
       status: 429,
       retryAfter: '60',
-      model: 'gemini-3-flash',
+      model: flashModel,
     });
+    expect(await service.getNextToken(target)).toBeNull();
     expect(
-      await service.getNextToken({ targetAccountId: 'acc-beta', model: 'gemini-3-flash' }),
-    ).toBeNull();
-    expect(
-      (await service.getNextToken({ targetAccountId: 'acc-alpha', model: 'gemini-3-flash' }))?.id,
+      (await service.getNextToken({ targetAccountId: 'acc-alpha', model: flashModel }))?.id,
     ).toBe('acc-alpha');
   });
   it('does not lease an excluded target, including an email target', async () => {
@@ -283,7 +285,7 @@ describe('AccountLeaseService targetAccountId', () => {
       await service.getNextToken({
         targetAccountId: 'BETA@EXAMPLE.COM',
         excludeAccountIds: ['acc-beta'],
-        model: 'gemini-3-flash',
+        model: flashModel,
       }),
     ).toBeNull();
   });
@@ -297,7 +299,7 @@ describe('AccountLeaseService targetAccountId', () => {
       expect(
         await service.getNextToken({
           targetAccountId: 'acc-beta',
-          model: 'gemini-3-flash',
+          model: flashModel,
         }),
       ).toBeNull();
     },
@@ -305,12 +307,12 @@ describe('AccountLeaseService targetAccountId', () => {
 
   it('does not lease a target with depleted model quota', async () => {
     const { service, accounts } = fixture();
-    accounts[1].quota!.models['gemini-3-flash'].percentage = 0;
+    accounts[1].quota!.models[flashModel].percentage = 0;
     await service.loadAccounts();
     expect(
       await service.getNextToken({
         targetAccountId: 'acc-beta',
-        model: 'gemini-3-flash',
+        model: flashModel,
       }),
     ).toBeNull();
   });
@@ -321,7 +323,7 @@ describe('AccountLeaseService targetAccountId', () => {
 
     const leased = await service.getNextToken({
       targetAccountId: 'acc-beta',
-      model: 'gemini-3-flash',
+      model: flashModel,
     });
 
     expect(leased).not.toBeNull();
@@ -335,7 +337,7 @@ describe('AccountLeaseService targetAccountId', () => {
 
     const leased = await service.getNextToken({
       targetAccountId: 'ALPHA@EXAMPLE.COM',
-      model: 'gemini-3-flash',
+      model: flashModel,
     });
 
     expect(leased).not.toBeNull();
@@ -348,7 +350,7 @@ describe('AccountLeaseService targetAccountId', () => {
 
     const leased = await service.getNextToken({
       targetAccountId: 'nonexistent-account',
-      model: 'gemini-3-flash',
+      model: flashModel,
     });
 
     expect(leased).toBeNull();
@@ -358,10 +360,15 @@ describe('AccountLeaseService targetAccountId', () => {
     const { service } = fixture();
     await service.loadAccounts();
 
-    // acc-beta only has gemini-3-flash, not claude-sonnet
+    const supported = await service.getNextToken({
+      targetAccountId: 'acc-alpha',
+      model: sonnetModel,
+    });
+    expect(supported?.id).toBe('acc-alpha');
+
     const leased = await service.getNextToken({
       targetAccountId: 'acc-beta',
-      model: 'claude-sonnet',
+      model: sonnetModel,
     });
 
     expect(leased).toBeNull();
@@ -379,7 +386,7 @@ describe('AccountLeaseService targetAccountId', () => {
 
     const leased = await service.getNextToken({
       targetAccountId: 'acc-alpha',
-      model: 'gemini-3-flash',
+      model: flashModel,
     });
 
     expect(leased).toBeNull();
@@ -397,13 +404,13 @@ describe('AccountLeaseService targetAccountId', () => {
 
     const targetLeased = await service.getNextToken({
       targetAccountId: 'acc-alpha',
-      model: 'gemini-3-flash',
+      model: flashModel,
     });
     expect(targetLeased).toBeNull();
 
     // From pool: only acc-beta should be available
     const poolLeased = await service.getNextToken({
-      model: 'gemini-3-flash',
+      model: flashModel,
     });
     expect(poolLeased?.id).toBe('acc-beta');
   });

@@ -119,6 +119,15 @@ The builder takes typed generation input and the current attempt's project and m
 the Google request and restores provider signatures for the resolved target. Account rotation and
 project fallback rebuild the request with their own attempt values and reuse prepared schemas.
 
+The [Antigravity generation executor](../src/server/gateway/common/antigravity-generation-executor.ts)
+receives the built request, the selected account's transport inputs, and the current request
+budget. It coordinates unary-to-stream fallback, bounded aggregation, and thinking-only recovery.
+The upstream client owns physical sends and endpoint failover. A request-scoped
+[account execution](../src/server/gateway/common/generation-account-execution.ts) selects
+eligible accounts, applies retry and cooldown policy, and shares recovery budgets across
+attempts. It releases any image permit still held when iteration ends. The protocol services
+choose their same-account fallbacks, lease completion points, and client response events.
+
 Protocol adapters own [streaming usage placement and tool generation compatibility](modules/proxy-gateway/stream-tool-compatibility.md).
 They preserve ordinary tool names and arguments; malformed generation retains valid output,
 adds an explicit assistant explanation and records an upstream audit diagnostic without

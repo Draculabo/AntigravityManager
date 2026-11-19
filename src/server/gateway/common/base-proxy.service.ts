@@ -1,25 +1,17 @@
-import { getGenerationTimeoutMs } from './generation-timeout-policy';
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { awaitRequestOperation, throwIfRequestAborted } from './request-cancellation';
-import type { OverloadThinkingRecovery } from './overload-thinking-recovery';
-import {
-  GeminiClient,
-  type InternalGenerationOptions,
-} from '../modules/gemini/gemini-client.service';
+import { GeminiClient } from '../modules/gemini/gemini-client.service';
 import { AccountLeaseService } from '../modules/account-lease/account-lease.service';
 import { v4 as uuidv4 } from 'uuid';
 import { getServerConfig } from '@/server/server-config';
-import { isFunction, isNumber, isPlainObject } from 'lodash-es';
+import { isNumber, isPlainObject } from 'lodash-es';
 import { responseHasInlineImageData } from '@/modules/proxy-gateway/antigravity/AntigravityStreamDecoder';
 import {
   ProxyRetryService,
   ProxyTokenRetryState,
-  type ImageSchedulerPermit,
-  type ImageRetryPenaltyMode,
   type ProxyUpstreamFailureClassification,
 } from '@/server/gateway/shared/services/proxy-retry.service';
 import type { CloudAccount } from '@/modules/cloud-account/types';
-import { InvalidGenerationHistoryError } from './generation-history';
 import {
   GenerationConstraintsService,
   type RegisteredGenerationConstraints,
@@ -37,39 +29,13 @@ import {
 } from '@/modules/proxy-gateway/antigravity/types';
 import { GeminiResponse } from '@/server/gateway/common/interfaces/request-interfaces';
 import { decodeInternalSseData } from '@/modules/proxy-gateway/antigravity/internal-sse';
-import { UnsupportedGeminiFinishReasonError } from '@/modules/proxy-gateway/antigravity/GeminiFinishReason';
-import {
-  isTerminalGenerationFailure,
-  UpstreamGenerationError,
-} from '../../../modules/proxy-gateway/antigravity/UpstreamGenerationError';
-import { performance } from 'node:perf_hooks';
-import { ThinkingOnlyRecovery, recoverThinkingOnlyStream } from './thinking-only-recovery';
-import { setCurrentAuditAccountId } from '@/modules/proxy-gateway/audit/traffic-audit-context';
-import { collectGeminiStream } from './collect-gemini-stream';
-import { generateGeminiWithAggregationFallback } from './aggregate-gemini-fallback';
+import { AntigravityGenerationExecutor } from './antigravity-generation-executor';
+import { selectAuditedRetryAccount } from './audited-retry-account';
 import { AggregationAdmissionError } from './aggregation-admission';
 import { estimateRequestContext } from './request-context-estimate';
-import { createUpstreamSessionIdentity } from './upstream-session-identity';
-import { UpstreamThoughtSignatureConflictError } from './upstream-thought-signature-validation';
-import { InvalidThoughtSignatureModelError } from './invalid-thought-signature-model.exception';
 import { UpstreamEndpointConfigurationError } from './exceptions/upstream-endpoint-configuration.exception';
-import { GenerationDeadlineExceededError } from './exceptions/generation-deadline.exception';
-import { generationDeadlineAt } from './generation-deadline';
-import { admitGenerationProjectRecovery } from './generation-project-recovery';
-import { InvalidToolResultAssociationError } from '@/modules/proxy-gateway/antigravity/ClaudeToolResultAssociation';
 import { UpstreamRequestError } from './exceptions/upstream-request.exception';
 import { ProxyAccountUnavailableError } from './exceptions/proxy-account-unavailable.exception';
-import { CoworkCompactionControl } from './cowork-compaction-control';
-import {
-  isUpstreamSessionRecoveryFailure,
-  type UpstreamSessionRecoveryBudget,
-} from './upstream-session-recovery';
-
-interface StreamIdleTimer {
-  reset: () => void;
-  clear: () => void;
-  dispose: () => void;
-}
 
 export interface CountTokensResult {
   totalTokens: number;
@@ -128,7 +94,7 @@ export function completeCountEstimate(
 @Injectable()
 export abstract class BaseProxyService {
   protected readonly logger = new Logger(this.constructor.name);
-  private readonly streamIdleTimeoutMs = 300_000;
+  protected readonly upstreamGeneration: AntigravityGenerationExecutor;
   protected readonly generationConstraints: GenerationConstraintsService;
   protected readonly retryPolicy: ProxyRetryService;
   protected readonly modelRoutingPolicy: ModelRoutingService;
@@ -140,6 +106,7 @@ export abstract class BaseProxyService {
     retryPolicy: ProxyRetryService,
     modelRoutingPolicy: ModelRoutingService,
   ) {
+    this.upstreamGeneration = new AntigravityGenerationExecutor(geminiClient, this.logger);
     this.generationConstraints = generationConstraints;
     this.retryPolicy = retryPolicy;
     this.modelRoutingPolicy = modelRoutingPolicy;
@@ -157,56 +124,6 @@ export abstract class BaseProxyService {
     const timestampMs = Date.now();
     const randomHex = uuidv4().replace(/-/g, '').slice(0, 8);
     return `agent/${timestampMs}/${randomHex}`;
-  }
-
-  /** These owners have a final failure; protocol fallbacks must not dispatch it again. */
-  protected rethrowTerminalGenerationFailure(
-    error: unknown,
-    retryState?: ProxyTokenRetryState,
-  ): void {
-    if (
-      isUpstreamSessionRecoveryFailure(error) ||
-      error instanceof UnsupportedGeminiFinishReasonError ||
-      isTerminalGenerationFailure(error) ||
-      error instanceof InvalidGenerationHistoryError ||
-      error instanceof UpstreamThoughtSignatureConflictError ||
-      error instanceof InvalidThoughtSignatureModelError ||
-      error instanceof InvalidToolResultAssociationError ||
-      error instanceof UpstreamEndpointConfigurationError ||
-      error instanceof GenerationDeadlineExceededError ||
-      error instanceof CoworkCompactionControl
-    ) {
-      if (retryState) {
-        this.releaseImagePermit(retryState);
-      }
-      throw error;
-    }
-  }
-
-  protected createScopedGenerationOptions(
-    token: CloudAccount,
-    storeKey: string,
-    recoveryBudget: UpstreamSessionRecoveryBudget,
-    signal?: AbortSignal,
-    overloadThinkingRecovery?: OverloadThinkingRecovery,
-  ): InternalGenerationOptions {
-    recoveryBudget.deadlineAt ??=
-      generationDeadlineAt(signal) ?? performance.now() + getGenerationTimeoutMs();
-    recoveryBudget.thinkingOnlyEnabled ??=
-      getServerConfig()?.experimental?.thinking_only_recovery ?? true;
-    return {
-      recoveryAccountId: token.id,
-      recoveryBudget,
-      upstreamSession: createUpstreamSessionIdentity(token.id, storeKey),
-      canRecoverUpstreamSession: () => this.accountLeaseService.isLeaseEligible(token),
-      canRecoverWithModel: (model) =>
-        this.accountLeaseService.getOrdinaryRetryWaitMs({
-          model,
-          accountId: token.id,
-          physicalTarget: true,
-        }) === 0,
-      overloadThinkingRecovery,
-    };
   }
 
   protected createCloudCodeTraceId(): string {
@@ -227,57 +144,6 @@ export abstract class BaseProxyService {
     return `data: ${JSON.stringify(payload)}\n\n`;
   }
 
-  private destroyUpstreamStream(upstreamStream: NodeJS.ReadableStream): void {
-    const destroy = (upstreamStream as { destroy?: () => void }).destroy;
-    if (isFunction(destroy)) {
-      destroy.call(upstreamStream);
-    }
-  }
-
-  protected createStreamIdleTimer(
-    upstreamStream: NodeJS.ReadableStream,
-    label: string,
-    onTimeout: () => void,
-    timeoutMs = this.streamIdleTimeoutMs,
-    signal?: AbortSignal,
-  ): StreamIdleTimer {
-    let idleTimer: NodeJS.Timeout | undefined;
-
-    const clear = (): void => {
-      if (idleTimer) {
-        clearTimeout(idleTimer);
-        idleTimer = undefined;
-      }
-    };
-
-    const reset = (): void => {
-      clear();
-      if (generationDeadlineAt(signal) !== undefined) {
-        return;
-      }
-      idleTimer = setTimeout(() => {
-        this.logger.error(
-          `[${label}] Idle timeout after ${Math.round(timeoutMs / 1000)}s, terminating stream`,
-        );
-        onTimeout();
-        this.destroyUpstreamStream(upstreamStream);
-      }, timeoutMs);
-    };
-
-    return {
-      reset,
-      clear,
-      dispose: () => {
-        clear();
-        this.destroyUpstreamStream(upstreamStream);
-      },
-    };
-  }
-
-  protected createTokenRetryState(effort?: string, physicalTarget = false): ProxyTokenRetryState {
-    return this.retryPolicy.createTokenRetryState(getGenerationTimeoutMs(), effort, physicalTarget);
-  }
-
   protected async getMaxRetryAttempts(
     retryState: ProxyTokenRetryState,
     model: string,
@@ -290,35 +156,6 @@ export abstract class BaseProxyService {
       this.retryPolicy.getMaxRetryAttempts(model, imageRequest, retryState, effort),
       signal,
     );
-  }
-
-  protected async selectRetryToken(
-    retryState: ProxyTokenRetryState,
-    model: string,
-    sessionKey?: string,
-    imageRequest = false,
-    signal?: AbortSignal,
-    effort?: string,
-    targetAccountId?: string,
-  ): Promise<CloudAccount | null> {
-    const account = await this.retryPolicy.selectRetryToken(
-      retryState,
-      model,
-      sessionKey,
-      imageRequest,
-      signal,
-      effort,
-      targetAccountId,
-    );
-    throwIfRequestAborted(signal);
-    setCurrentAuditAccountId(
-      account?.id ?? null,
-      account?.email ?? null,
-      account?.lifecycle_generation,
-      account?.google_usage_subject_hash,
-      account?.google_usage_grant_hash,
-    );
-    return account;
   }
 
   /**
@@ -335,10 +172,6 @@ export abstract class BaseProxyService {
 
   protected releaseImagePermit(retryState: ProxyTokenRetryState): void {
     this.retryPolicy.releaseImagePermit(retryState);
-  }
-
-  protected takeImagePermit(retryState: ProxyTokenRetryState): ImageSchedulerPermit | null {
-    return this.retryPolicy.takeImagePermit(retryState);
   }
 
   protected async waitBeforeRetry(
@@ -362,38 +195,6 @@ export abstract class BaseProxyService {
     signal?: AbortSignal,
   ): Promise<boolean> {
     return this.retryPolicy.prepareGraceRetry(retryState, token, error, label, 'anthropic', signal);
-  }
-
-  protected async prepareCurrentGraceRetry(
-    retryState: ProxyTokenRetryState,
-    token: CloudAccount,
-    error: unknown,
-    label: string,
-    signal?: AbortSignal,
-  ): Promise<boolean> {
-    return this.retryPolicy.prepareGraceRetry(retryState, token, error, label, 'hinted', signal);
-  }
-
-  protected async prepareScheduledImageRetry(
-    retryState: ProxyTokenRetryState,
-    token: CloudAccount,
-    model: string,
-    error: unknown,
-    label: string,
-    allowGraceRetry = true,
-    signal?: AbortSignal,
-    penaltyMode: ImageRetryPenaltyMode = 'gemini',
-  ): Promise<boolean> {
-    return this.retryPolicy.prepareScheduledImageRetry(
-      retryState,
-      token,
-      model,
-      error,
-      label,
-      allowGraceRetry,
-      signal,
-      penaltyMode,
-    );
   }
 
   protected markUpstreamSuccess(token: CloudAccount, model: string): void {
@@ -446,10 +247,6 @@ export abstract class BaseProxyService {
     };
   }
 
-  protected shouldRecordImagePenaltyBeforeGrace(model: string, error: unknown): boolean {
-    return this.retryPolicy.shouldRecordImagePenaltyBeforeGrace(model, error);
-  }
-
   protected recordRetryFailure(retryState: ProxyTokenRetryState, error: unknown): void {
     if (
       error instanceof AggregationAdmissionError ||
@@ -466,23 +263,6 @@ export abstract class BaseProxyService {
     lastError: unknown,
   ): unknown {
     return this.retryPolicy.resolveTerminalError(retryState, lastError);
-  }
-
-  protected admitProjectDowngrade(
-    state: ProxyTokenRetryState,
-    error: unknown,
-    project: string | undefined,
-    signal?: AbortSignal,
-  ): boolean {
-    if (
-      state.projectDowngraded ||
-      !project?.trim() ||
-      !admitGenerationProjectRecovery(error, signal, project)
-    ) {
-      return false;
-    }
-    state.projectDowngraded = true;
-    return true;
   }
 
   protected isQuotaExhaustedError(errorMessage: string): boolean {
@@ -605,7 +385,12 @@ export abstract class BaseProxyService {
       );
 
       const token = await awaitRequestOperation(
-        this.selectRetryToken(retryState, targetModel, undefined, false, signal, effort),
+        selectAuditedRetryAccount(this.retryPolicy, retryState, {
+          model: targetModel,
+          imageRequest: false,
+          signal,
+          effort,
+        }),
         signal,
       );
       throwIfRequestAborted(signal);
@@ -695,169 +480,6 @@ export abstract class BaseProxyService {
       return result;
     }
     throw terminalError;
-  }
-
-  protected async generateInternalWithStreamFallback(
-    body: GeminiInternalRequest,
-    accessToken: string,
-    upstreamProxyUrl?: string,
-    extraHeaders?: Record<string, string>,
-    signal?: AbortSignal,
-    options?: InternalGenerationOptions,
-    observeResponse?: (response: GeminiResponse | undefined) => void,
-  ): Promise<GeminiResponse> {
-    observeResponse?.(undefined);
-    const prepared = this.prepareThinkingRecovery(body, options);
-    const sendStream = (
-      request: GeminiInternalRequest,
-      timeoutMs: number,
-      transport: import('../modules/gemini/gemini-client.service').GenerationTransportSnapshot,
-      cancellation?: AbortSignal,
-    ) =>
-      this.geminiClient.streamGenerateInternal(
-        request,
-        accessToken,
-        upstreamProxyUrl,
-        extraHeaders,
-        cancellation,
-        { ...prepared.options, thinkingRecovery: { timeoutMs, transport } },
-      );
-    try {
-      return await generateGeminiWithAggregationFallback(
-        {
-          request: body,
-          observeResponse,
-          generate: () =>
-            this.geminiClient.generateInternal(
-              body,
-              accessToken,
-              upstreamProxyUrl,
-              extraHeaders,
-              signal,
-              prepared.options,
-            ),
-          start: async () => {
-            const source = await this.geminiClient.streamGenerateInternal(
-              body,
-              accessToken,
-              upstreamProxyUrl,
-              extraHeaders,
-              signal,
-              prepared.options,
-            );
-            return prepared.recovery
-              ? recoverThinkingOnlyStream(source, prepared.recovery, sendStream, signal)
-              : source;
-          },
-          recover: prepared.recovery
-            ? () =>
-                prepared.recovery!.invoke(
-                  (request, timeoutMs, transport, cancellation) =>
-                    this.geminiClient.generateInternal(
-                      request,
-                      accessToken,
-                      upstreamProxyUrl,
-                      extraHeaders,
-                      cancellation,
-                      { ...prepared.options, thinkingRecovery: { timeoutMs, transport } },
-                    ),
-                  signal,
-                )
-            : undefined,
-          collect: (stream, requestSignal) =>
-            this.collectGeminiStreamAsResponse(stream, requestSignal),
-          onFallback: () =>
-            this.logger.warn(
-              'Incomplete non-stream response detected, falling back to stream aggregation.',
-            ),
-        },
-        signal,
-      );
-    } finally {
-      prepared.recovery?.close();
-    }
-  }
-
-  private prepareThinkingRecovery(
-    body: GeminiInternalRequest,
-    options?: InternalGenerationOptions,
-  ): { options: InternalGenerationOptions; recovery?: ThinkingOnlyRecovery } {
-    const budget = options?.recoveryBudget ?? { attempted: false };
-    budget.deadlineAt ??= performance.now() + getGenerationTimeoutMs();
-    budget.thinkingOnlyEnabled ??= getServerConfig()?.experimental?.thinking_only_recovery ?? true;
-    if (!budget.thinkingOnlyEnabled) {
-      return { options: options ?? {} };
-    }
-    const transportCapture: NonNullable<InternalGenerationOptions['transportCapture']> = {};
-    try {
-      return {
-        options: { ...options, recoveryBudget: budget, transportCapture },
-        recovery: new ThinkingOnlyRecovery(body, budget, transportCapture),
-      };
-    } catch (error) {
-      if (error instanceof UpstreamGenerationError && error.code === 'empty_thinking_response') {
-        // Optional replay storage must not prevent the original request from being sent.
-        this.logger.debug(
-          '[ThinkingRecovery] Capture budget unavailable; replay disabled for this request.',
-        );
-        return { options: options ?? {} };
-      }
-      throw error;
-    }
-  }
-
-  protected async streamGenerateInternalWithRecovery(
-    body: GeminiInternalRequest,
-    accessToken: string,
-    upstreamProxyUrl?: string,
-    extraHeaders?: Record<string, string>,
-    signal?: AbortSignal,
-    options?: InternalGenerationOptions,
-  ): Promise<NodeJS.ReadableStream> {
-    const prepared = this.prepareThinkingRecovery(body, options);
-    try {
-      const source = await this.geminiClient.streamGenerateInternal(
-        body,
-        accessToken,
-        upstreamProxyUrl,
-        extraHeaders,
-        signal,
-        prepared.options,
-      );
-      const recovery = prepared.recovery;
-      if (!recovery) {
-        return source;
-      }
-      return recoverThinkingOnlyStream(
-        source,
-        recovery,
-        (request, timeoutMs, transport, cancellation) =>
-          this.geminiClient.streamGenerateInternal(
-            request,
-            accessToken,
-            upstreamProxyUrl,
-            extraHeaders,
-            cancellation,
-            { ...prepared.options, thinkingRecovery: { timeoutMs, transport } },
-          ),
-        signal,
-      );
-    } catch (error) {
-      prepared.recovery?.close();
-      throw error;
-    }
-  }
-
-  private collectGeminiStreamAsResponse(
-    upstreamStream: NodeJS.ReadableStream,
-    signal?: AbortSignal,
-  ): Promise<GeminiResponse> {
-    return collectGeminiStream(upstreamStream, {
-      signal,
-      createIdleTimer: (onTimeout) =>
-        this.createStreamIdleTimer(upstreamStream, 'Gemini-Collect', onTimeout),
-      isPart: (value): value is InternalGeminiPart => this.isGeminiPart(value),
-    });
   }
 
   protected isGeminiPart(value: unknown): value is InternalGeminiPart {
