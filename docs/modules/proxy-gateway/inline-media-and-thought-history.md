@@ -44,7 +44,7 @@ Function-call arguments remain opaque even when an object inside them resembles 
 
 ## Image send window
 
-Settings → Proxy provides a disabled-by-default image history window. Count retains
+Gateway settings → Upstream network and experiments provides a disabled-by-default image history window. Count retains
 the newest images up to N, including current images; 0 removes this soft count limit.
 Every current image remains protected, so current images above N leave no historical
 slots. The count strategy does not apply the memory strategy's soft budget. Remote

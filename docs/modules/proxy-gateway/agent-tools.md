@@ -7,9 +7,19 @@ before installing a client. Reopen the client after applying changes.
 
 ## Configure and recover
 
-Choose a tool, select an available model and confirm configuration. The advanced address field
-defaults to the current Manager gateway. Claude uses the gateway root; Codex uses its `/v1`
-endpoint. The card distinguishes saved settings from verified model requests. Environment
+Open **Gateway**, select **Add connection**, and choose a tool. Choose a default model when
+the client requires one. **Save and preview** saves the connection and shows which
+native files will change. Apply the preview to write the client settings. Open **Details**
+to edit or remove an existing saved connection. Address, credentials and protocol are under
+**Advanced connection options**. The connection list reports managed settings. Send a
+request from the client and check its result in Traffic to verify that it works.
+
+**Manual setup** contains the service address, API key and request examples. Edit listener
+settings, request policies and record retention in **Gateway settings**. Application settings
+links to the same page.
+
+Use **Manage previous client settings** to inspect or restore a previous direct configuration.
+Claude uses the gateway root; Codex uses its `/v1` endpoint. Environment
 variables, command-line overrides and direct-login plugins can override client settings.
 
 Claude and Codex require an existing Manager proxy key. They do not change Google authorization,
@@ -47,8 +57,8 @@ Use the [live acceptance SOP](./acceptance/live-agent.md) to verify requests and
 
 ## Independent connection profiles
 
-The connection-profile card saves separate connection plans for the same client. Choose a name,
-address, supported protocol/SDK combination, model set and an existing backend credential source.
+The connection list can hold multiple plans for the same client. Each plan has a name, address,
+supported protocol/SDK combination, model set and an existing backend credential source.
 The existing Manager key, existing OpenCode dedicated key and the current client-configured key
 are snapshot sources. They do not create new proxy keys. Profile credentials never enter public
 IPC, previews or renderer state. Changing the source replaces only that saved profile's snapshot.
