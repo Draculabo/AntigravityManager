@@ -1392,6 +1392,8 @@ const tr = {
       quotaFlash: 'Flash Kotası',
     },
     exportImport: {
+      'transfer-menu': 'İçe / Dışa Aktar',
+      'import-from-file': 'Dosyadan içe aktar',
       'file-errors': {
         'file-too-large': 'Seçilen dosya çok büyük. Daha küçük bir hesap yedeği seçin.',
         'invalid-export': 'Bu hesap yedeği tanınamadı. Geçerli bir yedek dosyası seçin.',

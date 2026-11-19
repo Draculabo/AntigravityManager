@@ -1414,6 +1414,8 @@ const ru = {
       quotaFlash: 'Квота Flash',
     },
     exportImport: {
+      'transfer-menu': 'Импорт / экспорт',
+      'import-from-file': 'Импорт из файла',
       'file-errors': {
         'file-too-large': 'Выбранный файл слишком большой. Выберите меньшую резервную копию.',
         'invalid-export': 'Не удалось распознать резервную копию аккаунтов. Выберите другой файл.',

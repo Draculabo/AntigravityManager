@@ -1,9 +1,10 @@
 import { createElement } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CloudAccountLoginDialog } from '@/modules/cloud-account/components/CloudAccountLoginDialog';
-import { CloudAccountFileDialogs } from '@/modules/cloud-account/components/CloudAccountFileDialogs';
+import { CloudAccountTransferMenu } from '@/modules/cloud-account/components/CloudAccountTransferMenu';
 
 const actions = vi.hoisted(() => ({
   listOAuthClients: vi.fn(),
@@ -12,11 +13,19 @@ const actions = vi.hoisted(() => ({
   setActiveOAuthClient: vi.fn(),
   exportCloudAccounts: vi.fn(),
   importCloudAccounts: vi.fn(),
+  previewLocalImport: vi.fn(),
   toast: vi.fn(),
   parentRender: vi.fn(),
   siblingRender: vi.fn(),
 }));
 vi.mock('@/modules/cloud-account/actions/cloud', () => actions);
+vi.mock('@/modules/cloud-account/local-import/hooks/useLocalAccountImport', () => ({
+  useLocalAccountImport: () => ({
+    preview: { mutateAsync: actions.previewLocalImport, reset: () => {} },
+    confirm: { reset: () => {} },
+    discard: { mutateAsync: () => Promise.resolve() },
+  }),
+}));
 vi.mock('@/components/ui/use-toast', () => ({ useToast: () => ({ toast: actions.toast }) }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 
@@ -49,12 +58,19 @@ function renderDialogs() {
       QueryClientProvider,
       { client: queryClient },
       createElement(CloudAccountLoginDialog),
-      createElement(CloudAccountFileDialogs),
+      createElement(CloudAccountTransferMenu),
       createElement(AccountGridSibling),
     );
   }
   render(createElement(Page));
   return queryClient;
+}
+
+function openTransferMenu() {
+  const trigger = screen.getByRole('button', { name: 'cloud.exportImport.transfer-menu' });
+  trigger.focus();
+  fireEvent.keyDown(trigger, { key: 'Enter' });
+  return trigger;
 }
 
 describe('account dialog state ownership', () => {
@@ -148,7 +164,8 @@ describe('account dialog state ownership', () => {
       .mockResolvedValueOnce({ status: 'cancelled' })
       .mockResolvedValueOnce({ status: 'saved' });
     renderDialogs();
-    fireEvent.click(screen.getByRole('button', { name: 'cloud.exportImport.export' }));
+    const trigger = openTransferMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'cloud.exportImport.exportTitle' }));
     fireEvent.click(screen.getByRole('button', { name: 'cloud.exportImport.includeTokens' }));
     await waitFor(() =>
       expect(actions.exportCloudAccounts).toHaveBeenCalledWith(
@@ -165,6 +182,7 @@ describe('account dialog state ownership', () => {
       expect.anything(),
     );
     expect(actions.toast).toHaveBeenCalledWith({ title: 'cloud.exportImport.exportSuccess' });
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
     expect(actions.siblingRender).toHaveBeenCalledOnce();
   });
 
@@ -180,7 +198,8 @@ describe('account dialog state ownership', () => {
     actions.importCloudAccounts.mockResolvedValue(summary);
     const client = renderDialogs();
     const invalidate = vi.spyOn(client, 'invalidateQueries');
-    fireEvent.click(screen.getByRole('button', { name: 'cloud.exportImport.import' }));
+    openTransferMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'cloud.exportImport.import-from-file' }));
     const buttons = screen.getAllByRole('button', { name: 'cloud.exportImport.import' });
     fireEvent.click(buttons[buttons.length - 1]);
     await waitFor(() => expect(screen.queryByText('cloud.exportImport.importTitle')).toBeNull());
@@ -195,5 +214,24 @@ describe('account dialog state ownership', () => {
       description: 'test@example.com: cloud.exportImport.file-errors.tokens-missing',
       variant: 'destructive',
     });
+  });
+
+  it('opens local discovery from the keyboard and restores focus after closing it', async () => {
+    actions.previewLocalImport.mockReturnValue(new Promise(() => {}));
+    renderDialogs();
+    expect(screen.queryByRole('button', { name: 'cloud.localImport.trigger' })).toBeNull();
+    const user = userEvent.setup();
+    const trigger = screen.getByRole('button', { name: 'cloud.exportImport.transfer-menu' });
+    trigger.focus();
+    await user.keyboard('{ArrowDown}');
+    const item = await screen.findByRole('menuitem', { name: 'cloud.localImport.trigger' });
+    await waitFor(() => expect(document.activeElement).toBe(item));
+    await user.keyboard('{Enter}');
+    await screen.findByRole('dialog', { name: 'cloud.localImport.title' });
+    expect(actions.previewLocalImport).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('menu')).toBeNull();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 });

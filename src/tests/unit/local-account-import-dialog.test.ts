@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { createElement } from 'react';
+import { createElement, useRef } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -33,7 +33,27 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-import { LocalAccountImportDialog } from '@/modules/cloud-account/local-import/components/LocalAccountImportDialog';
+import {
+  LocalAccountImportDialog,
+  type LocalAccountImportDialogHandle,
+} from '@/modules/cloud-account/local-import/components/LocalAccountImportDialog';
+
+function renderImportDialog() {
+  function ImportDialogHarness() {
+    const ref = useRef<LocalAccountImportDialogHandle>(null);
+    return createElement(
+      'div',
+      null,
+      createElement(
+        'button',
+        { type: 'button', onClick: () => ref.current?.open() },
+        'cloud.localImport.trigger',
+      ),
+      createElement(LocalAccountImportDialog, { ref }),
+    );
+  }
+  return render(createElement(ImportDialogHarness));
+}
 
 const PREVIEW = {
   sessionId: '00000000-0000-4000-8000-000000000001',
@@ -104,7 +124,7 @@ describe('LocalAccountImportDialog', () => {
   });
 
   it('previews accounts, confirms once, and keeps the final result visible', async () => {
-    render(createElement(LocalAccountImportDialog));
+    renderImportDialog();
 
     fireEvent.click(
       screen.getByRole('button', {
@@ -139,7 +159,7 @@ describe('LocalAccountImportDialog', () => {
   });
 
   it('discards an active preview when the user cancels', async () => {
-    render(createElement(LocalAccountImportDialog));
+    renderImportDialog();
     fireEvent.click(screen.getByRole('button', { name: 'cloud.localImport.trigger' }));
     await screen.findByText('person@example.com');
 
@@ -160,7 +180,7 @@ describe('LocalAccountImportDialog', () => {
         resolveImport = resolve;
       }),
     );
-    render(createElement(LocalAccountImportDialog));
+    renderImportDialog();
     fireEvent.click(screen.getByRole('button', { name: 'cloud.localImport.trigger' }));
     await screen.findByText('person@example.com');
     fireEvent.click(screen.getByRole('button', { name: 'cloud.localImport.confirm:1' }));
@@ -185,7 +205,7 @@ describe('LocalAccountImportDialog', () => {
         resolvePreview = resolve;
       }),
     );
-    render(createElement(LocalAccountImportDialog));
+    renderImportDialog();
     fireEvent.click(screen.getByRole('button', { name: 'cloud.localImport.trigger' }));
     expect(await screen.findByText('cloud.localImport.scanning')).toBeTruthy();
 

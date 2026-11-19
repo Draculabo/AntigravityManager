@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FileDown, Upload, Loader2 } from 'lucide-react';
+import { ChevronDown, DatabaseZap, FileDown, Loader2, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -10,8 +10,14 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -22,13 +28,19 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
 import { useExportCloudAccounts, useImportCloudAccounts } from '../hooks/useCloudAccounts';
+import {
+  LocalAccountImportDialog,
+  type LocalAccountImportDialogHandle,
+} from '../local-import/components/LocalAccountImportDialog';
 import { readCloudAccountFileErrorCode } from '../services/cloud-account-file.schema';
 
-export function CloudAccountFileDialogs() {
+export function CloudAccountTransferMenu() {
   const { t } = useTranslation();
   const { toast } = useToast();
-  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
-  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [fileDialog, setFileDialog] = useState<'import' | 'export' | null>(null);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const localImportDialog = useRef<LocalAccountImportDialogHandle>(null);
+  const launchingDialog = useRef(false);
   const [importStrategy, setImportStrategy] = useState<'merge' | 'overwrite' | 'skip-existing'>(
     'merge',
   );
@@ -44,7 +56,7 @@ export function CloudAccountFileDialogs() {
       if (result.status === 'cancelled') {
         return;
       }
-      setIsExportDialogOpen(false);
+      setFileDialog(null);
       toast({ title: t('cloud.exportImport.exportSuccess') });
     } catch (error) {
       toast({
@@ -64,7 +76,7 @@ export function CloudAccountFileDialogs() {
           if (result.status === 'cancelled') {
             return;
           }
-          setIsImportDialogOpen(false);
+          setFileDialog(null);
           setImportStrategy('merge');
           toast({ title: t('cloud.exportImport.importSuccess', result) });
           if (result.failed > 0) {
@@ -94,23 +106,68 @@ export function CloudAccountFileDialogs() {
     );
   };
 
-  const handleImportDialogOpenChange = (open: boolean) => {
-    setIsImportDialogOpen(open);
-    if (!open) {
-      setImportStrategy('merge');
-    }
+  const openDialog = (open: () => void) => {
+    launchingDialog.current = true;
+    open();
+  };
+
+  const restoreMenuFocus = (event: Event) => {
+    event.preventDefault();
+    menuButton.current?.focus();
   };
 
   return (
     <>
-      <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
-        <DialogTrigger asChild>
-          <Button variant="outline">
-            <FileDown className="mr-2 h-4 w-4" />
-            {t('cloud.exportImport.export')}
+      <DropdownMenu modal={false}>
+        <DropdownMenuTrigger asChild>
+          <Button ref={menuButton} variant="outline">
+            {t('cloud.exportImport.transfer-menu')}
+            <ChevronDown className="size-4" aria-hidden="true" />
           </Button>
-        </DialogTrigger>
-        <DialogContent className="sm:max-w-[500px]">
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          onCloseAutoFocus={(event) => {
+            if (launchingDialog.current) {
+              event.preventDefault();
+              launchingDialog.current = false;
+            }
+          }}
+        >
+          <DropdownMenuItem
+            className="gap-2"
+            onSelect={() => openDialog(() => localImportDialog.current?.open())}
+          >
+            <DatabaseZap className="size-4" aria-hidden="true" />
+            {t('cloud.localImport.trigger')}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="gap-2"
+            onSelect={() => openDialog(() => setFileDialog('import'))}
+          >
+            <Upload className="size-4" aria-hidden="true" />
+            {t('cloud.exportImport.import-from-file')}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className="gap-2"
+            onSelect={() => openDialog(() => setFileDialog('export'))}
+          >
+            <FileDown className="size-4" aria-hidden="true" />
+            {t('cloud.exportImport.exportTitle')}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <LocalAccountImportDialog ref={localImportDialog} onCloseAutoFocus={restoreMenuFocus} />
+      <Dialog
+        open={fileDialog === 'export'}
+        onOpenChange={(open) => {
+          if (!open) {
+            setFileDialog(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[500px]" onCloseAutoFocus={restoreMenuFocus}>
           <DialogHeader className="pr-8">
             <DialogTitle>{t('cloud.exportImport.exportTitle')}</DialogTitle>
             <DialogDescription>{t('cloud.exportImport.exportDesc')}</DialogDescription>
@@ -138,14 +195,16 @@ export function CloudAccountFileDialogs() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <Dialog open={isImportDialogOpen} onOpenChange={handleImportDialogOpenChange}>
-        <DialogTrigger asChild>
-          <Button variant="outline">
-            <Upload className="mr-2 h-4 w-4" />
-            {t('cloud.exportImport.import')}
-          </Button>
-        </DialogTrigger>
-        <DialogContent className="sm:max-w-[500px]">
+      <Dialog
+        open={fileDialog === 'import'}
+        onOpenChange={(open) => {
+          if (!open) {
+            setFileDialog(null);
+            setImportStrategy('merge');
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[500px]" onCloseAutoFocus={restoreMenuFocus}>
           <DialogHeader className="pr-8">
             <DialogTitle>{t('cloud.exportImport.importTitle')}</DialogTitle>
             <DialogDescription>{t('cloud.exportImport.importDesc')}</DialogDescription>

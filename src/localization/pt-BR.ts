@@ -2382,6 +2382,8 @@ const ptBR = {
       quotaFlash: 'Cota Flash',
     },
     exportImport: {
+      'transfer-menu': 'Importar / Exportar',
+      'import-from-file': 'Importar de arquivo',
       'file-errors': {
         'file-too-large': 'O arquivo selecionado é muito grande. Escolha um backup de conta menor.',
         'invalid-export':

@@ -1794,6 +1794,8 @@ const zhCn = {
       quotaFlash: 'Flash 配额',
     },
     exportImport: {
+      'transfer-menu': '导入 / 导出',
+      'import-from-file': '从文件导入',
       'file-errors': {
         'file-too-large': '所选文件太大，请选择更小的账号备份文件。',
         'invalid-export': '无法识别此账号备份文件，请选择有效的备份文件。',

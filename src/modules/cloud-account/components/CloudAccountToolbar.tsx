@@ -24,7 +24,7 @@ import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { AccountTierFilterDropdown } from '@/modules/cloud-account/components/AccountTierFilterDropdown';
 import { CloudAccountLoginDialog } from './CloudAccountLoginDialog';
-import { CloudAccountFileDialogs } from './CloudAccountFileDialogs';
+import { CloudAccountTransferMenu } from './CloudAccountTransferMenu';
 import { CloudAccountSelectAllButton } from './CloudAccountSelectAllButton';
 import {
   CLOUD_ACCOUNT_SORT_I18N_KEYS,
@@ -33,7 +33,6 @@ import {
 } from '@/modules/cloud-account/components/CloudAccountList.constants';
 import type { AccountTierOption } from '@/modules/cloud-account/utils/account-tier-filter';
 import type { AccountSortKey } from '@/modules/cloud-account/utils/quota-display';
-import { LocalAccountImportDialog } from '@/modules/cloud-account/local-import/components/LocalAccountImportDialog';
 import type { QuotaWindow } from '@/modules/cloud-account/utils/quota-groups';
 import type { QuotaGroupVisibility } from '@/modules/cloud-account/utils/quota-group-visibility';
 import { QuotaGroupVisibilityMenu } from './QuotaGroupVisibilityMenu';
@@ -131,9 +130,7 @@ export function CloudAccountToolbar({
           </Button>
 
           <div className="ml-auto flex flex-wrap items-center gap-2 [@media(max-width:760px)]:ml-0 [@media(max-width:760px)]:w-full">
-            <LocalAccountImportDialog />
-
-            <CloudAccountFileDialogs />
+            <CloudAccountTransferMenu />
             <CloudAccountLoginDialog />
           </div>
         </div>

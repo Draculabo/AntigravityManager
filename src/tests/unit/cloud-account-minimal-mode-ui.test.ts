@@ -28,11 +28,8 @@ vi.mock('react-i18next', () => ({
 vi.mock('@/modules/cloud-account/components/CloudAccountLoginDialog', () => ({
   CloudAccountLoginDialog: () => null,
 }));
-vi.mock('@/modules/cloud-account/components/CloudAccountFileDialogs', () => ({
-  CloudAccountFileDialogs: () => null,
-}));
-vi.mock('@/modules/cloud-account/local-import/components/LocalAccountImportDialog', () => ({
-  LocalAccountImportDialog: () => null,
+vi.mock('@/modules/cloud-account/components/CloudAccountTransferMenu', () => ({
+  CloudAccountTransferMenu: () => null,
 }));
 vi.mock('@/modules/cloud-account/components/CloudAccountSelectAllButton', () => ({
   CloudAccountSelectAllButton: () => null,

@@ -1951,6 +1951,8 @@ const en = {
       quotaFlash: 'Flash Quota',
     },
     exportImport: {
+      'transfer-menu': 'Import / Export',
+      'import-from-file': 'Import from file',
       'file-errors': {
         'file-too-large': 'The selected file is too large. Choose a smaller account backup.',
         'invalid-export':

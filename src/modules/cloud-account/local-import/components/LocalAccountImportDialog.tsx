@@ -1,13 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  CheckCircle2,
-  DatabaseZap,
-  Loader2,
-  RefreshCcw,
-  ShieldCheck,
-  TriangleAlert,
-} from 'lucide-react';
+import { CheckCircle2, Loader2, RefreshCcw, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { get, isString } from 'lodash-es';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,7 +11,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import { getLocalizedErrorMessage } from '@/shared/utils/errorMessages';
 import type { LocalAccountImportPreview, LocalAccountImportResult } from '../actions';
@@ -249,7 +241,17 @@ function ResultContent({ result }: { result: LocalAccountImportResult }) {
   );
 }
 
-export function LocalAccountImportDialog() {
+export interface LocalAccountImportDialogHandle {
+  open: () => void;
+}
+
+export function LocalAccountImportDialog({
+  ref,
+  onCloseAutoFocus,
+}: {
+  ref: Ref<LocalAccountImportDialogHandle>;
+  onCloseAutoFocus?: (event: Event) => void;
+}) {
   const { t } = useTranslation();
   const mutations = useLocalAccountImport();
   const [isOpen, setIsOpen] = useState(false);
@@ -318,11 +320,7 @@ export function LocalAccountImportDialog() {
     setPhase('idle');
   };
 
-  const handleOpenChange = (open: boolean) => {
-    if (!open) {
-      closeDialog();
-      return;
-    }
+  const openDialog = () => {
     resetView();
     setIsOpen(true);
     isOpenRef.current = true;
@@ -330,6 +328,8 @@ export function LocalAccountImportDialog() {
     generationRef.current = generation;
     startPreview(generation);
   };
+
+  useImperativeHandle(ref, () => ({ open: openDialog }));
 
   const handleRescan = () => {
     const previousSessionId = activeSessionIdRef.current;
@@ -380,15 +380,17 @@ export function LocalAccountImportDialog() {
   }, [discardSession]);
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <Button variant="outline">
-          <DatabaseZap className="h-4 w-4" aria-hidden="true" />
-          {t('cloud.localImport.trigger')}
-        </Button>
-      </DialogTrigger>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) {
+          closeDialog();
+        }
+      }}
+    >
       <DialogContent
         className="flex max-w-[620px] flex-col gap-0 overflow-hidden p-0"
+        onCloseAutoFocus={onCloseAutoFocus}
         closeDisabled={phase === 'importing'}
         aria-busy={phase === 'scanning' || phase === 'importing'}
         onEscapeKeyDown={(event) => {

@@ -6,6 +6,9 @@ surfaces live under `src/modules/cloud-account/`.
 
 ## Local Antigravity CLI sign-in
 
+On the Accounts page, the **Import / Export** menu opens local account discovery, file import,
+and account export. **Add Account** starts browser authorization.
+
 Local account import discovers credentials in the selected owner's operating system environment.
 An `agy` login in the shared system keyring appears under the system credential source. A login
 in `~/.gemini/antigravity-cli/antigravity-oauth-token` appears as **Antigravity CLI saved sign-in**.

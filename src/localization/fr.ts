@@ -1641,6 +1641,8 @@ const fr = {
       quotaFlash: 'Quota Flash',
     },
     exportImport: {
+      'transfer-menu': 'Importer / Exporter',
+      'import-from-file': 'Importer depuis un fichier',
       'file-errors': {
         'file-too-large':
           'Le fichier choisi est trop volumineux. Choisissez une sauvegarde plus petite.',

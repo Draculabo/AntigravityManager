@@ -1384,6 +1384,8 @@ const vi = {
       quotaFlash: 'Quota Flash',
     },
     exportImport: {
+      'transfer-menu': 'Nhập / Xuất',
+      'import-from-file': 'Nhập từ tệp',
       'file-errors': {
         'file-too-large': 'Tệp đã chọn quá lớn. Hãy chọn bản sao lưu tài khoản nhỏ hơn.',
         'invalid-export': 'Không nhận dạng được bản sao lưu tài khoản này. Hãy chọn tệp hợp lệ.',

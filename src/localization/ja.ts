@@ -1404,6 +1404,8 @@ const ja = {
       quotaFlash: 'Flash クォータ',
     },
     exportImport: {
+      'transfer-menu': 'インポート / エクスポート',
+      'import-from-file': 'ファイルからインポート',
       'file-errors': {
         'file-too-large':
           '選択されたファイルが大きすぎます。より小さいアカウントバックアップを選択してください。',
