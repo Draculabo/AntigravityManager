@@ -9,10 +9,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ConnectionProfileSaveInputSchema, type ConnectionProfileSaveInput, type ConnectionProfileView } from '../connection-profiles/connection-profiles.schema';
+import {
+  ConnectionProfileClientSchema,
+  ConnectionProfileSaveInputSchema,
+  type ConnectionProfileSaveInput,
+  type ConnectionProfileView,
+} from '../connection-profiles/connection-profiles.schema';
 import { readClientConfigFailure } from './client-config-failure';
 
-const clients = ['claude', 'codex', 'opencode', 'hermes', 'openclaw', 'dsh'] as const;
+const clients = ConnectionProfileClientSchema.options;
 function initial(baseUrl: string): ConnectionProfileSaveInput {
   return { name: '', client: 'claude', baseUrl, protocol: 'anthropic-messages', sdk: null,
     models: [], activateModel: null, version: null, discoverModels: false, dshProfile: null, credentialSource: 'manager-default' };
@@ -118,7 +123,8 @@ export function ConnectionProfilesCard({ baseUrl }: { baseUrl: string }) {
     if (!client) {
       return;
     }
-    edit({ client, protocol: client === 'claude' ? 'anthropic-messages' : client === 'codex' ? 'openai-responses' : 'openai-completions',
+    edit({ client, ...(client === 'kimi-code' && client !== draft.client ? { activateModel: null } : {}),
+      protocol: client === 'claude' ? 'anthropic-messages' : client === 'codex' ? 'openai-responses' : 'openai-completions',
       sdk: client === 'opencode' ? '@ai-sdk/openai-compatible' : null, version: client === 'openclaw' ? 'v2' : null,
       discoverModels: client === 'hermes', dshProfile: client === 'dsh' ? 'web' : null });
   }
@@ -146,7 +152,13 @@ export function ConnectionProfilesCard({ baseUrl }: { baseUrl: string }) {
           <div className="space-y-1"><Label htmlFor={id + '-name'}>{t('client-config.profile-name')}</Label><Input id={id + '-name'} value={draft.name} onChange={(event) => edit({ name: event.target.value })} /></div>
           <div className="space-y-1"><Label htmlFor={id + '-client'}>{t('client-config.profile-client')}</Label>
             <Select value={draft.client} onValueChange={changeClient}><SelectTrigger id={id + '-client'}><SelectValue /></SelectTrigger>
-              <SelectContent>{clients.map((client) => <SelectItem key={client} value={client}>{client}</SelectItem>)}</SelectContent></Select></div>
+              <SelectContent>
+                {clients.map((client) => (
+                  <SelectItem key={client} value={client}>
+                    {client === 'kimi-code' ? t('client-config.kimi-code') : client}
+                  </SelectItem>
+                ))}
+              </SelectContent></Select></div>
           <div className="space-y-1"><Label htmlFor={id + '-url'}>{t('agent-tools.address')}</Label><Input id={id + '-url'} value={draft.baseUrl} onChange={(event) => edit({ baseUrl: event.target.value })} /></div>
           <div className="space-y-1"><Label htmlFor={id + '-credential'}>{t('client-config.profile-credential')}</Label>
             <Select value={draft.credentialSource} onValueChange={(value) => { const source = ConnectionProfileSaveInputSchema.shape.credentialSource.safeParse(value); if (source.success) { edit({ credentialSource: source.data }); } }}>

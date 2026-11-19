@@ -7,7 +7,7 @@ Target version: next
 Users who create independent connection profiles use a new version-1 catalog under the selected
 owner's profile directory. Existing individual Claude/Codex/OpenCode configuration is not migrated
 automatically. Users who do not create profiles can upgrade normally. Desktop and standalone Core
-must be upgraded together to owner compatibility 10.
+must be upgraded together to owner compatibility 16.
 
 ## Required action
 
@@ -43,14 +43,18 @@ do not remove unrelated provider nodes. This is a proposed recovery procedure, n
 ## Downgrade
 
 Older owners cannot manage the new profile library. Do not pair an older Core with this desktop.
+An owner that predates Kimi Code rejects a catalog containing a Kimi Code profile.
+Review and remove the native connection, then delete the saved Kimi Code profile
+before returning to an owner that supports the catalog but predates this client.
 Keep the catalog and original keyring intact when downgrading. Native client changes remain until
 explicitly removed or restored; an application downgrade does not undo them. Automatic recovery or
 cross-machine portability without the original keyring is unsupported.
 
 ## Verification
 
-The implementation has source review only. The user deferred tests, type checks, builds, check
-scripts and real keyring/client operations. Native keyring migration, encrypted recovery, platform
-permissions and real requests remain unverified. Follow the current [client configuration reference](../../modules/proxy-gateway/agent-tools.md)
+The Kimi Code profile tests cover preview, apply, default selection, removal and a stale preview.
+The Windows live check exercises Kimi Code 2.7.0 against an isolated Core and checks configuration
+restoration after a real tool call. Native keyring migration, cross-machine recovery and downgrade
+remain outside these checks. Follow the current [client configuration reference](../../modules/proxy-gateway/agent-tools.md)
 and [ownership decision](../../../.agents/notes/implemented/feature/2026-10-04-coding-tool-configuration.md)
 when preparing the original D21 acceptance evidence.

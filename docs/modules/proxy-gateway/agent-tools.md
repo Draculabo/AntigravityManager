@@ -53,7 +53,7 @@ The existing Manager key, existing OpenCode dedicated key and the current client
 are snapshot sources. They do not create new proxy keys. Profile credentials never enter public
 IPC, previews or renderer state. Changing the source replaces only that saved profile's snapshot.
 
-OpenCode, OpenClaw and DSH receive an independent provider ID per saved connection. OpenClaw
+OpenCode, OpenClaw, DSH and Kimi Code receive an independent provider ID per saved connection. OpenClaw
 allow tokens and default selections remain independently owned. Other provider nodes and later
 unrelated changes survive removal. Claude, Codex and Hermes keep a library of saved connections
 with one active native connection. Applying another switches that connection; the prior plan
@@ -110,6 +110,22 @@ Separate instructions, the conversation, tool declarations and tool results
 continue through the normal mapper. The mode applies to streamed and non-streamed
 Chat requests. Unrecognized system messages, including auxiliary prompts and
 custom identities, follow ordinary mapping. Remove the header to disable the mode.
+
+### Kimi Code provider
+
+Select **Kimi Code** in Connection profiles to connect Kimi Code CLI 2.x through
+OpenAI Chat Completions. The backend uses `KIMI_CODE_HOME/config.toml` or
+`~/.kimi-code/config.toml`. Applying the reviewed connection adds one provider and
+one model alias per selected gateway model. The alias is available in Kimi Code's
+model picker. Manager uses its model catalog to supply the required context limit.
+
+Keep the optional default model field empty to retain Kimi Code's default. An explicit default
+is restored on removal if it still matches the applied value. Removal removes
+the owned provider and model aliases. If Kimi Code saved an owned model as its
+default independently, select another default in Kimi Code before removing it.
+The TOML document is reserialized, so
+comments and formatting may change. The original bytes are retained in the
+connection profile's encrypted first backup.
 
 ### OpenClaw provider
 

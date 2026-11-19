@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { ClientConfigSyncCard } from '@/modules/proxy-gateway/components/ClientConfigSyncCard';
 import { ConnectionProfilesCard } from '@/modules/proxy-gateway/components/ConnectionProfilesCard';
@@ -21,6 +21,26 @@ vi.mock('@/ipc/manager', () => ({
 afterEach(cleanup);
 
 const baseUrl = 'http://127.0.0.1:8045';
+it('requires a new explicit default selection when switching a draft to Kimi Code', async () => {
+  const client = new QueryClient();
+  render(
+    <QueryClientProvider client={client}>
+      <ConnectionProfilesCard baseUrl={baseUrl} />
+    </QueryClientProvider>,
+  );
+
+  const chooser = screen.getByRole('combobox', { name: 'client-config.profile-client' });
+  await waitFor(() => expect(chooser.closest('fieldset')?.disabled).toBe(false));
+  const defaultModel = screen.getByRole('textbox', { name: 'client-config.default-model' });
+  fireEvent.change(defaultModel, { target: { value: 'claude-sonnet-4-6' } });
+  expect(defaultModel).toHaveProperty('value', 'claude-sonnet-4-6');
+
+  fireEvent.keyDown(chooser, { key: 'Enter' });
+  fireEvent.click(await screen.findByRole('option', { name: 'client-config.kimi-code' }));
+  expect(chooser.textContent).toContain('client-config.kimi-code');
+  expect(defaultModel).toHaveProperty('value', '');
+});
+
 it.each([
   ['client configuration', <ClientConfigSyncCard client="hermes" baseUrl={baseUrl} />],
   ['connection profiles', <ConnectionProfilesCard baseUrl={baseUrl} />],

@@ -8,6 +8,11 @@ import { hasErrorCode } from '@/shared/errors/error-guards';
 import { clientConfigDocument, type ClientConfigDocument, type ClientConfigValue } from '../agent-tools/client-config-document';
 import { ConnectionProfileError, type ConnectionProfileView } from './connection-profiles.schema';
 import { readDshCredentialReference } from '../dsh-sync/dsh-credentials';
+import {
+  kimiCodeConfigPath,
+  readKimiCodeConfiguredKey,
+  writeKimiCodeConnectionFields,
+} from './kimi-code-connection';
 
 export async function readConnectionFile(filename: string): Promise<string | null> {
   try {
@@ -46,6 +51,8 @@ export async function connectionNativePath(profile: ConnectionProfileView) {
     case 'claude': return join(resolve(process.env.CLAUDE_CONFIG_DIR?.trim() || join(home, '.claude')), 'settings.json');
     case 'codex': return join(resolve(process.env.CODEX_HOME?.trim() || join(home, '.codex')), 'config.toml');
     case 'hermes': return join(resolve(process.env.HERMES_HOME?.trim() || join(home, '.hermes')), 'config.yaml');
+    case 'kimi-code':
+      return kimiCodeConfigPath();
     case 'openclaw': return resolve(process.env.OPENCLAW_CONFIG_PATH?.trim() || join(process.env.OPENCLAW_DIR?.trim() || join(home, '.openclaw'), 'openclaw.json'));
     case 'opencode': {
       const directory = join(home, '.config', 'opencode');
@@ -73,7 +80,7 @@ export function connectionDocument(profile: ConnectionProfileView, source: strin
   catch (cause) { throw cause instanceof ConnectionProfileError ? cause : new ConnectionProfileError('invalid-config', cause); }
 }
 function parseConnectionDocument(profile: ConnectionProfileView, source: string | null): ClientConfigDocument {
-  if (profile.client !== 'codex') { return clientConfigDocument(profile.client === 'hermes' ? 'hermes' : 'openclaw', source); }
+  if (profile.client !== 'codex' && profile.client !== 'kimi-code') { return clientConfigDocument(profile.client === 'hermes' ? 'hermes' : 'openclaw', source); }
   const root = parse(source ?? '');
   function parent(path: string[], create: boolean) {
     let current = root;
@@ -142,6 +149,9 @@ export function connectionFields(profile: ConnectionProfileView, key: string): A
       if (profile.activateModel) { set(['agents', 'defaults', 'model', 'primary'], `${provider}/${profile.activateModel}`); }
       break;
     }
+    case 'kimi-code':
+      writeKimiCodeConnectionFields(profile, provider, v1, key, set);
+      break;
     case 'dsh': throw new ConnectionProfileError('invalid-config');
   }
   return fields;
@@ -191,6 +201,9 @@ export async function captureConnectionKey(profile: ConnectionProfileView): Prom
       value = document.get(['models', 'providers', typeof selected === 'string' ? selected.split('/')[0] ?? '' : 'antigravity-manager', 'apiKey']);
       break;
     }
+    case 'kimi-code':
+      value = readKimiCodeConfiguredKey(document);
+      break;
   }
   if (typeof value !== 'string' || !value || value.startsWith('{env:')) { throw new ConnectionProfileError('key-missing'); }
   return value;

@@ -1393,6 +1393,7 @@ const en = {
     deleteError: { title: 'Error', description: 'Failed to delete backup: {{error}}' },
   },
   'client-config': {
+    'kimi-code': 'Kimi Code',
     'profiles-title': 'Connection profiles',
     'profiles-help':
       'Save independent connections and key references. Saving a profile does not change client settings. Preview before applying.',

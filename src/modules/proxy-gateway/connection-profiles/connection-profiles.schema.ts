@@ -2,6 +2,15 @@ import { z } from 'zod';
 
 const id = z.string().uuid();
 const model = z.string().trim().min(1).max(256);
+export const ConnectionProfileClientSchema = z.enum([
+  'claude',
+  'codex',
+  'opencode',
+  'hermes',
+  'openclaw',
+  'dsh',
+  'kimi-code',
+]);
 const address = z.string().url().max(2048).refine((value) => {
   if (!URL.canParse(value)) { return false; }
   const url = new URL(value);
@@ -9,7 +18,7 @@ const address = z.string().url().max(2048).refine((value) => {
 });
 export const ConnectionProfileConfigurationSchema = z.strictObject({
   name: z.string().trim().min(1).max(128),
-  client: z.enum(['claude', 'codex', 'opencode', 'hermes', 'openclaw', 'dsh']),
+  client: ConnectionProfileClientSchema,
   baseUrl: address,
   protocol: z.enum(['anthropic-messages', 'openai-completions', 'openai-responses']),
   sdk: z.enum(['@ai-sdk/anthropic', '@ai-sdk/openai', '@ai-sdk/openai-compatible']).nullable(),
@@ -38,7 +47,9 @@ export function supportedConnectionProfile(value: z.infer<typeof ConnectionProfi
   switch (value.client) {
     case 'claude': return value.protocol === 'anthropic-messages' && value.activateModel !== null;
     case 'codex': return value.protocol === 'openai-responses' && value.activateModel !== null;
-    case 'hermes': return value.protocol === 'openai-completions';
+    case 'hermes':
+    case 'kimi-code':
+      return value.protocol === 'openai-completions';
     case 'openclaw': return value.protocol === 'openai-completions' && value.version !== null;
     case 'dsh': return value.dshProfile !== null;
     case 'opencode': return value.protocol === 'anthropic-messages' ? value.sdk === '@ai-sdk/anthropic'

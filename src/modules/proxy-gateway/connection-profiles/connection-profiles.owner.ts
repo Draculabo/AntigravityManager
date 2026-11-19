@@ -139,6 +139,11 @@ export function createConnectionProfilesOwner() {
       return { ...loaded, profile, configPath, source, sourceHash: hash(identity + preview.sourceHash), changed: preview.changed, dsh: { owner, dshPlan, preview }, updated: source ?? '', nextSlots: loaded.state.slots };
     }
     const document = connectionDocument(profile, source);
+    const currentKimiDefault =
+      profile.client === 'kimi-code' ? document.get(['default_model']) : undefined;
+    const hadKimiSelection =
+      typeof currentKimiDefault === 'string' &&
+      document.get(['models', currentKimiDefault]) !== undefined;
     const nextSlots = structuredClone(loaded.state.slots);
     const slotId = `${configPath}:${connectionNativeMode(profile) === 'single-active' ? 'active' : profile.id}`;
     const old = nextSlots[slotId];
@@ -174,7 +179,11 @@ export function createConnectionProfilesOwner() {
       const fields: Receipt['fields'] = [];
       const selections: Receipt['fields'] = [];
       for (const item of connectionFields(profile, key)) {
-        const isSelection = connectionNativeMode(profile) === 'provider' && (item.path[0] === 'model' || item.path.join('.') === 'agents.defaults.model.primary');
+        const isSelection =
+          connectionNativeMode(profile) === 'provider' &&
+          (item.path[0] === 'model' ||
+            item.path[0] === 'default_model' ||
+            item.path.join('.') === 'agents.defaults.model.primary');
         const current = document.get(item.path);
         if (!isSelection && !old && current !== undefined && current !== item.value && connectionNativeMode(profile) === 'provider') { throw new ConnectionProfileError('conflict'); }
         const target = isSelection ? selections : fields;
@@ -198,6 +207,13 @@ export function createConnectionProfilesOwner() {
       }
       nextSlots[slotId] = { profileId: profile.id, fields, allowToken, allowWasAbsent };
       if (selections.length) { nextSlots[selectionId] = { profileId: profile.id, fields: selections }; }
+    }
+    if (
+      hadKimiSelection &&
+      document.get(['default_model']) === currentKimiDefault &&
+      document.get(['models', currentKimiDefault]) === undefined
+    ) {
+      throw new ConnectionProfileError('conflict');
     }
     const updated = document.render();
     return { ...loaded, profile, configPath, source, sourceHash: identity, changed: updated !== (source ?? '{}\n'), dsh: null, updated, nextSlots };
