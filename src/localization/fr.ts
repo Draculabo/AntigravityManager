@@ -1095,6 +1095,9 @@ const fr = {
   },
   'client-config': {
     'kimi-code': 'Kimi Code',
+    'qwen-code': 'Qwen Code',
+    'gemini-cli': 'Gemini CLI',
+    pi: 'Pi',
     'profiles-title': 'Profils de connexion',
     'profiles-help':
       'Enregistrez des connexions et références de clés indépendantes. L’enregistrement ne modifie pas le client. Prévisualisez avant d’appliquer.',

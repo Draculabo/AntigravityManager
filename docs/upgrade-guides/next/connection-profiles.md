@@ -7,7 +7,7 @@ Target version: next
 Users who create independent connection profiles use a new version-1 catalog under the selected
 owner's profile directory. Existing individual Claude/Codex/OpenCode configuration is not migrated
 automatically. Users who do not create profiles can upgrade normally. Desktop and standalone Core
-must be upgraded together to owner compatibility 16.
+must be upgraded together to owner compatibility 17.
 
 ## Required action
 
@@ -28,7 +28,9 @@ and a pending write journal. Credential snapshots and the random recovery encryp
 in the owning user's native keyring. Native client files retain credentials required by their
 own format; DSH uses its supported native reference store. No account database migration occurs.
 
-An interrupted write reconciles only exact recorded before/after native bytes. Changed bytes,
+For an interrupted multi-file write, the owner resumes the remaining authorized edit only if the
+first file matches its recorded result and the second file matches its recorded source. An
+interrupted write reconciles only exact recorded before/after native bytes. Changed bytes,
 missing keys or a damaged encrypted envelope cause refusal. Do not delete keyring entries or
 reset the catalog as an automatic repair. Preserve both stores and the client files for inspection.
 A profile or credential write may partially complete; a failed response does not mean rollback
@@ -43,8 +45,9 @@ do not remove unrelated provider nodes. This is a proposed recovery procedure, n
 ## Downgrade
 
 Older owners cannot manage the new profile library. Do not pair an older Core with this desktop.
-An owner that predates Kimi Code rejects a catalog containing a Kimi Code profile.
-Review and remove the native connection, then delete the saved Kimi Code profile
+An owner that predates a client rejects a catalog containing that client's profile. This applies
+to Kimi Code, Qwen Code, Gemini CLI and Pi. Finish any pending native write, review and remove the
+native connection, then delete the affected saved profile
 before returning to an owner that supports the catalog but predates this client.
 Keep the catalog and original keyring intact when downgrading. Native client changes remain until
 explicitly removed or restored; an application downgrade does not undo them. Automatic recovery or
@@ -52,7 +55,8 @@ cross-machine portability without the original keyring is unsupported.
 
 ## Verification
 
-The Kimi Code profile tests cover preview, apply, default selection, removal and a stale preview.
+The native profile tests cover preview, apply, default selection, removal, stale previews and
+multi-file recovery when the native contents still match the recorded intent.
 The Windows live check exercises Kimi Code 2.7.0 against an isolated Core and checks configuration
 restoration after a real tool call. Native keyring migration, cross-machine recovery and downgrade
 remain outside these checks. Follow the current [client configuration reference](../../modules/proxy-gateway/agent-tools.md)

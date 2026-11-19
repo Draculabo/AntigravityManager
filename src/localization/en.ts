@@ -1394,6 +1394,9 @@ const en = {
   },
   'client-config': {
     'kimi-code': 'Kimi Code',
+    'qwen-code': 'Qwen Code',
+    'gemini-cli': 'Gemini CLI',
+    pi: 'Pi',
     'profiles-title': 'Connection profiles',
     'profiles-help':
       'Save independent connections and key references. Saving a profile does not change client settings. Preview before applying.',

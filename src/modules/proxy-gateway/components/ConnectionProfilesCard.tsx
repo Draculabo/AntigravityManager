@@ -18,6 +18,12 @@ import {
 import { readClientConfigFailure } from './client-config-failure';
 
 const clients = ConnectionProfileClientSchema.options;
+const clientLabelKeys = {
+  'kimi-code': 'client-config.kimi-code',
+  'qwen-code': 'client-config.qwen-code',
+  'gemini-cli': 'client-config.gemini-cli',
+  pi: 'client-config.pi',
+} as const;
 function initial(baseUrl: string): ConnectionProfileSaveInput {
   return { name: '', client: 'claude', baseUrl, protocol: 'anthropic-messages', sdk: null,
     models: [], activateModel: null, version: null, discoverModels: false, dshProfile: null, credentialSource: 'manager-default' };
@@ -123,8 +129,9 @@ export function ConnectionProfilesCard({ baseUrl }: { baseUrl: string }) {
     if (!client) {
       return;
     }
-    edit({ client, ...(client === 'kimi-code' && client !== draft.client ? { activateModel: null } : {}),
-      protocol: client === 'claude' ? 'anthropic-messages' : client === 'codex' ? 'openai-responses' : 'openai-completions',
+    edit({ client, ...(client !== draft.client ? { activateModel: null } : {}),
+      protocol: client === 'claude' ? 'anthropic-messages' : client === 'codex' ? 'openai-responses'
+        : client === 'gemini-cli' ? 'gemini-native' : 'openai-completions',
       sdk: client === 'opencode' ? '@ai-sdk/openai-compatible' : null, version: client === 'openclaw' ? 'v2' : null,
       discoverModels: client === 'hermes', dshProfile: client === 'dsh' ? 'web' : null });
   }
@@ -155,7 +162,9 @@ export function ConnectionProfilesCard({ baseUrl }: { baseUrl: string }) {
               <SelectContent>
                 {clients.map((client) => (
                   <SelectItem key={client} value={client}>
-                    {client === 'kimi-code' ? t('client-config.kimi-code') : client}
+                    {client === 'kimi-code' || client === 'qwen-code' || client === 'gemini-cli' || client === 'pi'
+                      ? t(clientLabelKeys[client])
+                      : client}
                   </SelectItem>
                 ))}
               </SelectContent></Select></div>
@@ -192,6 +201,7 @@ export function ConnectionProfilesCard({ baseUrl }: { baseUrl: string }) {
         <p className="font-medium">{t(review.action === 'apply' ? 'client-config.review-save' : 'client-config.review-remove')}</p>
         <p>{t(review.nativeMode === 'provider' ? 'client-config.profile-provider-mode' : 'client-config.profile-single-active')}</p>
         <p className="break-all text-xs">{review.configPath}</p>
+        {review.additionalConfigPath ? <p className="break-all text-xs">{review.additionalConfigPath}</p> : null}
         <p className="text-muted-foreground text-xs">{t('client-config.review-help')}</p>
         <Button disabled={busy || !review.changed} variant={review.action === 'remove' ? 'destructive' : 'default'} onClick={apply}>{t('client-config.confirm')}</Button>
         <Button disabled={busy} variant="outline" onClick={() => setReview(null)}>{t('common.cancel')}</Button>

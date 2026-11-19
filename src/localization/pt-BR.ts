@@ -1788,6 +1788,9 @@ const ptBR = {
   },
   'client-config': {
     'kimi-code': 'Kimi Code',
+    'qwen-code': 'Qwen Code',
+    'gemini-cli': 'Gemini CLI',
+    pi: 'Pi',
     'profiles-title': 'Perfis de conexão',
     'profiles-help':
       'Salve conexões e referências de chaves independentes. Salvar não altera o cliente. Revise antes de aplicar.',

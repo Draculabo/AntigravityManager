@@ -13,7 +13,15 @@ import { OpenCodeNativeCredentialStore } from '../opencode-sync/opencode-native-
 import { createDshOwner } from '../dsh-sync/dsh-owner.service';
 import { DshOwnerError } from '../dsh-sync/dsh-owner.error';
 import { type ClientConfigValue } from '../agent-tools/client-config-document';
-import { captureConnectionKey, connectionDocument, connectionFields, connectionNativeMode, connectionNativePath, connectionProviderId, readConnectionFile } from './connection-profile-native';
+import {
+  captureConnectionKey, companionConfigPath, connectionDocuments, connectionFields,
+  connectionNativeMode, connectionNativePath, connectionProviderId, readConnectionFile,
+} from './connection-profile-native';
+import {
+  describeNativeWrite, followingConfigWriteSchema, nativeConfigFingerprintSchema,
+  recoverNativeConfig, writeNativeConfig, type NativeConfigWrite,
+} from './connection-config-write';
+import { registeredAgentDefault } from './agent-connection-adapters';
 import {
   ConnectionProfileError, ConnectionProfileSaveInputSchema,
   ConnectionProfileViewSchema, supportedConnectionProfile, type ConnectionProfileView, type ConnectionProfileSaveInput,
@@ -25,7 +33,11 @@ const valueHash = (value: ClientConfigValue | undefined) => hash(value === undef
 const field = z.strictObject({ path: z.array(z.string()).min(1), previous: z.json().optional(), writtenHash: z.string() });
 const receipt = z.strictObject({ profileId: z.string().uuid(), fields: z.array(field), allowToken: z.string().optional(), allowWasAbsent: z.boolean().optional() });
 const slotsSchema = z.record(z.string(), receipt);
-const pendingSchema = z.strictObject({ filename: z.string(), beforeHash: z.string(), afterHash: z.string(), before: slotsSchema, after: slotsSchema });
+const pendingSchema = nativeConfigFingerprintSchema.extend({
+  before: slotsSchema,
+  after: slotsSchema,
+  following: followingConfigWriteSchema.optional(),
+});
 const privateSchema = z.strictObject({ slots: slotsSchema, pending: pendingSchema.nullable(), backups: z.record(z.string(), z.string().nullable()).default({}) });
 const storedProfile = ConnectionProfileViewSchema.extend({ credentialVersion: z.string() }).refine(supportedConnectionProfile);
 const catalogSchema = z.strictObject({ version: z.literal(1), profiles: z.array(storedProfile).max(128), encryptedOwnership: z.string().nullable() });
@@ -76,7 +88,7 @@ export function createConnectionProfilesOwner() {
   }
   function filename() { return join(getAgentDir(), 'client-connection-profiles.json'); }
   async function load() {
-    const source = await readConnectionFile(filename());
+    let source = await readConnectionFile(filename());
     let catalog: Catalog = { version: 1, profiles: [], encryptedOwnership: null };
     if (source !== null) {
       let raw: unknown;
@@ -90,11 +102,13 @@ export function createConnectionProfilesOwner() {
     if (new Set(catalog.profiles.map((item) => item.id)).size !== catalog.profiles.length) { throw new ConnectionProfileError('invalid-config'); }
     const state = decrypt(catalog.encryptedOwnership);
     if (state.pending) {
-      const current = hash((await readConnectionFile(state.pending.filename)) ?? 'absent');
-      if (current === state.pending.afterHash) { state.slots = state.pending.after; }
-      else if (current === state.pending.beforeHash) { state.slots = state.pending.before; }
-      else { throw new ConnectionProfileError('conflict'); }
+      const { pending: write } = state;
+      const result = await recoverNativeConfig(write, write.following);
+      state.slots = write[result];
       state.pending = null;
+      if (write.following) {
+        source = await persist(catalog, state, source);
+      }
     }
     return { catalog, state, catalogSource: source };
   }
@@ -129,16 +143,19 @@ export function createConnectionProfilesOwner() {
     if (!key) { throw new ConnectionProfileError('key-missing'); }
     const configPath = await connectionNativePath(profile);
     const source = await readConnectionFile(configPath);
-    const identity = hash(JSON.stringify([profile.revision, hash(key), source, loaded.state]));
+    const additionalConfigPath = companionConfigPath(profile);
+    const companionSource = additionalConfigPath ? await readConnectionFile(additionalConfigPath) : undefined;
+    const identity = hash(JSON.stringify([profile.revision, hash(key), source, companionSource, loaded.state]));
     if (profile.client === 'dsh') {
       const owner = createDshOwner({ providerId: connectionProviderId(profile), key });
-      if (!profile.dshProfile) { throw new ConnectionProfileError('invalid-config'); }
+      if (!profile.dshProfile || profile.protocol === 'gemini-native') { throw new ConnectionProfileError('invalid-config'); }
       const dshPlan = input.action === 'remove' ? { action: 'remove' as const, profile: profile.dshProfile }
         : { action: 'sync' as const, profile: profile.dshProfile, protocol: profile.protocol, baseUrl: profile.baseUrl, credentialMode: 'manager-key' as const, credentialRef: 'ANTIGRAVITY_MANAGER', models: profile.models, activateModel: profile.activateModel };
       const preview = await owner.preview(dshPlan);
-      return { ...loaded, profile, configPath, source, sourceHash: hash(identity + preview.sourceHash), changed: preview.changed, dsh: { owner, dshPlan, preview }, updated: source ?? '', nextSlots: loaded.state.slots };
+      return { ...loaded, profile, configPath, additionalConfigPath, sourceHash: hash(identity + preview.sourceHash), changed: preview.changed, dsh: { owner, dshPlan, preview }, writes: [], nextSlots: loaded.state.slots };
     }
-    const document = connectionDocument(profile, source);
+    const document = connectionDocuments(profile, source, companionSource);
+    const verifyAgentDefault = registeredAgentDefault(profile.client, document);
     const currentKimiDefault =
       profile.client === 'kimi-code' ? document.get(['default_model']) : undefined;
     const hadKimiSelection =
@@ -183,6 +200,8 @@ export function createConnectionProfilesOwner() {
           connectionNativeMode(profile) === 'provider' &&
           (item.path[0] === 'model' ||
             item.path[0] === 'default_model' ||
+            (profile.client === 'pi' && item.path[0] === 'settings') ||
+            (profile.client === 'qwen-code' && item.path[0] === 'security') ||
             item.path.join('.') === 'agents.defaults.model.primary');
         const current = document.get(item.path);
         if (!isSelection && !old && current !== undefined && current !== item.value && connectionNativeMode(profile) === 'provider') { throw new ConnectionProfileError('conflict'); }
@@ -215,8 +234,27 @@ export function createConnectionProfilesOwner() {
     ) {
       throw new ConnectionProfileError('conflict');
     }
+    verifyAgentDefault?.();
+    const writes: NativeConfigWrite[] = [];
     const updated = document.render();
-    return { ...loaded, profile, configPath, source, sourceHash: identity, changed: updated !== (source ?? '{}\n'), dsh: null, updated, nextSlots };
+    if (updated !== (source ?? (profile.client === 'gemini-cli' ? '' : '{}\n'))) {
+      writes.push({ filename: configPath, source, updated });
+    }
+    const updatedCompanion = document.renderCompanion?.();
+    if (
+      additionalConfigPath &&
+      companionSource !== undefined &&
+      updatedCompanion !== undefined &&
+      updatedCompanion !== (companionSource ?? '{}\n')
+    ) {
+      const companion = { filename: additionalConfigPath, source: companionSource, updated: updatedCompanion };
+      if (input.action === 'remove') {
+        writes.unshift(companion);
+      } else {
+        writes.push(companion);
+      }
+    }
+    return { ...loaded, profile, configPath, additionalConfigPath, sourceHash: identity, changed: writes.length > 0, dsh: null, writes, nextSlots };
   }
   return {
     closeAdmission: () => { accepting = false; },
@@ -256,7 +294,11 @@ export function createConnectionProfilesOwner() {
     }),
     preview: (input: ConnectionProfilePreviewInput) => execute(async () => {
       const result = await plan(input);
-      return { id: input.id, action: input.action, configPath: result.configPath, sourceHash: result.sourceHash, changed: result.changed, nativeMode: connectionNativeMode(result.profile) };
+      return {
+        id: input.id, action: input.action, configPath: result.configPath,
+        ...(result.additionalConfigPath ? { additionalConfigPath: result.additionalConfigPath } : {}),
+        sourceHash: result.sourceHash, changed: result.changed, nativeMode: connectionNativeMode(result.profile),
+      };
     }),
     mutate: (input: ConnectionProfileMutateInput) => execute(async () => {
       const result = await plan(input);
@@ -270,19 +312,26 @@ export function createConnectionProfilesOwner() {
         catch (cause) { throw new ConnectionProfileError('receipt-failed', cause); }
       } else {
         const backups = { ...result.state.backups };
-        if (!Object.hasOwn(backups, result.configPath)) { backups[result.configPath] = result.source; }
-        const journal: PrivateState = { backups, slots: result.state.slots, pending: { filename: result.configPath, beforeHash: hash(result.source ?? 'absent'), afterHash: hash(result.updated), before: result.state.slots, after: result.nextSlots } };
-        const saved = await persist(result.catalog, journal, result.catalogSource);
-        try {
-          await mkdir(dirname(result.configPath), { recursive: true, mode: 0o700 });
-          await writeFileAtomic(result.configPath, result.updated, { mode: 0o600, beforeCommit: () => {
-            let current: string | null;
-            try { current = readFileSync(result.configPath, 'utf8'); }
-            catch (cause) { if (!hasErrorCode(cause, 'ENOENT')) { throw cause; } current = null; }
-            if (current !== result.source) { throw new ConnectionProfileError('conflict'); }
-          } });
-          if (await readConnectionFile(result.configPath) !== result.updated) { throw new ConnectionProfileError('write-unconfirmed'); }
-        } catch (cause) { throw cause instanceof ConnectionProfileError ? cause : new ConnectionProfileError('write-failed', cause); }
+        for (const write of result.writes) {
+          if (!Object.hasOwn(backups, write.filename)) {
+            backups[write.filename] = write.source;
+          }
+        }
+        const [first, following] = result.writes;
+        let saved = result.catalogSource;
+        if (first) {
+          const journal: PrivateState = { backups, slots: result.state.slots, pending: {
+            ...describeNativeWrite(first),
+            before: result.state.slots,
+            after: result.nextSlots,
+            following: following && { ...describeNativeWrite(following), afterSource: following.updated },
+          } };
+          saved = await persist(result.catalog, journal, saved);
+          await writeNativeConfig(first);
+          if (following) {
+            await writeNativeConfig(following, first);
+          }
+        }
         await persist(result.catalog, { backups, slots: result.nextSlots, pending: null }, saved).catch((cause: unknown) => { throw new ConnectionProfileError('receipt-failed', cause); });
       }
       return { configPath: result.configPath, changed: result.changed, restartRequired: result.profile.client !== 'dsh' };

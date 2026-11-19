@@ -13,6 +13,16 @@ import {
   readKimiCodeConfiguredKey,
   writeKimiCodeConnectionFields,
 } from './kimi-code-connection';
+import {
+  geminiCliDirectory,
+  geminiEnvDocument,
+  piAgentDirectory,
+  qwenConfigPath,
+  qwenConnectionDocument,
+  writeGeminiCliFields,
+  writePiFields,
+  writeQwenFields,
+} from './agent-connection-adapters';
 
 export async function readConnectionFile(filename: string): Promise<string | null> {
   try {
@@ -43,7 +53,7 @@ export async function readConnectionFile(filename: string): Promise<string | nul
 }
 export function connectionProviderId(profile: ConnectionProfileView) { return `antigravity-manager-${profile.id}`; }
 export function connectionNativeMode(profile: ConnectionProfileView) {
-  return profile.client === 'claude' || profile.client === 'codex' || profile.client === 'hermes' ? 'single-active' as const : 'provider' as const;
+  return profile.client === 'claude' || profile.client === 'codex' || profile.client === 'hermes' || profile.client === 'gemini-cli' ? 'single-active' as const : 'provider' as const;
 }
 export async function connectionNativePath(profile: ConnectionProfileView) {
   const home = homedir();
@@ -53,6 +63,12 @@ export async function connectionNativePath(profile: ConnectionProfileView) {
     case 'hermes': return join(resolve(process.env.HERMES_HOME?.trim() || join(home, '.hermes')), 'config.yaml');
     case 'kimi-code':
       return kimiCodeConfigPath();
+    case 'qwen-code':
+      return qwenConfigPath();
+    case 'pi':
+      return join(piAgentDirectory(), 'models.json');
+    case 'gemini-cli':
+      return join(geminiCliDirectory(), '.env');
     case 'openclaw': return resolve(process.env.OPENCLAW_CONFIG_PATH?.trim() || join(process.env.OPENCLAW_DIR?.trim() || join(home, '.openclaw'), 'openclaw.json'));
     case 'opencode': {
       const directory = join(home, '.config', 'opencode');
@@ -63,6 +79,14 @@ export async function connectionNativePath(profile: ConnectionProfileView) {
       if (!process.env.DSH_HOME?.trim() || !profile.dshProfile) { throw new ConnectionProfileError('invalid-config'); }
       return join(resolve(process.env.DSH_HOME), 'profiles', profile.dshProfile, 'cordis.patch.yml');
     }
+  }
+}
+export function companionConfigPath(profile: ConnectionProfileView): string | undefined {
+  switch (profile.client) {
+    case 'gemini-cli':
+      return join(geminiCliDirectory(), 'settings.json');
+    case 'pi':
+      return join(piAgentDirectory(), 'settings.json');
   }
 }
 function tomlTable(value: TomlValue | undefined): TomlTable {
@@ -80,6 +104,12 @@ export function connectionDocument(profile: ConnectionProfileView, source: strin
   catch (cause) { throw cause instanceof ConnectionProfileError ? cause : new ConnectionProfileError('invalid-config', cause); }
 }
 function parseConnectionDocument(profile: ConnectionProfileView, source: string | null): ClientConfigDocument {
+  if (profile.client === 'gemini-cli') {
+    return geminiEnvDocument(source);
+  }
+  if (profile.client === 'qwen-code') {
+    return qwenConnectionDocument(clientConfigDocument('openclaw', source));
+  }
   if (profile.client !== 'codex' && profile.client !== 'kimi-code') { return clientConfigDocument(profile.client === 'hermes' ? 'hermes' : 'openclaw', source); }
   const root = parse(source ?? '');
   function parent(path: string[], create: boolean) {
@@ -106,6 +136,40 @@ function parseConnectionDocument(profile: ConnectionProfileView, source: string 
     },
     render: () => `${stringify(root)}\n`,
   };
+}
+export function connectionDocuments(
+  profile: ConnectionProfileView,
+  source: string | null,
+  companionSource?: string | null,
+) {
+  const primary = connectionDocument(profile, source);
+  const companion =
+    companionSource === undefined ? undefined : connectionSettingsDocument(companionSource);
+  function target(path: string[]) {
+    if (companion && path[0] === 'settings') {
+      return { document: companion, key: path.slice(1) };
+    }
+    return { document: primary, key: profile.client === 'gemini-cli' ? path.slice(1) : path };
+  }
+  return {
+    get(path: string[]) {
+      const { document, key } = target(path);
+      return document.get(key);
+    },
+    set(path: string[], value: ClientConfigValue | undefined) {
+      const { document, key } = target(path);
+      document.set(key, value);
+    },
+    render: primary.render,
+    renderCompanion: companion?.render,
+  };
+}
+function connectionSettingsDocument(source: string | null): ClientConfigDocument {
+  try {
+    return clientConfigDocument('openclaw', source);
+  } catch (cause) {
+    throw new ConnectionProfileError('invalid-config', cause);
+  }
 }
 export function connectionFields(profile: ConnectionProfileView, key: string): Array<{ path: string[]; value: ClientConfigValue | undefined }> {
   const fields: Array<{ path: string[]; value: ClientConfigValue | undefined }> = [];
@@ -151,6 +215,15 @@ export function connectionFields(profile: ConnectionProfileView, key: string): A
     }
     case 'kimi-code':
       writeKimiCodeConnectionFields(profile, provider, v1, key, set);
+      break;
+    case 'qwen-code':
+      writeQwenFields(profile, v1, key, set);
+      break;
+    case 'pi':
+      writePiFields(profile, provider, v1, key, set);
+      break;
+    case 'gemini-cli':
+      writeGeminiCliFields(profile, base, key, set);
       break;
     case 'dsh': throw new ConnectionProfileError('invalid-config');
   }
@@ -203,6 +276,28 @@ export async function captureConnectionKey(profile: ConnectionProfileView): Prom
     }
     case 'kimi-code':
       value = readKimiCodeConfiguredKey(document);
+      break;
+    case 'qwen-code': {
+      const provider = document.get(['security', 'auth', 'selectedType']);
+      const selected = document.get(['model', 'name']);
+      const base = document.get(['model', 'baseUrl']);
+      const models = typeof provider === 'string' ? document.get(['modelProviders', provider]) : undefined;
+      const parsed = z.array(z.object({ id: z.string(), baseUrl: z.string().optional(), envKey: z.string() })).safeParse(models);
+      const matches = parsed.success ? parsed.data.filter((item) => item.id === selected && (base === undefined || item.baseUrl === base)) : [];
+      value = matches.length === 1 ? document.get(['env', matches[0].envKey]) : undefined;
+      break;
+    }
+    case 'pi': {
+      const settings = connectionSettingsDocument(await readConnectionFile(join(piAgentDirectory(), 'settings.json')));
+      const provider = settings.get(['defaultProvider']);
+      value = typeof provider === 'string' ? document.get(['providers', provider, 'apiKey']) : undefined;
+      if (typeof value === 'string' && value.startsWith('!')) {
+        throw new ConnectionProfileError('key-missing');
+      }
+      break;
+    }
+    case 'gemini-cli':
+      value = document.get(['GEMINI_API_KEY']);
       break;
   }
   if (typeof value !== 'string' || !value || value.startsWith('{env:')) { throw new ConnectionProfileError('key-missing'); }

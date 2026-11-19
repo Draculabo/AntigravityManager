@@ -53,10 +53,12 @@ The existing Manager key, existing OpenCode dedicated key and the current client
 are snapshot sources. They do not create new proxy keys. Profile credentials never enter public
 IPC, previews or renderer state. Changing the source replaces only that saved profile's snapshot.
 
-OpenCode, OpenClaw, DSH and Kimi Code receive an independent provider ID per saved connection. OpenClaw
+OpenCode, OpenClaw, DSH, Kimi Code and Pi receive an independent provider ID per saved connection. Qwen Code
+identifies saved model entries by their key reference and disallows duplicate model routes. OpenClaw
 allow tokens and default selections remain independently owned. Other provider nodes and later
 unrelated changes survive removal. Claude, Codex and Hermes keep a library of saved connections
-with one active native connection. Applying another switches that connection; the prior plan
+with one active native connection. Gemini CLI also uses one active native connection. Applying
+another switches that connection; the prior plan
 and credential remain saved. A saved or owned connection does not establish that the client
 has loaded it or that a model request succeeds.
 
@@ -126,6 +128,26 @@ default independently, select another default in Kimi Code before removing it.
 The TOML document is reserialized, so
 comments and formatting may change. The original bytes are retained in the
 connection profile's encrypted first backup.
+
+### Qwen Code, Gemini CLI and Pi
+
+Choose the client in Connection profiles and review the plan before applying it. Leave the optional
+default model field blank to keep the current model selection. Reopen the client after applying and
+confirm a request in Traffic Monitor.
+
+| Client     | Configuration                                                                                                                                                                                                                 | Protocol                |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| Qwen Code  | `QWEN_HOME/settings.json` or `~/.qwen/settings.json`. Manager adds model entries under the OpenAI provider with a profile-specific key in the native `env` settings.                                                          | OpenAI Chat Completions |
+| Gemini CLI | `$GEMINI_CLI_HOME/.gemini` or `~/.gemini`. Manager writes the gateway address and API key to `.env` and selects API-key authentication in `settings.json`. Pick a model in Gemini CLI or set the optional default in Manager. | Native Gemini           |
+| Pi         | `$PI_CODING_AGENT_DIR` or `~/.pi/agent`. Manager adds a provider and models with context and output limits to `models.json`. An explicitly selected default also updates `settings.json`.                                     | OpenAI Chat Completions |
+
+An authorized multi-file operation is journaled before the first write. If it stops between files,
+the owner completes the remaining write only when both files still match the recorded versions. If
+either file changed externally, Manager reports a conflict. Removing a connection restores its
+unchanged owned fields and preserves unrelated configuration. If Qwen Code or Pi has independently
+selected a managed default, select another model before removing the provider.
+Gemini CLI applies its own workspace trust and environment precedence when reading `.env`.
+Use its normal workspace trust flow and check for local environment overrides when testing a connection.
 
 ### OpenClaw provider
 
