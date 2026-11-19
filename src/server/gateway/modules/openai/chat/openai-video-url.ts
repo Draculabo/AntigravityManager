@@ -50,8 +50,7 @@ export function normalizeVideoMime(format: string): string {
 }
 
 function inferVideoMime(value: string): string {
-  const clean = value.split(/[?#]/u, 1)[0] ?? value;
-  const extension = path.extname(clean).slice(1).toLowerCase();
+  const extension = path.extname(value).slice(1).toLowerCase();
   if (!['mp4', 'm4v', 'webm', 'mov', 'avi', 'wmv', 'flv', 'mkv', '3gp'].includes(extension)) {
     return 'video/mp4';
   }
@@ -136,9 +135,10 @@ export function resolveOpenAIVideoUrl(
   }
 
   if (source.startsWith('http://') || source.startsWith('https://')) {
+    const urlPath = source.split(/[?#]/u, 1)[0] ?? source;
     return {
       type: 'url',
-      media_type: declaredMime ?? inferVideoMime(source),
+      media_type: declaredMime ?? inferVideoMime(urlPath),
       url: source,
     };
   }

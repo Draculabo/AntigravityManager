@@ -11,7 +11,10 @@ import {
   normalizeVideoMime,
   resolveOpenAIVideoUrl,
 } from '@/server/gateway/modules/openai/chat/openai-video-url';
-import type { OpenAIContentPart } from '@/server/gateway/common/interfaces/request-interfaces';
+import type {
+  OpenAIChatRequest,
+  OpenAIContentPart,
+} from '@/server/gateway/common/interfaces/request-interfaces';
 import { logger } from '@/shared/logging/logger';
 
 vi.mock('@/shared/logging/logger', () => ({
@@ -25,11 +28,12 @@ function videoPart(url: string, mimeType?: string): OpenAIContentPart {
   };
 }
 
-function mapVideoToGemini(url: string, allowLocalVideoPaths = false) {
+function mapVideoToGemini(url: string, allowLocalVideoPaths = false, text?: string) {
+  const content = text ? [{ type: 'text' as const, text }, videoPart(url)] : [videoPart(url)];
   const input = toOpenAIGenerationInput(
     {
       model: 'gemini-3-flash',
-      messages: [{ role: 'user', content: [videoPart(url)] }],
+      messages: [{ role: 'user', content }],
     },
     undefined,
     { allowLocalVideoPaths },
@@ -42,11 +46,32 @@ describe('OpenAI video_url conversion', () => {
   let tempDirectory: string;
   let videoPath: string;
   const videoBytes = Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x01, 0x02, 0x03]);
+  function videoToolConversation() {
+    return [
+      { role: 'user', content: 'Inspect the video.' },
+      {
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          {
+            id: 'call_video',
+            type: 'function',
+            function: { name: 'inspect_video', arguments: '{}' },
+          },
+        ],
+      },
+      {
+        role: 'tool',
+        tool_call_id: 'call_video',
+        content: [videoPart(videoPath)],
+      },
+    ] satisfies OpenAIChatRequest['messages'];
+  }
 
   beforeEach(() => {
     vi.clearAllMocks();
     tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'agm-video-url-'));
-    videoPath = path.join(tempDirectory, 'sample.webm');
+    videoPath = path.join(tempDirectory, 'sample#local.webm');
     fs.writeFileSync(videoPath, videoBytes);
   });
 
@@ -121,22 +146,19 @@ describe('OpenAI video_url conversion', () => {
     });
     expect(statSpy).not.toHaveBeenCalled();
     expect(readSpy).not.toHaveBeenCalled();
-    expect(mapVideoToGemini(videoPath)).toEqual([{ text: 'Continue' }]);
+
+    expect(mapVideoToGemini(videoPath, false, 'Continue')).toEqual([{ text: 'Continue' }]);
+    expect(statSpy.mock.calls.map(([filename]) => filename)).not.toContain(videoPath);
+    expect(readSpy.mock.calls.map(([filename]) => filename)).not.toContain(videoPath);
   });
 
   it('keeps the tool-result fallback when a local path is disabled', () => {
     const request = toOpenAIGenerationInput({
       model: 'gemini-3-flash',
-      messages: [
-        {
-          role: 'tool',
-          tool_call_id: 'call_video',
-          content: [videoPart(videoPath)],
-        },
-      ],
+      messages: videoToolConversation(),
     });
 
-    expect(request.messages[0]?.content).toEqual([
+    expect(request.messages[2]?.content).toEqual([
       {
         type: 'tool_result',
         tool_use_id: 'call_video',
@@ -150,24 +172,7 @@ describe('OpenAI video_url conversion', () => {
     const request = toOpenAIGenerationInput(
       {
         model: 'gemini-3-flash',
-        messages: [
-          {
-            role: 'assistant',
-            content: null,
-            tool_calls: [
-              {
-                id: 'call_video',
-                type: 'function',
-                function: { name: 'inspect_video', arguments: '{}' },
-              },
-            ],
-          },
-          {
-            role: 'tool',
-            tool_call_id: 'call_video',
-            content: [videoPart(videoPath)],
-          },
-        ],
+        messages: videoToolConversation(),
       },
       undefined,
       { allowLocalVideoPaths: true },
