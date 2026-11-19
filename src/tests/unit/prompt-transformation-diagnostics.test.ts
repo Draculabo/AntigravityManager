@@ -5,7 +5,7 @@ import {
   snapshotPromptTransformations,
 } from '@/server/gateway/common/prompt-transformation-diagnostics';
 import { buildAntigravityGenerationRequest } from '@/modules/proxy-gateway/antigravity/AntigravityRequestBuilder';
-import { normalizeSystemPrompt } from '@/modules/proxy-gateway/antigravity/SystemPromptNormalization';
+import { normalizeSystemPrompt } from '@/server/gateway/compatibility/client-compatibility';
 import { toOpenAIGenerationInput } from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
 import { prepareGeminiRequestThoughtSignatures } from '@/modules/proxy-gateway/antigravity/thought-signature-format';
 import { extractToolResultImages } from '@/modules/proxy-gateway/antigravity/MarkdownImageParts';

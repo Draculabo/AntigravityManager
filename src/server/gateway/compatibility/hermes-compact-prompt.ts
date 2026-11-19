@@ -1,17 +1,13 @@
-import type { OpenAIChatRequest } from '../../../common/interfaces/request-interfaces';
-import { recordPromptTransformation } from '../../../common/prompt-transformation-diagnostics';
+import type { OpenAIChatRequest } from '../common/interfaces/request-interfaces';
+import { recordPromptTransformation } from '../common/prompt-transformation-diagnostics';
 
-export const HERMES_PROMPT_HEADER = 'x-antigravity-hermes-prompt';
 const COMPACT_SYSTEM_PROMPT = 'Answer briefly.';
 // The named provider can also send auxiliary requests with their own system instructions.
 const HERMES_SYSTEM_OPENING =
   /^You are Hermes(?: Agent)?, (?:built by Nous Research\.|an (?:intelligent )?AI assistant created by Nous Research\.)/u;
 
-export function applyHermesCompactPrompt(
-  request: OpenAIChatRequest,
-  mode: string | string[] | undefined,
-): OpenAIChatRequest {
-  if (mode !== 'compact' || !Array.isArray(request.messages)) {
+export function applyHermesCompactPrompt(request: OpenAIChatRequest): OpenAIChatRequest {
+  if (!Array.isArray(request.messages)) {
     return request;
   }
 

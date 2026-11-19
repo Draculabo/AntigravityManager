@@ -465,8 +465,10 @@ headers do not define a new public identity.
 
 ## System prompt normalization
 
-Claude system blocks, initial OpenAI system/developer blocks, Responses instructions
-and native Gemini system parts share one system-text normalizer. Only initial
+The gateway registers built-in compatibility rules at two points. OpenAI Chat
+applies request rules before mapping. Claude system blocks, initial OpenAI
+system/developer blocks, Responses instructions and native Gemini system parts
+use the ordered system-text rules while building the upstream request. Only initial
 contiguous system/developer messages enter the initial instruction; later reminders
 remain at their original conversation position. User-supplied repetitions and
 dynamic dates, paths, UUIDs and request/session identifiers remain significant.

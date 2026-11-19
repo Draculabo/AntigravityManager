@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { stripClaudeBillingMetadata } from '@/modules/proxy-gateway/antigravity/ClientBillingMetadata';
+import { stripClaudeBillingMetadata } from '@/server/gateway/compatibility/client-billing-metadata';
 import { transformClaudeRequestIn } from '@/modules/proxy-gateway/antigravity/ClaudeRequestMapper';
 import type { ClaudeRequest } from '@/modules/proxy-gateway/antigravity/types';
 

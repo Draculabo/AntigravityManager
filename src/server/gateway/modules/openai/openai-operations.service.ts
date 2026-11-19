@@ -10,7 +10,10 @@ import {
 } from './media/image-output-failure';
 import { admitGenerationProjectRecovery } from '../../common/generation-project-recovery';
 import { resolveClientSessionHint } from '../../common/client-session-hint';
-import { applyHermesCompactPrompt, HERMES_PROMPT_HEADER } from './chat/hermes-compact-prompt';
+import {
+  HERMES_PROMPT_HEADER,
+  prepareClientChatRequest,
+} from '../../compatibility/client-compatibility';
 import { admitOpenAIInlineMedia } from '../../common/inline-media-admission';
 import {
   findOpenAIInitialTask,
@@ -660,7 +663,9 @@ export class OpenAIOperations extends BaseProxyController {
       } else {
         request = await awaitRequestOperation(
           expandFileReferences(
-            applyHermesCompactPrompt(body, req?.headers?.[HERMES_PROMPT_HEADER]),
+            prepareClientChatRequest(body, {
+              compactHermesPrompt: req?.headers?.[HERMES_PROMPT_HEADER] === 'compact',
+            }),
             'openai-chat',
             this.files,
           ),

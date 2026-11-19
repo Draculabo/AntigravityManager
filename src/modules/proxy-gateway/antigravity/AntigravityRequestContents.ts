@@ -9,7 +9,7 @@ import { extractToolResultImages, parseMarkdownImagesToGeminiParts } from './Mar
 import { SignatureStore } from './SignatureStore';
 import { hasExplicitAssistantSignature } from './signed-assistant-history';
 import { enhanceGeminiSkillsPrompt } from './SkillPromptEnhancer';
-import { normalizeSystemPrompt } from './SystemPromptNormalization';
+import { normalizeSystemPrompt } from '@/server/gateway/compatibility/client-compatibility';
 import { modelKeepsThinkingWithoutSignature } from './ThoughtSignatureCompat';
 import type { ContentBlock, GeminiContent, GeminiPart, Message, SystemPrompt, Tool } from './types';
 

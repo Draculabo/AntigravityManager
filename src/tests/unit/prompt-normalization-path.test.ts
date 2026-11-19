@@ -52,6 +52,16 @@ describe.each(['chat', 'responses', 'messages', 'gemini'] as const)(
       [sdk, codingAssistant],
       [sdkInCli, codingAssistant],
       [code, codingAssistant],
+      [
+        'You are OpenCode, an interactive CLI agent specializing in software engineering tasks.\nKeep the deployment checks.',
+        'You are an AI Agent.\nKeep the deployment checks.',
+      ],
+      [
+        'You are a coding agent running in the Codex CLI, a terminal-based coding assistant. ' +
+          'Codex CLI is an open source project led by OpenAI. You are expected to be precise, safe, and helpful.\nKeep the deployment checks.',
+        'You are a coding assistant. Codex CLI is an open source project led by OpenAI. ' +
+          'You are expected to be precise, safe, and helpful.\nKeep the deployment checks.',
+      ],
       [sdkInCli + '\nKeep the deployment checks.', sdkInCli + '\nKeep the deployment checks.'],
       [
         'You are Example, an AI assistant created by Example Labs; Keep all source paths relative.',

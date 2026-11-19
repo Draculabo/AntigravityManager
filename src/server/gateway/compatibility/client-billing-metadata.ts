@@ -1,4 +1,4 @@
-import { overlapsPromptProtection, promptProtectedRegions } from './PromptProtectedRegions';
+import { overlapsPromptProtection, promptProtectedRegions } from './prompt-protected-regions';
 
 /**
  * Claude Code puts transport billing metadata in system text blocks. Google rejects

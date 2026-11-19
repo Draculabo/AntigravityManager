@@ -5,7 +5,7 @@ import { buildAntigravityGenerationRequest } from '@/modules/proxy-gateway/antig
 import { transformClaudeRequestIn } from '@/modules/proxy-gateway/antigravity/ClaudeRequestMapper';
 import { toOpenAIGenerationInput } from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
 import { toInternalGeminiRequest } from '@/server/gateway/modules/gemini/gemini-request-envelope';
-import { stripClaudeBillingMetadata } from '@/modules/proxy-gateway/antigravity/ClientBillingMetadata';
+import { stripClaudeBillingMetadata } from '@/server/gateway/compatibility/client-billing-metadata';
 
 const billing = 'x-anthropic-billing-header: cc_entrypoint=controlled;';
 const attributed = 'You are Example, an AI assistant created by Example Labs.';

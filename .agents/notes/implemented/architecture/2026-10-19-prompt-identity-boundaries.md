@@ -17,8 +17,13 @@ Only known client metadata and policy templates may be removed. Dynamic user and
 client identity fields remain byte-preserved in the system instruction. Cache
 reuse must follow actual prompt identity rather than a guessed normalized string.
 
-Initial system text across Claude, OpenAI conversion/Responses instructions and
-native Gemini uses the same normalization owner. Exact standalone Claude Code
+The gateway owns two statically registered stages for client compatibility.
+OpenAI Chat request rules receive the request and typed opt-in settings before mapping.
+System-text rules receive only already-selected text and report the existing
+audit kinds at the original mapping points. Account retries use the same
+rules and do not configure their activation or order. Initial system text across Claude, OpenAI
+conversion/Responses instructions and native Gemini uses the same normalization owner.
+Exact standalone Claude Code
 and Claude Agent SDK identity templates map to `You are a coding assistant.`.
 Live Sonnet tool tasks returned upstream 429 with the Claude Code identity.
 The same task completed after the identity was made neutral with the existing

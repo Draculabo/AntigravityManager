@@ -1,9 +1,17 @@
-import { stripClaudeBillingMetadata } from './ClientBillingMetadata';
+import type { PromptTransformationKind } from '../common/prompt-transformation-diagnostics';
+import { stripClaudeBillingMetadata } from './client-billing-metadata';
 import {
   overlapsPromptProtection,
   promptProtectedRegions,
   type PromptRange,
-} from './PromptProtectedRegions';
+} from './prompt-protected-regions';
+
+type SystemTextChange = Extract<
+  PromptTransformationKind,
+  'billing-metadata-removed' | 'client-security-policy-removed' | 'identity-normalized'
+>;
+type ReportChange = ((kind: SystemTextChange) => void) | undefined;
+type SystemTextRule = (text: string, report: ReportChange) => string;
 
 const SDK_IDENTITY = "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
 const SDK_CLI_IDENTITY =
@@ -24,39 +32,45 @@ const CLIENT_SECURITY_POLICY = new RegExp(
   'gimu',
 );
 
-/** Only system-owned input enters this function; ordinary history and signatures never do. */
-export function normalizeSystemPrompt(
-  text: string,
-  onChange?: (
-    kind: 'billing-metadata-removed' | 'client-security-policy-removed' | 'identity-normalized',
-  ) => void,
-): string {
+function removeBillingMetadata(text: string, onChange: ReportChange): string {
   const withoutBilling = stripClaudeBillingMetadata(text);
   if (withoutBilling !== text) {
     onChange?.('billing-metadata-removed');
   }
+  return withoutBilling;
+}
+
+function removeKnownClientPolicy(text: string, onChange: ReportChange): string {
   // Match the complete client template. A generic opening or a later Harness heading
   // cannot establish ownership of the instructions between them.
   let policyProtection: PromptRange[] | undefined;
-  const cleaned = withoutBilling.replace(CLIENT_SECURITY_POLICY, (block: string, offset: number) =>
+  const cleaned = text.replace(CLIENT_SECURITY_POLICY, (block: string, offset: number) =>
     overlapsPromptProtection(
-      (policyProtection ??= promptProtectedRegions(withoutBilling)),
+      (policyProtection ??= promptProtectedRegions(text)),
       offset,
       offset + block.length,
     )
       ? block
       : '',
   );
-  if (cleaned !== withoutBilling) {
+  if (cleaned !== text) {
     onChange?.('client-security-policy-removed');
     if (cleaned.trim() === '') {
       return '';
     }
   }
-  if (cleaned === SDK_IDENTITY || cleaned === SDK_CLI_IDENTITY || cleaned === CODE_IDENTITY) {
+  return cleaned;
+}
+
+function normalizeClaudeIdentity(text: string, onChange: ReportChange): string {
+  if (text === SDK_IDENTITY || text === SDK_CLI_IDENTITY || text === CODE_IDENTITY) {
     onChange?.('identity-normalized');
     return 'You are a coding assistant.';
   }
+  return text;
+}
+
+function normalizeIdentityHead(cleaned: string, onChange: ReportChange): string {
   let headEnd = Math.min(cleaned.length, MAX_HEAD_CHARACTERS);
   let sentences = 0;
   for (let index = 0; index < headEnd; index++) {
@@ -80,7 +94,7 @@ export function normalizeSystemPrompt(
   const protectedRegions = promptProtectedRegions(cleaned);
   const declaration =
     /(?:^|(?<=[.!?。！？\n]))([\t ]*)(?:you[\t ]+are|you're|i[\t ]+am|i'm)[\t ]+(?:an?[\t ]+)?(?:[\w'’-]+[\t ,，]+){0,8}(?:agent|assistant|ai)\b[^.!?。！？;；\r\n<>]{0,8}?(?:(?:created|built|made|developed|designed|trained|powered|maintained|published|released|provided)[\t ]+(?:by|on|upon|at)|based[\t ]+on)[\t ]+(?:[^.,，。!?！？;；\r\n<>]|(?<=\d)\.(?=\d)){1,80}([.,，。!?！？;；]|(?=$|[\r\n]))/gimu;
-  const normalized =
+  return (
     head
       .replace(
         declaration,
@@ -105,10 +119,27 @@ export function normalizeSystemPrompt(
       .replace(OPENCODE_SYSTEM_OPENING, () => {
         onChange?.('identity-normalized');
         return `${NEUTRAL_IDENTITY}.`;
-      }) + cleaned.slice(headEnd);
+      }) + cleaned.slice(headEnd)
+  );
+}
+
+function normalizeCodexIdentity(text: string, onChange: ReportChange): string {
   // The complete first line identifies the default client template without matching custom roles.
-  return normalized.replace(CODEX_SYSTEM_OPENING, () => {
+  return text.replace(CODEX_SYSTEM_OPENING, () => {
     onChange?.('identity-normalized');
     return 'You are a coding assistant.';
   });
+}
+
+const systemTextRules: readonly SystemTextRule[] = [
+  removeBillingMetadata,
+  removeKnownClientPolicy,
+  normalizeClaudeIdentity,
+  normalizeIdentityHead,
+  normalizeCodexIdentity,
+];
+
+/** Accepts system text selected by the protocol mapper. */
+export function normalizeSystemPrompt(text: string, onChange?: ReportChange): string {
+  return systemTextRules.reduce((current, rule) => rule(current, onChange), text);
 }

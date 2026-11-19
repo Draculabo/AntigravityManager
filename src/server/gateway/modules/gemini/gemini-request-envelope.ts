@@ -11,7 +11,7 @@ import {
   resolveGlobalSystemPrompt,
 } from '../../../../modules/proxy-gateway/antigravity/GlobalSystemPrompt';
 import { getServerConfig } from '@/server/server-config';
-import { normalizeSystemPrompt } from '../../../../modules/proxy-gateway/antigravity/SystemPromptNormalization';
+import { normalizeSystemPrompt } from '../../compatibility/client-compatibility';
 import { recordPromptTransformation } from '../../common/prompt-transformation-diagnostics';
 
 export function toInternalGeminiRequest(

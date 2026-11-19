@@ -1,4 +1,4 @@
-import { stripClaudeBillingMetadata } from './ClientBillingMetadata';
+import { stripClaudeBillingMetadata } from '@/server/gateway/compatibility/client-billing-metadata';
 
 /**
  * Preserve user supplied system text byte-for-byte apart from the explicitly
