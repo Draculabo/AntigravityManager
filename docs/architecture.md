@@ -113,6 +113,12 @@ configuration before publishing prewarm events or replacing socket request state
 its prepared schemas during generation. See the [Schema reference](./modules/proxy-gateway/schema-conversion.md)
 for supported references, bounds and error contracts.
 
+The OpenAI and Anthropic request adapters supply protocol defaults to the shared
+[Antigravity request builder](../src/modules/proxy-gateway/antigravity/AntigravityRequestBuilder.ts).
+The builder takes typed generation input and the current attempt's project and model. It assembles
+the Google request and restores provider signatures for the resolved target. Account rotation and
+project fallback rebuild the request with their own attempt values and reuse prepared schemas.
+
 Protocol adapters own [streaming usage placement and tool generation compatibility](modules/proxy-gateway/stream-tool-compatibility.md).
 They preserve ordinary tool names and arguments; malformed generation retains valid output,
 adds an explicit assistant explanation and records an upstream audit diagnostic without

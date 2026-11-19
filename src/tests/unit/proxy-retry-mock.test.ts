@@ -8,6 +8,7 @@ import { PassThrough, Readable } from 'node:stream';
 import { AnthropicService } from '../../server/gateway/modules/anthropic/anthropic.service';
 import { GeminiService } from '../../server/gateway/modules/gemini/gemini.service';
 import { OpenAIService } from '../../server/gateway/modules/openai/openai.service';
+import { toOpenAIGenerationInput } from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
 import { Observable } from 'rxjs';
 import { GeminiClient } from '../../server/gateway/modules/gemini/gemini-client.service';
 import { Upstream4xxCaptureService } from '../../server/gateway/common/upstream-4xx-capture.service';
@@ -268,7 +269,11 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     mockAccountLeaseService.getNextToken.mockResolvedValue(createToken());
     mockGeminiClient.generateInternal
       .mockRejectedValueOnce(
-        new Error('Google Cloud Project lacks a Gemini Code Assist license (#3501)'),
+        new UpstreamRequestError({
+          status: 403,
+          message:
+            'You are currently configured to use a Google Cloud Project but lack a Gemini Code Assist license. (#3501)',
+        }),
       )
       .mockResolvedValueOnce({
         candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
@@ -278,6 +283,15 @@ describe('ProxyService Empty Stream Retry Logic', () => {
       messages: [{ role: 'user', content: 'hello' }],
     } as any);
     expect(mockGeminiClient.generateInternal).toHaveBeenCalledTimes(2);
+    const [primary, fallback] = mockGeminiClient.generateInternal.mock.calls.map(([body]) => body);
+    expect(primary?.project).toBe('project-1');
+    expect(fallback?.project).toBeUndefined();
+    expect(fallback?.request).toEqual(primary?.request);
+    expect(primary?.requestId).toMatch(/^agent\/\d+\/[0-9a-f]{8}$/);
+    expect(fallback?.requestId).toMatch(/^agent\/\d+\/[0-9a-f]{8}$/);
+    const configKeys = Object.keys(primary?.request.generationConfig ?? {});
+    expect(configKeys).toContain('temperature');
+    expect(configKeys.indexOf('thinkingConfig')).toBeGreaterThan(configKeys.indexOf('temperature'));
     const headers = mockGeminiClient.generateInternal.mock.calls.map((call) => call[3]);
     expect(headers[0]).not.toHaveProperty('x-machine-id');
     expect(headers[1]).toEqual(headers[0]);
@@ -1871,10 +1885,8 @@ describe('GeminiClient internal request parity', () => {
 });
 
 describe('ProxyService Protocol Parity Fixtures', () => {
-  it('maps OpenAI request to Anthropic request with tools and tool result', () => {
-    const service = new TestableOpenAIService();
-
-    const openaiRequest = {
+  it('maps an OpenAI request to generation input with a tool call and result', () => {
+    const openaiRequest: OpenAIChatRequest = {
       model: 'claude-sonnet-4-5',
       stream: false,
       temperature: 0.2,
@@ -1920,20 +1932,23 @@ describe('ProxyService Protocol Parity Fixtures', () => {
       ],
     };
 
-    const anthropicRequest = (service as any).convertOpenAIToClaude(openaiRequest);
+    const generationInput = toOpenAIGenerationInput(openaiRequest);
 
-    expect(anthropicRequest.system).toContain('You are a precise assistant.');
-    expect(anthropicRequest.tools?.[0]?.name).toBe('search_docs');
-    expect(anthropicRequest.messages.length).toBe(3);
+    expect(generationInput.system).toContain('You are a precise assistant.');
+    expect(generationInput.tools?.[0]?.name).toBe('search_docs');
+    expect(generationInput.messages.length).toBe(3);
 
-    const assistantMessage = anthropicRequest.messages[1];
-    expect(Array.isArray(assistantMessage.content)).toBe(true);
-    expect(assistantMessage.content.some((block: any) => block.type === 'tool_use')).toBe(true);
+    const assistantMessage = generationInput.messages[1];
+    expect(assistantMessage.content).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: 'tool_use', id: 'call_1' })]),
+    );
 
-    const toolResultMessage = anthropicRequest.messages[2];
+    const toolResultMessage = generationInput.messages[2];
     expect(toolResultMessage.role).toBe('user');
-    expect(Array.isArray(toolResultMessage.content)).toBe(true);
-    expect(toolResultMessage.content[0].type).toBe('tool_result');
+    expect(toolResultMessage.content[0]).toMatchObject({
+      type: 'tool_result',
+      tool_use_id: 'call_1',
+    });
   });
 
   it('maps Anthropic response to OpenAI response with reasoning and tool_calls', () => {

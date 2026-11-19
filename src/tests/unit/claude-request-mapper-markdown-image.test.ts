@@ -151,7 +151,7 @@ describe('ClaudeRequestMapper Markdown image compatibility', () => {
       messages: [{ role: 'user', content: 'Generate a product photo.' }],
     };
 
-    const body = transformClaudeRequestIn(request, undefined, undefined, undefined, 'openai', {
+    const body = transformClaudeRequestIn(request, undefined, undefined, undefined, {
       imageRequest: {
         imageSize: '4K',
         quality: 'standard',
@@ -178,13 +178,7 @@ describe('ClaudeRequestMapper Markdown image compatibility', () => {
       messages: [{ role: 'user', content: 'Generate a product photo.' }],
     };
 
-    const body = transformClaudeRequestIn(
-      request,
-      undefined,
-      undefined,
-      'gemini-3.1-pro-image',
-      'openai',
-    );
+    const body = transformClaudeRequestIn(request, undefined, undefined, 'gemini-3.1-pro-image');
 
     expect(body.model).toBe('gemini-3.1-pro-image');
     expect(body.request.generationConfig?.imageConfig).toEqual({
@@ -202,7 +196,6 @@ describe('ClaudeRequestMapper Markdown image compatibility', () => {
       undefined,
       undefined,
       'gemini-3-flash-image',
-      'openai',
     );
 
     expect(body.model).toBe('gemini-3-flash-image');

@@ -27,22 +27,25 @@ import {
   splitNamespaceToolName,
 } from '@/modules/proxy-gateway/antigravity/ToolNamespace';
 import { hashSessionAnchor } from '@/server/gateway/common/session-anchor-hash';
-import { ClaudeRequest, ClaudeResponse } from '@/modules/proxy-gateway/antigravity/types';
+import {
+  resolveGenerationOutput,
+  type AntigravityGenerationInput,
+} from '@/modules/proxy-gateway/antigravity/generation-input';
+import type { ClaudeResponse, ContentBlock, Tool } from '@/modules/proxy-gateway/antigravity/types';
 import { resolveOpenAIImageUrl } from '../openai-image-url';
 import { parseOpenAIInputAudio } from './openai-input-audio';
 import { resolveOpenAIVideoUrl } from './openai-video-url';
 import {
-  AnthropicChatRequest,
-  AnthropicContent,
   OpenAIChatRequest,
   OpenAIChatResponse,
   OpenAIContentPart,
   OpenAIToolCall,
 } from '@/server/gateway/common/interfaces/request-interfaces';
+import type { PreparedOpenAISchemas } from './openai-schema-preparation';
 
 export interface OpenAIConversionOptions {
   allowLocalVideoPaths?: boolean;
-  preparedSchemas?: Pick<ClaudeRequest, 'tools' | 'response_format'>;
+  preparedSchemas?: PreparedOpenAISchemas['schemas'];
 }
 
 export class InvalidOpenAIToolArgumentsError extends BadRequestException {
@@ -175,15 +178,15 @@ interface OpenAIPartsConversionOptions extends OpenAIConversionOptions {
   unreadableVideoFallback?: () => string;
 }
 
-export function convertOpenAIToClaude(
+export function toOpenAIGenerationInput(
   request: OpenAIChatRequest,
   signatureSessionKey?: string,
   options: OpenAIConversionOptions = {},
-): ClaudeRequest {
+): AntigravityGenerationInput {
   request = normalizeOpenAIChatToolCallIds(request);
   const messages = request.messages || [];
   const systemPromptParts: string[] = [];
-  const anthropicMessages: ClaudeRequest['messages'] = [];
+  const generationMessages: AntigravityGenerationInput['messages'] = [];
   let initialSystemSection = true;
 
   for (const [messageIndex, msg] of messages.entries()) {
@@ -213,7 +216,7 @@ export function convertOpenAIToClaude(
           message: messageIndex,
           part: null,
         });
-        anthropicMessages.push({
+        generationMessages.push({
           role: 'user',
           content: [
             {
@@ -234,16 +237,14 @@ export function convertOpenAIToClaude(
           'missing-pending-call',
         );
       }
-      const toolContent = convertOpenAIPartsToAnthropicContent(msg.content, {
+      const toolContent = convertOpenAIGenerationContent(msg.content, {
         allowLocalVideoPaths: options.allowLocalVideoPaths,
         remoteImageFallback: () => '[image link]',
         unreadableAudioFallback: () => '[audio]',
         unreadableVideoFallback: () => '[video]',
       });
       const toolResultText = toolContent
-        .filter(
-          (block): block is Extract<AnthropicContent, { type: 'text' }> => block.type === 'text',
-        )
+        .filter((block): block is Extract<ContentBlock, { type: 'text' }> => block.type === 'text')
         .map((block) => block.text)
         .join('\n');
       const toolMedia = toolContent.filter(
@@ -253,16 +254,16 @@ export function convertOpenAIToClaude(
           block.type === 'video' ||
           block.type === 'document',
       );
-      const toolResultContent: string | AnthropicContent[] =
+      const toolResultContent: string | ContentBlock[] =
         toolMedia.length === 0
           ? toolResultText
           : [
               ...(toolResultText === ''
                 ? []
-                : ([{ type: 'text', text: toolResultText }] satisfies AnthropicContent[])),
+                : ([{ type: 'text', text: toolResultText }] satisfies ContentBlock[])),
               ...toolMedia,
             ];
-      anthropicMessages.push({
+      generationMessages.push({
         role: 'user',
         content: [
           {
@@ -276,7 +277,7 @@ export function convertOpenAIToClaude(
       continue;
     }
 
-    const contentBlocks = convertOpenAIPartsToAnthropicContent(msg.content, {
+    const contentBlocks = convertOpenAIGenerationContent(msg.content, {
       allowLocalVideoPaths: options.allowLocalVideoPaths,
     });
 
@@ -299,7 +300,7 @@ export function convertOpenAIToClaude(
       continue;
     }
 
-    anthropicMessages.push({
+    generationMessages.push({
       role: msg.role === 'assistant' ? 'assistant' : 'user',
       content: contentBlocks,
     });
@@ -309,42 +310,42 @@ export function convertOpenAIToClaude(
 
   return {
     model: request.model,
-    messages: anthropicMessages,
+    messages: generationMessages,
     system: systemPrompt,
     tools: options.preparedSchemas
       ? structuredClone(options.preparedSchemas.tools)
-      : convertOpenAIToolsToAnthropicTools(request.tools),
+      : convertOpenAIGenerationTools(request.tools),
     thinking:
       getServerConfig()?.thinking_budget?.control_source === 'client'
         ? {
             type: request.thinking?.type ?? 'enabled',
-            budget_tokens: request.thinking?.budget_tokens ?? request.reasoning?.max_tokens,
+            budgetTokens: request.thinking?.budget_tokens ?? request.reasoning?.max_tokens,
             effort:
               request.reasoning_effort ?? request.reasoning?.effort ?? request.thinking?.effort,
           }
         : request.thinking
           ? {
               type: request.thinking.type ?? 'enabled',
-              budget_tokens: request.thinking.budget_tokens,
+              budgetTokens: request.thinking.budget_tokens,
               effort: request.thinking.effort,
             }
           : undefined,
-    max_tokens: request.max_tokens,
-    temperature: request.temperature,
-    top_p: request.top_p,
-    presence_penalty: request.presence_penalty,
-    frequency_penalty: request.frequency_penalty,
-    seed: request.seed,
-    response_format: options.preparedSchemas
-      ? structuredClone(options.preparedSchemas.response_format)
-      : request.response_format,
-    tool_choice: request.tool_choice,
-    stream: request.stream,
-    metadata: {
-      ...(request.extra ?? {}),
-      source: 'openai',
-      signature_session_key: signatureSessionKey,
+    parameters: {
+      temperature: request.temperature ?? 1.0,
+      topP: request.top_p ?? 0.95,
+      presencePenalty: request.presence_penalty,
+      frequencyPenalty: request.frequency_penalty,
+      seed: request.seed,
+      maxOutputTokens: request.max_tokens,
     },
+    output: resolveGenerationOutput(
+      options.preparedSchemas
+        ? structuredClone(options.preparedSchemas.responseFormat)
+        : request.response_format,
+    ),
+    toolChoice: request.tool_choice,
+    signatureSessionKey,
+    thinkingAfterParameters: true,
   };
 }
 
@@ -352,10 +353,10 @@ function wrapSystemReminder(text: string): string {
   return `<system-reminder>\n${text}\n</system-reminder>`;
 }
 
-export function convertOpenAIPartsToAnthropicContent(
+export function convertOpenAIGenerationContent(
   content: OpenAIChatRequest['messages'][number]['content'],
   options: OpenAIPartsConversionOptions = {},
-): AnthropicContent[] {
+): ContentBlock[] {
   if (isString(content)) {
     return content.trim() ? [{ type: 'text', text: content }] : [];
   }
@@ -363,7 +364,7 @@ export function convertOpenAIPartsToAnthropicContent(
     return [];
   }
 
-  const blocks: AnthropicContent[] = [];
+  const blocks: ContentBlock[] = [];
   for (const part of content) {
     if (part.type === 'text' && part.text) {
       blocks.push({ type: 'text', text: part.text });
@@ -458,7 +459,7 @@ function parseBase64DataUrl(
 
 function resolveOpenAIAudioUrl(
   value: OpenAIContentPart['audio_url'],
-): Extract<AnthropicContent, { type: 'audio' }>['source'] | null {
+): Extract<ContentBlock, { type: 'audio' }>['source'] | null {
   if (!value || !isString(value.url) || value.url.trim() === '') {
     return null;
   }
@@ -540,15 +541,15 @@ export function extractOpenAIToolNames(tools: OpenAIChatRequest['tools']): Reado
   return names;
 }
 
-export function convertOpenAIToolsToAnthropicTools(
+export function convertOpenAIGenerationTools(
   tools: OpenAIChatRequest['tools'],
   batch = new SchemaConversionBatch(),
-): AnthropicChatRequest['tools'] {
+): Tool[] | undefined {
   if (!tools || tools.length === 0) {
     return undefined;
   }
 
-  const result: NonNullable<AnthropicChatRequest['tools']> = [];
+  const result: Tool[] = [];
 
   for (const tool of flattenOpenAITools(tools) ?? []) {
     if (!tool) {

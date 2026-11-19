@@ -1,5 +1,5 @@
 import { normalizeObjectJsonSchema } from '../JsonSchemaUtils';
-import type { ClaudeRequest } from '../types';
+import type { ClaudeRequest, OpenAIResponseFormat } from '../types';
 import { logger } from '@/shared/logging/logger';
 import { SchemaConversionBatch } from './SchemaConversion';
 import { isGoogleSearchToolType } from '../ToolChoiceCompat';
@@ -29,9 +29,9 @@ export function prepareClaudeSchemas(
 }
 
 export function prepareResponseFormat(
-  format: ClaudeRequest['response_format'],
+  format: OpenAIResponseFormat | undefined,
   batch: SchemaConversionBatch,
-): ClaudeRequest['response_format'] {
+): OpenAIResponseFormat | undefined {
   if (format?.type !== 'json_schema' || !format.json_schema) {
     return format;
   }

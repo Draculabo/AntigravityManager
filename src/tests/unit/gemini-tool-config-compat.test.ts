@@ -17,7 +17,7 @@ describe('Gemini tool configuration compatibility', () => {
     'auto',
     'required',
     { type: 'function', function: { name: 'read_file' } },
-  ])('emits both aliases for OpenAI function choice %j', (tool_choice) => {
+  ])('emits both aliases for function choice %j', (tool_choice) => {
     const result = transformClaudeRequestIn(
       {
         model: 'gemini-3-flash',
@@ -28,7 +28,6 @@ describe('Gemini tool configuration compatibility', () => {
       '',
       'test',
       undefined,
-      'openai',
     ).request;
     const functionCallingConfig =
       tool_choice === undefined
@@ -57,23 +56,19 @@ describe('Gemini tool configuration compatibility', () => {
     expect(result.tools).toHaveLength(1);
     expect(result.tools?.[0]).not.toHaveProperty('googleSearch');
   });
-  it('keeps the different OpenAI and Anthropic search-only behavior', () => {
+  it('emits both aliases for search-only requests', () => {
     const request = {
       model: 'gemini-3-flash',
       messages: [{ role: 'user', content: 'Search' }],
       tools: [{ name: 'web_search', type: 'web_search_20250305' }],
     };
-    const openai = transformClaudeRequestIn(request, '', 'test', undefined, 'openai').request;
-    const anthropic = transformClaudeRequestIn(request, '', 'test', undefined, 'anthropic').request;
-    expect(openai.tools).toBeDefined();
-    expect(openai.toolConfig).toEqual({ includeServerSideToolInvocations: true });
-    expect(openai.tool_config).toEqual({ include_server_side_tool_invocations: true });
-    expect(normalizeGeminiToolConfigAliases(openai)).toEqual({
+    const result = transformClaudeRequestIn(request, '', 'test').request;
+    expect(result.tools).toBeDefined();
+    expect(result.toolConfig).toEqual({ includeServerSideToolInvocations: true });
+    expect(result.tool_config).toEqual({ include_server_side_tool_invocations: true });
+    expect(normalizeGeminiToolConfigAliases(result)).toEqual({
       toolConfig: { includeServerSideToolInvocations: true },
       tool_config: { include_server_side_tool_invocations: true },
-    });
-    expect(anthropic.tool_config).toEqual({
-      include_server_side_tool_invocations: true,
     });
   });
   it('treats empty tools, empty config and missing config separately', () => {

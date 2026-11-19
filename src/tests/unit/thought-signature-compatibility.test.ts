@@ -723,7 +723,6 @@ describe('thought signature compatibility', () => {
       undefined,
       undefined,
       'gpt-oss-120b-medium',
-      'anthropic',
       {
         signatureTargetFamily: 'gpt-oss-120b-medium',
         signatureTargetFamilyModel: 'gpt-oss-120b-medium',

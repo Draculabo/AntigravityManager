@@ -41,7 +41,7 @@ import { AccountLeaseService } from '@/server/gateway/modules/account-lease/acco
 import { GeminiClient } from '@/server/gateway/modules/gemini/gemini-client.service';
 import { v4 as uuidv4 } from 'uuid';
 import { Observable } from 'rxjs';
-import { transformClaudeRequestIn } from '@/modules/proxy-gateway/antigravity/ClaudeRequestMapper';
+import { buildAntigravityGenerationRequest } from '@/modules/proxy-gateway/antigravity/AntigravityRequestBuilder';
 import { resolveGlobalSystemPrompt } from '@/modules/proxy-gateway/antigravity/GlobalSystemPrompt';
 import {
   cleanImageModelName,
@@ -87,13 +87,12 @@ import {
   markProxyNormalizationStarted,
 } from '@/server/gateway/common/proxy-response-timing';
 import { toGeminiUsageMetadata, toUnknownRecord } from './responses/openai-responses-adapters';
-import { ClaudeRequest, ClaudeResponse } from '@/modules/proxy-gateway/antigravity/types';
+import type { ClaudeResponse } from '@/modules/proxy-gateway/antigravity/types';
 import {
   convertClaudeToOpenAIResponse,
-  convertOpenAIToClaude,
-  convertOpenAIToolsToAnthropicTools,
   mapGeminiFinishReasonToOpenAIFinishReason,
   normalizeOpenAIChatToolCallIds,
+  toOpenAIGenerationInput,
 } from './chat/openai-claude-conversion';
 import { GenerationConstraintsService } from '@/server/gateway/shared/services/generation-constraints.service';
 import { ModelRoutingService } from '@/server/gateway/shared/services/model-routing.service';
@@ -332,34 +331,29 @@ export class OpenAIService extends BaseProxyService {
 
       markProxyNormalizationStarted();
       try {
-        const claudeRequest = this.convertOpenAIToClaude(
-          accountRequest,
-          signatureReadSessionKey,
+        const generationInput = toOpenAIGenerationInput(accountRequest, signatureReadSessionKey, {
           preparedSchemas,
-        );
+          allowLocalVideoPaths: Boolean(getServerConfig()?.experimental?.allow_local_video_paths),
+        });
         const projectId = token.token.project_id ?? '';
         const requestUserAgent = await resolveRequestUserAgent();
-        const geminiBody = transformClaudeRequestIn(
-          claudeRequest,
+        const geminiBody = buildAntigravityGenerationRequest(generationInput, {
           projectId,
-          requestUserAgent,
-          accountTargetModel,
-          'openai',
-          {
-            ...preparedSchemaState(schemaBatch),
-            omitToolsWithResponseSchema: schemaProtocol === 'responses',
-            globalSystemPrompt,
-            mediaWindow: getServerConfig()?.image_scheduler,
-            mediaWindowProtectLatestUserTurn: responsesContext?.mediaWindowProtectLatestUserTurn,
-            imageRequest: {
-              imageSize: accountRequest.image_size,
-              quality: accountRequest.quality,
-              size: accountRequest.size,
-            },
-            signatureTargetFamily: effectiveVariantRequest.variant?.canonicalModel ?? null,
-            signatureTargetFamilyModel: accountTargetModel,
+          userAgent: requestUserAgent,
+          resolvedModel: accountTargetModel,
+          ...preparedSchemaState(schemaBatch),
+          omitToolsWithResponseSchema: schemaProtocol === 'responses',
+          globalSystemPrompt,
+          mediaWindow: getServerConfig()?.image_scheduler,
+          mediaWindowProtectLatestUserTurn: responsesContext?.mediaWindowProtectLatestUserTurn,
+          imageRequest: {
+            imageSize: accountRequest.image_size,
+            quality: accountRequest.quality,
+            size: accountRequest.size,
           },
-        );
+          signatureTargetFamily: effectiveVariantRequest.variant?.canonicalModel ?? null,
+          signatureTargetFamilyModel: accountTargetModel,
+        });
         this.applyInternalGenerationConstraints(
           geminiBody,
           geminiBody.model,
@@ -392,7 +386,7 @@ export class OpenAIService extends BaseProxyService {
               request.model,
               outputProtocol,
               responseSessionKey,
-              claudeRequest.messages.length,
+              generationInput.messages.length,
               geminiBody.model,
               effectiveVariantRequest.variant?.canonicalModel ?? null,
               accountTargetModel,
@@ -447,7 +441,7 @@ export class OpenAIService extends BaseProxyService {
               family: effectiveVariantRequest.variant?.canonicalModel ?? null,
               familyModel: accountTargetModel,
               signatureSessionKey: responseSessionKey,
-              signatureMessageCount: claudeRequest.messages.length,
+              signatureMessageCount: generationInput.messages.length,
             });
             const openaiResponse = this.convertClaudeToOpenAIResponse(
               claudeResponse,
@@ -458,7 +452,7 @@ export class OpenAIService extends BaseProxyService {
               ? this.createSyntheticResponsesStream(
                   openaiResponse,
                   responseSessionKey,
-                  claudeRequest.messages.length,
+                  generationInput.messages.length,
                   responsesContext?.responseId,
                   routedRequest.tools,
                 )
@@ -497,7 +491,7 @@ export class OpenAIService extends BaseProxyService {
             family: effectiveVariantRequest.variant?.canonicalModel ?? null,
             familyModel: accountTargetModel,
             signatureSessionKey: responseSessionKey,
-            signatureMessageCount: claudeRequest.messages.length,
+            signatureMessageCount: generationInput.messages.length,
           });
           this.logger.log(
             `Transformed Claude response snippet: ${safeStringifyPacket(claudeResponse).substring(0, 500)}`,
@@ -527,34 +521,34 @@ export class OpenAIService extends BaseProxyService {
           );
           try {
             markProxyNormalizationStarted();
-            const claudeRequest = this.convertOpenAIToClaude(
+            const generationInput = toOpenAIGenerationInput(
               accountRequest,
               signatureReadSessionKey,
-              preparedSchemas,
-            );
-            const requestUserAgent = await resolveRequestUserAgent();
-            const fallbackBody = transformClaudeRequestIn(
-              claudeRequest,
-              '',
-              requestUserAgent,
-              accountTargetModel,
-              'openai',
               {
-                ...preparedSchemaState(schemaBatch),
-                omitToolsWithResponseSchema: schemaProtocol === 'responses',
-                globalSystemPrompt,
-                mediaWindow: getServerConfig()?.image_scheduler,
-                mediaWindowProtectLatestUserTurn:
-                  responsesContext?.mediaWindowProtectLatestUserTurn,
-                imageRequest: {
-                  imageSize: accountRequest.image_size,
-                  quality: accountRequest.quality,
-                  size: accountRequest.size,
-                },
-                signatureTargetFamily: effectiveVariantRequest.variant?.canonicalModel ?? null,
-                signatureTargetFamilyModel: accountTargetModel,
+                preparedSchemas,
+                allowLocalVideoPaths: Boolean(
+                  getServerConfig()?.experimental?.allow_local_video_paths,
+                ),
               },
             );
+            const requestUserAgent = await resolveRequestUserAgent();
+            const fallbackBody = buildAntigravityGenerationRequest(generationInput, {
+              projectId: '',
+              userAgent: requestUserAgent,
+              resolvedModel: accountTargetModel,
+              ...preparedSchemaState(schemaBatch),
+              omitToolsWithResponseSchema: schemaProtocol === 'responses',
+              globalSystemPrompt,
+              mediaWindow: getServerConfig()?.image_scheduler,
+              mediaWindowProtectLatestUserTurn: responsesContext?.mediaWindowProtectLatestUserTurn,
+              imageRequest: {
+                imageSize: accountRequest.image_size,
+                quality: accountRequest.quality,
+                size: accountRequest.size,
+              },
+              signatureTargetFamily: effectiveVariantRequest.variant?.canonicalModel ?? null,
+              signatureTargetFamilyModel: accountTargetModel,
+            });
             this.applyInternalGenerationConstraints(
               fallbackBody,
               fallbackBody.model,
@@ -587,7 +581,7 @@ export class OpenAIService extends BaseProxyService {
                 request.model,
                 outputProtocol,
                 responseSessionKey,
-                claudeRequest.messages.length,
+                generationInput.messages.length,
                 fallbackBody.model,
                 effectiveVariantRequest.variant?.canonicalModel ?? null,
                 accountTargetModel,
@@ -624,7 +618,7 @@ export class OpenAIService extends BaseProxyService {
               family: effectiveVariantRequest.variant?.canonicalModel ?? null,
               familyModel: accountTargetModel,
               signatureSessionKey: responseSessionKey,
-              signatureMessageCount: claudeRequest.messages.length,
+              signatureMessageCount: generationInput.messages.length,
             });
             return this.convertClaudeToOpenAIResponse(
               claudeResponse,
@@ -1344,34 +1338,12 @@ export class OpenAIService extends BaseProxyService {
     );
   }
 
-  // Convert OpenAI request format to Claude/Anthropic format
-  // Thin delegates kept on the service on purpose. The conversion itself lives in
-  // `chat/openai-claude-conversion.ts`, but these two are reached through the service
-  // instance by the existing parity and retry suites, and this split is meant to preserve
-  // the surface as well as the behavior.
-  private convertOpenAIToClaude(
-    request: OpenAIChatRequest,
-    signatureSessionKey?: string,
-    preparedSchemas?: Pick<ClaudeRequest, 'tools' | 'response_format'>,
-  ): ClaudeRequest {
-    return convertOpenAIToClaude(request, signatureSessionKey, {
-      preparedSchemas,
-      allowLocalVideoPaths: Boolean(getServerConfig()?.experimental?.allow_local_video_paths),
-    });
-  }
-
   private convertClaudeToOpenAIResponse(
     claudeResponse: ClaudeResponse,
     model: string,
     clientTools?: OpenAIChatRequest['tools'],
   ): OpenAIChatResponse {
     return convertClaudeToOpenAIResponse(claudeResponse, model, clientTools);
-  }
-
-  private convertOpenAIToolsToAnthropicTools(
-    tools: OpenAIChatRequest['tools'],
-  ): ReturnType<typeof convertOpenAIToolsToAnthropicTools> {
-    return convertOpenAIToolsToAnthropicTools(tools);
   }
 
   private toOpenAISessionKey(sessionId: string): string {

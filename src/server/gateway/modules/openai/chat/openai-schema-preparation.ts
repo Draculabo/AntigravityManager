@@ -1,4 +1,4 @@
-import type { ClaudeRequest } from '@/modules/proxy-gateway/antigravity/types';
+import type { OpenAIResponseFormat, Tool } from '@/modules/proxy-gateway/antigravity/types';
 import {
   buildToolConfig,
   ToolConfigurationError,
@@ -9,10 +9,13 @@ import {
   reportSchemaIssues,
 } from '@/modules/proxy-gateway/antigravity/schema/SchemaPreparation';
 import type { OpenAIChatRequest } from '../../../common/interfaces/request-interfaces';
-import { convertOpenAIToolsToAnthropicTools } from './openai-claude-conversion';
+import { convertOpenAIGenerationTools } from './openai-claude-conversion';
 
 export interface PreparedOpenAISchemas {
-  schemas: Pick<ClaudeRequest, 'tools' | 'response_format'>;
+  schemas: {
+    tools?: Tool[];
+    responseFormat?: OpenAIResponseFormat;
+  };
   batch: SchemaConversionBatch;
 }
 
@@ -24,7 +27,7 @@ export function validateOpenAIRequestTools(
   const config = buildToolConfig(toolChoice, schemas.tools ?? []);
   if (
     protocol === 'responses' &&
-    schemas.response_format?.type === 'json_schema' &&
+    schemas.responseFormat?.type === 'json_schema' &&
     config.functionCallingConfig?.mode === 'ANY'
   ) {
     throw new ToolConfigurationError('required-with-json-schema');
@@ -37,9 +40,9 @@ export function prepareOpenAIRequestSchemas(
 ): PreparedOpenAISchemas {
   const batch = new SchemaConversionBatch();
   try {
-    const schemas: Pick<ClaudeRequest, 'tools' | 'response_format'> = {
-      tools: convertOpenAIToolsToAnthropicTools(request.tools, batch),
-      response_format: prepareResponseFormat(request.response_format, batch),
+    const schemas: PreparedOpenAISchemas['schemas'] = {
+      tools: convertOpenAIGenerationTools(request.tools, batch),
+      responseFormat: prepareResponseFormat(request.response_format, batch),
     };
     return { schemas, batch };
   } finally {

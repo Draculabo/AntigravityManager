@@ -4,9 +4,9 @@ import {
   recordPromptTransformation,
   snapshotPromptTransformations,
 } from '@/server/gateway/common/prompt-transformation-diagnostics';
-import { transformClaudeRequestIn } from '@/modules/proxy-gateway/antigravity/ClaudeRequestMapper';
+import { buildAntigravityGenerationRequest } from '@/modules/proxy-gateway/antigravity/AntigravityRequestBuilder';
 import { normalizeSystemPrompt } from '@/modules/proxy-gateway/antigravity/SystemPromptNormalization';
-import { convertOpenAIToClaude } from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
+import { toOpenAIGenerationInput } from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
 import { prepareGeminiRequestThoughtSignatures } from '@/modules/proxy-gateway/antigravity/thought-signature-format';
 import { extractToolResultImages } from '@/modules/proxy-gateway/antigravity/MarkdownImageParts';
 
@@ -143,7 +143,7 @@ describe('bounded request-local transformation metadata', () => {
     expect(normalizeSystemPrompt(protectedText, (kind) => changes.push(kind))).toBe(protectedText);
     expect(changes).toEqual([]);
     runWithTrafficAuditRequestContext(context(), () => {
-      const chat = convertOpenAIToClaude({
+      const chat = toOpenAIGenerationInput({
         model: 'gemini-3-flash',
         messages: [
           { role: 'system', content: 'You are an AI assistant built by Example.' },
@@ -151,7 +151,11 @@ describe('bounded request-local transformation metadata', () => {
           { role: 'system', content: 'late fixture reminder' },
         ],
       });
-      transformClaudeRequestIn(chat, 'controlled-project', 'controlled-agent', 'gemini-3-flash');
+      buildAntigravityGenerationRequest(chat, {
+        projectId: 'controlled-project',
+        userAgent: 'controlled-agent',
+        resolvedModel: 'gemini-3-flash',
+      });
       expect(snapshotPromptTransformations()).toEqual({
         entries: [
           { kind: 'initial-system-promoted', surface: 'messages', message: 0, part: null },
@@ -184,14 +188,16 @@ describe('bounded request-local transformation metadata', () => {
       tools: [tool],
     };
     const map = (content: string) =>
-      transformClaudeRequestIn(
-        convertOpenAIToClaude({
+      buildAntigravityGenerationRequest(
+        toOpenAIGenerationInput({
           ...request,
           messages: [{ role: 'system', content }, request.messages[1]],
         }),
-        'controlled-project',
-        'controlled-agent',
-        'gemini-3-flash',
+        {
+          projectId: 'controlled-project',
+          userAgent: 'controlled-agent',
+          resolvedModel: 'gemini-3-flash',
+        },
       ).request;
 
     const neutral = map('You are an AI Agent.' + instruction);

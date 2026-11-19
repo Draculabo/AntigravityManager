@@ -6,6 +6,7 @@ import { Observable } from 'rxjs';
 
 import { OpenAIService as ProxyService } from '../../server/gateway/modules/openai/openai.service';
 import type { OpenAIChatRequest } from '@/server/gateway/common/interfaces/request-interfaces';
+import { toOpenAIGenerationInput } from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
 
 const mockAccountLeaseService = {
   getNextToken: vi.fn(),
@@ -29,10 +30,6 @@ class TestableProxyService extends ProxyService {
     );
   }
 
-  public toAnthropic(request: any): any {
-    return (this as any).convertOpenAIToClaude(request);
-  }
-
   public toOpenAI(response: any, model: string, clientTools?: OpenAIChatRequest['tools']): any {
     return (this as any).convertClaudeToOpenAIResponse(response, model, clientTools);
   }
@@ -48,17 +45,16 @@ function readFixture<T>(relativePath: string): T {
 }
 
 describe('Proxy Parity Fixtures', () => {
-  it('maps OpenAI request fixture to expected Anthropic request semantics', () => {
-    const service = new TestableProxyService();
-    const input = readFixture<any>('request/openai.chat-tools.input.json');
+  it('maps the OpenAI request fixture to expected generation semantics', () => {
+    const input = readFixture<OpenAIChatRequest>('request/openai.chat-tools.input.json');
     const expected = readFixture<any>('request/openai.chat-tools.expected.json');
 
-    const actual = service.toAnthropic(input);
+    const actual = toOpenAIGenerationInput(input);
 
     expect(actual.model).toBe(expected.model);
     expect(actual.system).toBe(expected.system);
-    expect(actual.temperature).toBe(expected.temperature);
-    expect(actual.max_tokens).toBe(expected.max_tokens);
+    expect(actual.parameters.temperature).toBe(expected.temperature);
+    expect(actual.parameters.maxOutputTokens).toBe(expected.max_tokens);
     expect(actual.tools?.[0]?.name).toBe(expected.tools[0].name);
     expect(actual.messages[0]).toEqual(expected.messages[0]);
     expect(actual.messages[1].content[1]).toEqual(expected.messages[1].content[1]);
@@ -66,8 +62,7 @@ describe('Proxy Parity Fixtures', () => {
   });
 
   it('keeps developer instructions, explicit repeats and their whitespace in source order', () => {
-    const service = new TestableProxyService();
-    const actual = service.toAnthropic({
+    const actual = toOpenAIGenerationInput({
       model: 'gpt-5-codex',
       messages: [
         { role: 'system', content: 'Shared policy.' },
@@ -90,8 +85,7 @@ describe('Proxy Parity Fixtures', () => {
   });
 
   it('removes Codex-injected tools from function parameter schemas', () => {
-    const service = new TestableProxyService();
-    const input = {
+    const input: OpenAIChatRequest = {
       model: 'claude-sonnet-4-5',
       tools: [
         {
@@ -115,10 +109,10 @@ describe('Proxy Parity Fixtures', () => {
       messages: [{ role: 'user', content: 'Find API key docs' }],
     };
 
-    const actual = service.toAnthropic(input);
+    const actual = toOpenAIGenerationInput(input);
 
     expect(actual.tools?.[0]?.input_schema).not.toHaveProperty('tools');
-    expect(actual.tools?.[0]?.input_schema.properties.query).not.toHaveProperty('tools');
+    expect(actual.tools?.[0]?.input_schema?.properties?.query).not.toHaveProperty('tools');
   });
 
   it('maps Anthropic response fixture to expected OpenAI response semantics', () => {

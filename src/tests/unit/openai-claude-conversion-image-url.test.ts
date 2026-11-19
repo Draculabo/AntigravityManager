@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  convertOpenAIPartsToAnthropicContent,
-  convertOpenAIToClaude,
+  convertOpenAIGenerationContent,
+  toOpenAIGenerationInput,
 } from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
 import type { OpenAIContentPart } from '@/server/gateway/common/interfaces/request-interfaces';
 
@@ -25,7 +25,7 @@ describe('OpenAI image URL conversion', () => {
   it.each(imageUrls)(
     'converts supported image URL form %# into an Anthropic image block',
     (imageUrl) => {
-      const content = convertOpenAIPartsToAnthropicContent([
+      const content = convertOpenAIGenerationContent([
         {
           type: 'image_url',
           image_url: imageUrl,
@@ -49,7 +49,7 @@ describe('OpenAI image URL conversion', () => {
   );
 
   it('keeps tool-result text and image media in one ordered result payload', () => {
-    const request = convertOpenAIToClaude({
+    const request = toOpenAIGenerationInput({
       model: 'gemini-3-flash',
       messages: [
         pendingToolCall('call_image'),
@@ -91,7 +91,7 @@ describe('OpenAI image URL conversion', () => {
 
   it('maps audio_url data and remote URLs while keeping the tool fallback', () => {
     expect(
-      convertOpenAIPartsToAnthropicContent([
+      convertOpenAIGenerationContent([
         {
           type: 'audio_url',
           audio_url: { url: 'data:audio/wav;name=sample;base64,AQ==' },
@@ -116,7 +116,7 @@ describe('OpenAI image URL conversion', () => {
       },
     ]);
 
-    const request = convertOpenAIToClaude({
+    const request = toOpenAIGenerationInput({
       model: 'gemini-3-flash',
       messages: [
         pendingToolCall('call_audio'),
@@ -138,7 +138,7 @@ describe('OpenAI image URL conversion', () => {
   });
 
   it('keeps the tool-result fallback for a remote image link', () => {
-    const request = convertOpenAIToClaude({
+    const request = toOpenAIGenerationInput({
       model: 'gemini-3-flash',
       messages: [
         pendingToolCall('call_image'),

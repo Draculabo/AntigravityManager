@@ -3,7 +3,7 @@ import { InvalidToolResultAssociationError } from '@/modules/proxy-gateway/antig
 import type { OpenAIChatRequest } from '@/server/gateway/common/interfaces/request-interfaces';
 import { OpenAIService } from '@/server/gateway/modules/openai/openai.service';
 import {
-  convertOpenAIToClaude,
+  toOpenAIGenerationInput,
   InvalidOpenAIToolArgumentsError,
   normalizeOpenAIChatToolCallIds,
   parseOpenAIFunctionArguments,
@@ -83,7 +83,7 @@ describe('OpenAI Chat tool-call identity', () => {
 
     const normalized = normalizeOpenAIChatToolCallIds(request);
     const callId = normalized.messages[1]?.tool_calls?.[0]?.id;
-    const mapped = convertOpenAIToClaude(request);
+    const mapped = toOpenAIGenerationInput(request);
     const blocks = mapped.messages.flatMap((message) =>
       Array.isArray(message.content) ? message.content : [],
     );

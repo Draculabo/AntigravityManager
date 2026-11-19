@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { transformClaudeRequestIn } from '@/modules/proxy-gateway/antigravity/ClaudeRequestMapper';
-import { convertOpenAIToClaude } from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
+import { buildAntigravityGenerationRequest } from '@/modules/proxy-gateway/antigravity/AntigravityRequestBuilder';
+import { toOpenAIGenerationInput } from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
 import { buildResponsesChatRequest } from '@/server/gateway/modules/openai/responses/openai-responses-request';
 
 describe('OpenAI conversation order compatibility', () => {
   it('preserves leading system/developer order and wraps only later reminders in place', () => {
-    const claudeRequest = convertOpenAIToClaude({
+    const input = toOpenAIGenerationInput({
       model: 'gemini-3-flash',
       messages: [
         { role: 'system', content: 'Rule S1.' },
@@ -19,8 +19,8 @@ describe('OpenAI conversation order compatibility', () => {
       ],
     });
 
-    expect(claudeRequest.system).toBe('Rule S1.\nRule D1.');
-    expect(claudeRequest.messages).toEqual([
+    expect(input.system).toBe('Rule S1.\nRule D1.');
+    expect(input.messages).toEqual([
       {
         role: 'user',
         content: [{ type: 'text', text: 'Inspect the code.' }],
@@ -43,13 +43,10 @@ describe('OpenAI conversation order compatibility', () => {
       },
     ]);
 
-    const upstream = transformClaudeRequestIn(
-      claudeRequest,
-      'project',
-      'agent',
-      undefined,
-      'openai',
-    );
+    const upstream = buildAntigravityGenerationRequest(input, {
+      projectId: 'project',
+      userAgent: 'agent',
+    });
     expect(upstream.request.systemInstruction?.parts[0]?.text).toBe('Rule S1.\nRule D1.');
     expect(upstream.request.contents.map((message) => message.parts[0]?.text)).toEqual([
       'Inspect the code.',
@@ -62,7 +59,7 @@ describe('OpenAI conversation order compatibility', () => {
 
   it('does not merge distinct instructions after removing billing metadata', () => {
     const billingLine = 'x-anthropic-billing-header: cc_version=2.0; cc_entrypoint=cli;';
-    const claudeRequest = convertOpenAIToClaude({
+    const input = toOpenAIGenerationInput({
       model: 'gemini-3-flash',
       messages: [
         { role: 'system', content: `Current date: 2026-10-19\n\nRule A.` },
@@ -70,13 +67,10 @@ describe('OpenAI conversation order compatibility', () => {
         { role: 'user', content: 'Continue.' },
       ],
     });
-    const upstream = transformClaudeRequestIn(
-      claudeRequest,
-      'project',
-      'agent',
-      undefined,
-      'openai',
-    );
+    const upstream = buildAntigravityGenerationRequest(input, {
+      projectId: 'project',
+      userAgent: 'agent',
+    });
     const instruction = upstream.request.systemInstruction?.parts[0]?.text ?? '';
 
     expect(instruction).toContain('Current date: 2026-10-19');
@@ -86,7 +80,7 @@ describe('OpenAI conversation order compatibility', () => {
   });
 
   it('prepends a user turn when history starts with an assistant tool call', () => {
-    const claudeRequest = convertOpenAIToClaude({
+    const input = toOpenAIGenerationInput({
       model: 'gemini-3-flash',
       messages: [
         { role: 'system', content: 'Use tools when needed.' },
@@ -112,13 +106,10 @@ describe('OpenAI conversation order compatibility', () => {
       ],
     });
 
-    const contents = transformClaudeRequestIn(
-      claudeRequest,
-      'project',
-      'agent',
-      undefined,
-      'openai',
-    ).request.contents;
+    const contents = buildAntigravityGenerationRequest(input, {
+      projectId: 'project',
+      userAgent: 'agent',
+    }).request.contents;
 
     expect(contents.map((content) => content.role)).toEqual(['user', 'model', 'user']);
     expect(contents[0]).toEqual({
@@ -152,18 +143,15 @@ describe('OpenAI conversation order compatibility', () => {
   });
 
   it('adds a user turn when system messages are the only effective input', () => {
-    const claudeRequest = convertOpenAIToClaude({
+    const input = toOpenAIGenerationInput({
       model: 'gemini-3-flash',
       messages: [{ role: 'system', content: 'Use tools when needed.' }],
     });
 
-    const contents = transformClaudeRequestIn(
-      claudeRequest,
-      'project',
-      'agent',
-      undefined,
-      'openai',
-    ).request.contents;
+    const contents = buildAntigravityGenerationRequest(input, {
+      projectId: 'project',
+      userAgent: 'agent',
+    }).request.contents;
 
     expect(contents).toEqual([
       {
@@ -186,20 +174,17 @@ describe('OpenAI conversation order compatibility', () => {
       ],
     });
 
-    const claudeRequest = convertOpenAIToClaude(chatRequest);
-    if (typeof claudeRequest.system !== 'string') {
+    const input = toOpenAIGenerationInput(chatRequest);
+    if (typeof input.system !== 'string') {
       throw new Error('Expected an OpenAI system prompt string');
     }
-    expect(claudeRequest.system).toContain(genericIdentity);
-    expect(claudeRequest.system).not.toContain(staleIdentity);
+    expect(input.system).toContain(genericIdentity);
+    expect(input.system).not.toContain(staleIdentity);
 
-    const upstream = transformClaudeRequestIn(
-      claudeRequest,
-      'project',
-      'agent',
-      undefined,
-      'openai',
-    );
+    const upstream = buildAntigravityGenerationRequest(input, {
+      projectId: 'project',
+      userAgent: 'agent',
+    });
     const systemText = upstream.request.systemInstruction?.parts
       .map((part) => part.text)
       .join('\n');

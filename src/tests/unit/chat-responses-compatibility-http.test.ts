@@ -3,6 +3,7 @@
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
+import { lastValueFrom, toArray } from 'rxjs';
 import { afterEach, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
@@ -11,6 +12,7 @@ import { ProxyGuard } from '@/server/gateway/guards/proxy.guard';
 import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
 import { OpenAIChatController } from '@/server/gateway/modules/openai/openai-chat.controller';
 import { OpenAIResponsesController } from '@/server/gateway/modules/openai/responses/openai-responses.controller';
+import { createResponsesWebSocketOperations } from '@/server/gateway/modules/openai/responses/openai-responses-websocket.operations';
 import { OpenAIResponsesSessionService } from '@/server/gateway/modules/openai/responses/openai-responses-session.service';
 import { OpenAIChatCompletionStoreImpl } from '@/server/gateway/modules/openai/chat/openai-chat-completion.store';
 import { PIXEL_PNG } from '../fixtures/image-content';
@@ -80,7 +82,8 @@ async function fixture(
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(5_000),
     });
-  return { app, origin, send, upstream, lease, store, completions };
+  const socketOperations = createResponsesWebSocketOperations(operations, gateway.openAIService);
+  return { app, origin, send, upstream, lease, store, completions, socketOperations };
 }
 
 const conversation = {
@@ -110,6 +113,26 @@ const structuredRequest = {
   store: false,
 };
 
+it('uses the schema admitted by Responses WebSocket in the upstream generation request', async () => {
+  const { socketOperations, upstream } = await fixture();
+  const request = { ...structuredRequest, stream: true, input: 'Produce an answer' };
+  await socketOperations.validateRequest?.(request, 'generate');
+
+  const stream = await socketOperations.streamRequest(request, AbortSignal.timeout(5_000));
+  const events = await lastValueFrom(stream.pipe(toArray()));
+
+  expect(events.join('')).toContain('response.completed');
+  expect(upstream.calls).toHaveLength(1);
+  const body = upstream.calls[0]?.body;
+  expect(body?.request.generationConfig).toMatchObject({
+    temperature: 1,
+    topP: 0.95,
+    responseMimeType: 'application/json',
+    responseSchema: structuredFormat.schema,
+  });
+  expect(body?.request).not.toHaveProperty('tools');
+});
+
 it.each([false, true])(
   'omits optional tools from the Responses JSON Schema send (stream=%s)',
   async (stream) => {
@@ -130,7 +153,12 @@ it.each([false, true])(
     expect(response.status, await response.text()).toBe(200);
     expect(upstream.calls).toHaveLength(1);
     const request = upstream.calls[0]?.body.request;
-    expect(request?.generationConfig?.responseSchema).toEqual(structuredFormat.schema);
+    expect(request?.generationConfig).toMatchObject({
+      temperature: 1,
+      topP: 0.95,
+      responseMimeType: 'application/json',
+      responseSchema: structuredFormat.schema,
+    });
     expect(request).not.toHaveProperty('tools');
     expect(request).not.toHaveProperty('toolConfig');
     expect(request).not.toHaveProperty('tool_config');

@@ -157,18 +157,11 @@ export class AnthropicService extends BaseProxyService {
     );
 
     const requestUserAgent = await resolveRequestUserAgent();
-    const geminiBody = transformClaudeRequestIn(
-      prepared,
-      '',
-      requestUserAgent,
-      targetModel,
-      'anthropic',
-      {
-        schemasPrepared: true,
-        cacheSchemas: !batch.degraded,
-        purpose: 'count',
-      },
-    );
+    const geminiBody = transformClaudeRequestIn(prepared, '', requestUserAgent, targetModel, {
+      schemasPrepared: true,
+      cacheSchemas: !batch.degraded,
+      purpose: 'count',
+    });
 
     return completeCountEstimate(geminiBody, 'anthropic-local');
   }
@@ -622,7 +615,6 @@ export class AnthropicService extends BaseProxyService {
         params.projectId,
         requestUserAgent,
         params.targetModel,
-        'anthropic',
         {
           schemasPrepared: true,
           globalSystemPrompt: params.globalSystemPrompt,

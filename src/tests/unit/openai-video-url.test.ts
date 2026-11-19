@@ -5,8 +5,8 @@ import { pathToFileURL } from 'url';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { transformClaudeRequestIn } from '@/modules/proxy-gateway/antigravity/ClaudeRequestMapper';
-import { convertOpenAIToClaude } from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
+import { buildAntigravityGenerationRequest } from '@/modules/proxy-gateway/antigravity/AntigravityRequestBuilder';
+import { toOpenAIGenerationInput } from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
 import {
   normalizeVideoMime,
   resolveOpenAIVideoUrl,
@@ -26,7 +26,7 @@ function videoPart(url: string, mimeType?: string): OpenAIContentPart {
 }
 
 function mapVideoToGemini(url: string, allowLocalVideoPaths = false) {
-  const claude = convertOpenAIToClaude(
+  const input = toOpenAIGenerationInput(
     {
       model: 'gemini-3-flash',
       messages: [{ role: 'user', content: [videoPart(url)] }],
@@ -34,8 +34,8 @@ function mapVideoToGemini(url: string, allowLocalVideoPaths = false) {
     undefined,
     { allowLocalVideoPaths },
   );
-  return transformClaudeRequestIn(claude, 'project', 'agent', undefined, 'openai').request
-    .contents[0]?.parts;
+  return buildAntigravityGenerationRequest(input, { projectId: 'project', userAgent: 'agent' })
+    .request.contents[0]?.parts;
 }
 
 describe('OpenAI video_url conversion', () => {
@@ -125,7 +125,7 @@ describe('OpenAI video_url conversion', () => {
   });
 
   it('keeps the tool-result fallback when a local path is disabled', () => {
-    const request = convertOpenAIToClaude({
+    const request = toOpenAIGenerationInput({
       model: 'gemini-3-flash',
       messages: [
         {
@@ -147,7 +147,7 @@ describe('OpenAI video_url conversion', () => {
   });
 
   it('emits successful tool video after the function response', () => {
-    const request = convertOpenAIToClaude(
+    const request = toOpenAIGenerationInput(
       {
         model: 'gemini-3-flash',
         messages: [
@@ -173,8 +173,10 @@ describe('OpenAI video_url conversion', () => {
       { allowLocalVideoPaths: true },
     );
 
-    const contents = transformClaudeRequestIn(request, 'project', 'agent', undefined, 'openai')
-      .request.contents;
+    const contents = buildAntigravityGenerationRequest(request, {
+      projectId: 'project',
+      userAgent: 'agent',
+    }).request.contents;
     expect(contents[2]?.parts).toEqual([
       {
         functionResponse: {

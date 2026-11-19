@@ -5,7 +5,7 @@ import { ToolConfigurationError } from '@/modules/proxy-gateway/antigravity/Tool
 import type { ClaudeRequest } from '@/modules/proxy-gateway/antigravity/types';
 import {
   convertClaudeToOpenAIResponse,
-  convertOpenAIToolsToAnthropicTools,
+  convertOpenAIGenerationTools,
 } from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
 
 function createWebSearchRequest(model: string): ClaudeRequest {
@@ -86,7 +86,7 @@ describe('ClaudeRequestMapper web-search model compatibility', () => {
   });
 
   it('classifies OpenAI built-ins by declared type instead of function name', () => {
-    const ordinaryFunction = convertOpenAIToolsToAnthropicTools([
+    const ordinaryFunction = convertOpenAIGenerationTools([
       {
         type: 'function',
         function: {
@@ -95,7 +95,7 @@ describe('ClaudeRequestMapper web-search model compatibility', () => {
         },
       },
     ]);
-    const builtInSearch = convertOpenAIToolsToAnthropicTools([
+    const builtInSearch = convertOpenAIGenerationTools([
       {
         type: 'google_search',
         name: 'custom_search_alias',
@@ -108,7 +108,7 @@ describe('ClaudeRequestMapper web-search model compatibility', () => {
   });
 
   it('keeps an ordinary OpenAI function named apply_patch on its declared schema', () => {
-    const tools = convertOpenAIToolsToAnthropicTools([
+    const tools = convertOpenAIGenerationTools([
       {
         type: 'function',
         function: {

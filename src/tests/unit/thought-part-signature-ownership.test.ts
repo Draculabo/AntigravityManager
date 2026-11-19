@@ -62,13 +62,7 @@ function stored(): ThoughtRecord {
 
 describe('Thought signature part ownership', () => {
   it('leaves tool responses unsigned', () => {
-    const result = transformClaudeRequestIn(
-      toolHistory(),
-      undefined,
-      undefined,
-      undefined,
-      'anthropic',
-    );
+    const result = transformClaudeRequestIn(toolHistory(), undefined, undefined, undefined);
     expect(result.request.contents[2].parts).toEqual([
       {
         functionResponse: {
@@ -86,13 +80,7 @@ describe('Thought signature part ownership', () => {
   });
 
   it('does not borrow the preceding assistant message signature', () => {
-    const result = transformClaudeRequestIn(
-      toolHistory(),
-      undefined,
-      undefined,
-      undefined,
-      'anthropic',
-    );
+    const result = transformClaudeRequestIn(toolHistory(), undefined, undefined, undefined);
     expect(result.request.contents[3].parts).toEqual([
       { functionCall: { id: 'call-B', name: 'read', args: { path: 'B' } } },
     ]);

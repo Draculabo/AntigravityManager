@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
-import { transformClaudeRequestIn } from '@/modules/proxy-gateway/antigravity/ClaudeRequestMapper';
-import { convertOpenAIToClaude } from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
+import { buildAntigravityGenerationRequest } from '@/modules/proxy-gateway/antigravity/AntigravityRequestBuilder';
+import { toOpenAIGenerationInput } from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
 import {
   OPENAI_INPUT_AUDIO_BYTES_LIMIT,
   parseOpenAIInputAudio,
@@ -24,8 +24,11 @@ describe('OpenAI input_audio', () => {
       messages: [{ role: 'user', content: [audioPart(data)] }],
     };
 
-    const claude = convertOpenAIToClaude(request);
-    const gemini = transformClaudeRequestIn(claude, 'project', 'agent', undefined, 'openai');
+    const input = toOpenAIGenerationInput(request);
+    const gemini = buildAntigravityGenerationRequest(input, {
+      projectId: 'project',
+      userAgent: 'agent',
+    });
 
     expect(gemini.request.contents[0]?.parts).toContainEqual({
       inlineData: { mimeType: 'audio/wav', data },

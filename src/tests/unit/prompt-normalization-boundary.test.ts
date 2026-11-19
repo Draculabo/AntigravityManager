@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { setServerConfig } from '@/server/server-config';
+import { buildAntigravityGenerationRequest } from '@/modules/proxy-gateway/antigravity/AntigravityRequestBuilder';
 import { transformClaudeRequestIn } from '@/modules/proxy-gateway/antigravity/ClaudeRequestMapper';
-import { convertOpenAIToClaude } from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
+import { toOpenAIGenerationInput } from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
 import { toInternalGeminiRequest } from '@/server/gateway/modules/gemini/gemini-request-envelope';
 import { stripClaudeBillingMetadata } from '@/modules/proxy-gateway/antigravity/ClientBillingMetadata';
 
@@ -26,25 +27,23 @@ function system(protocol: 'claude' | 'chat' | 'gemini', text: string): string {
         .join('') ?? ''
     );
   }
-  const request =
+  const body =
     protocol === 'chat'
-      ? convertOpenAIToClaude({
-          model: 'gemini-3-flash',
-          messages: [
-            { role: 'system', content: text },
-            { role: 'user', content: 'controlled' },
-          ],
-        })
-      : {
+      ? buildAntigravityGenerationRequest(
+          toOpenAIGenerationInput({
+            model: 'gemini-3-flash',
+            messages: [
+              { role: 'system', content: text },
+              { role: 'user', content: 'controlled' },
+            ],
+          }),
+        )
+      : transformClaudeRequestIn({
           model: 'gemini-3-flash',
           system: text,
           messages: [{ role: 'user', content: 'controlled' }],
-        };
-  return (
-    transformClaudeRequestIn(request)
-      .request.systemInstruction?.parts.map((part) => part.text)
-      .join('') ?? ''
-  );
+        });
+  return body.request.systemInstruction?.parts.map((part) => part.text).join('') ?? '';
 }
 
 describe.each(['claude', 'chat', 'gemini'] as const)('%s system text ownership', (protocol) => {
@@ -197,11 +196,12 @@ it.each(['claude', 'chat'] as const)(
       { role: 'user', content: 'next request' },
     ];
     const before = structuredClone(messages);
-    const request =
+    const body =
       protocol === 'chat'
-        ? convertOpenAIToClaude({ model: 'claude-sonnet-4-6', messages })
-        : { model: 'claude-sonnet-4-6', messages };
-    const body = transformClaudeRequestIn(request);
+        ? buildAntigravityGenerationRequest(
+            toOpenAIGenerationInput({ model: 'claude-sonnet-4-6', messages }),
+          )
+        : transformClaudeRequestIn({ model: 'claude-sonnet-4-6', messages });
     expect(body.request.systemInstruction).toEqual({
       parts: [{ text: 'Initial rule.  \nInitial rule.  ' }],
     });

@@ -3,11 +3,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { OpenAIService as ProxyService } from '../../server/gateway/modules/openai/openai.service';
 import { generateGeminiWithAggregationFallback } from '@/server/gateway/common/aggregate-gemini-fallback';
 import type { GeminiResponse } from '@/server/gateway/common/interfaces/request-interfaces';
+import { convertOpenAIGenerationTools } from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
 
 describe('OpenAI tool mapper compatibility', () => {
   it('maps a Responses apply_patch custom tool to the upstream freeform input schema', () => {
-    const service = Object.create(ProxyService.prototype) as ProxyService;
-    const result = Reflect.get(service, 'convertOpenAIToolsToAnthropicTools').call(service, [
+    const result = convertOpenAIGenerationTools([
       {
         type: 'custom',
         name: 'apply_patch',

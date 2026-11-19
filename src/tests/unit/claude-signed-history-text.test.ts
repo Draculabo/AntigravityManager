@@ -38,13 +38,7 @@ describe('signed assistant history text', () => {
         },
       ]);
       const before = structuredClone(history);
-      const result = transformClaudeRequestIn(
-        history,
-        undefined,
-        undefined,
-        undefined,
-        'anthropic',
-      );
+      const result = transformClaudeRequestIn(history, undefined, undefined, undefined);
       const parts = result.request.contents[1].parts;
       expect(parts.filter((part) => part.text !== undefined && !part.thought)).toEqual([{ text }]);
       expect(parts.find((part) => part.thought)?.text).toBe(thinking);
@@ -58,7 +52,6 @@ describe('signed assistant history text', () => {
       undefined,
       undefined,
       undefined,
-      'anthropic',
     );
     expect(result.request.contents[1].parts).toEqual([{ text: ' \nOrdinary text.\t ' }]);
   });
