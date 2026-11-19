@@ -1,6 +1,6 @@
 import type { Observable } from 'rxjs';
 import type { FlowControlledSseStream } from '../../../common/flow-controlled-sse-stream';
-import type { SerializedResponsesFrame } from '../../../../../modules/proxy-gateway/antigravity/OpenAIResponsesStreamingMapper';
+import type { SerializedResponsesFrame } from './OpenAIResponsesStreamingMapper';
 
 /** One producer-owned canonical frame, consumed synchronously during its Observable delivery. */
 export class SerializedResponsesFrames {

@@ -48,7 +48,7 @@ import {
   GeminiResponse,
 } from '@/server/gateway/common/interfaces/request-interfaces';
 import { modelNotFoundError, readOpenAIModelCatalog } from './openai-model-catalog';
-import { toOpenAIResponsesResponse } from '@/modules/proxy-gateway/antigravity/OpenAIResponsesResponseMapper';
+import { toOpenAIResponsesResponse } from './responses/OpenAIResponsesResponseMapper';
 import {
   IMAGE_GENERATION_SAFETY_SETTINGS,
   normalizeExplicitImageSize,

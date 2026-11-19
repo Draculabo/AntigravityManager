@@ -1,0 +1,31 @@
+{
+  "responseId": "123",
+  "modelVersion": "claude-3-5-sonnet",
+  "candidates": [
+    {
+      "content": {
+        "role": "model",
+        "parts": [
+          { "thought": true, "text": "Need to call the weather tool." },
+          { "text": "I will check that." },
+          {
+            "functionCall": {
+              "id": "toolu_weather",
+              "name": "get_weather",
+              "args": { "city": "Paris" }
+            }
+          }
+        ]
+      },
+      "finishReason": "STOP"
+    }
+  ],
+  "usageMetadata": {
+    "total_input_tokens": 12,
+    "total_output_tokens": 8,
+    "total_cached_tokens": 3,
+    "total_thought_tokens": 2,
+    "total_tool_use_tokens": 6,
+    "total_tokens": 28
+  }
+}

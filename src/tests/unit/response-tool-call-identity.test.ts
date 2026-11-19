@@ -6,7 +6,7 @@ import {
   PartProcessor,
   StreamingState,
 } from '@/modules/proxy-gateway/antigravity/ClaudeStreamingMapper';
-import { OpenAIResponsesStreamingMapper } from '@/modules/proxy-gateway/antigravity/OpenAIResponsesStreamingMapper';
+import { OpenAIResponsesStreamingMapper } from '@/server/gateway/modules/openai/responses/OpenAIResponsesStreamingMapper';
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
 import type { FunctionCall } from '@/modules/proxy-gateway/antigravity/types';
 import { ResponseToolCallIdentity } from '@/modules/proxy-gateway/antigravity/ResponseToolCallIdentity';
@@ -79,7 +79,10 @@ function responses(calls: FunctionCall[]) {
   });
   return data(
     calls.flatMap((functionCall) => [
-      ...mapper.processPart({ functionCall, thoughtSignature: signature }),
+      ...mapper.processPart({
+        toolCall: { name: functionCall.name, id: functionCall.id, arguments: functionCall.args },
+        signature,
+      }),
     ]),
   ).flatMap((event) => {
     const parsed = ResponseToolAdded.safeParse(event);

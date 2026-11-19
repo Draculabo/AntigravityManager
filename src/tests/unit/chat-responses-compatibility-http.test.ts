@@ -44,7 +44,9 @@ afterEach(async () => {
 
 async function fixture(
   generate: unknown = geminiTextResponse('Character A is ready.'),
-  streamResponse = geminiTextResponse('Character A is ready.'),
+  streamResponse: Parameters<typeof geminiStreamFrame>[0] = geminiTextResponse(
+    'Character A is ready.',
+  ),
 ) {
   const store = new OpenAIResponsesSessionService({});
   const completions = new OpenAIChatCompletionStoreImpl({});
@@ -112,6 +114,30 @@ const structuredRequest = {
   tools: [structuredTool],
   store: false,
 };
+
+it('keeps visible Responses text when an upstream tool name is empty', async () => {
+  const streamResponse = {
+    candidates: [
+      {
+        content: {
+          role: 'model',
+          parts: [{ text: 'Visible answer', functionCall: { name: '', args: {} } }],
+        },
+        finishReason: 'STOP',
+      },
+    ],
+  };
+  const { send } = await fixture(undefined, streamResponse);
+  const response = await send(
+    { model: 'gemini-3-flash', input: 'Answer', stream: true },
+    '/v1/responses',
+  );
+  const events = await response.text();
+  expect(response.status).toBe(200);
+  expect(events).toContain('"delta":"Visible answer"');
+  expect(events).toContain('event: response.completed');
+  expect(events).not.toContain('response.function_call_arguments');
+});
 
 it('uses the schema admitted by Responses WebSocket in the upstream generation request', async () => {
   const { socketOperations, upstream } = await fixture();

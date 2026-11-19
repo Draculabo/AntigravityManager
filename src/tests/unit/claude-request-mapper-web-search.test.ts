@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import { transformClaudeRequestIn } from '@/modules/proxy-gateway/antigravity/ClaudeRequestMapper';
+import { decodeAntigravityGenerationResult } from '@/modules/proxy-gateway/antigravity/AntigravityResponseDecoder';
 import { ToolConfigurationError } from '@/modules/proxy-gateway/antigravity/ToolChoiceCompat';
 import type { ClaudeRequest } from '@/modules/proxy-gateway/antigravity/types';
-import {
-  convertClaudeToOpenAIResponse,
-  convertOpenAIGenerationTools,
-} from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
+import { convertOpenAIGenerationTools } from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
+import { toOpenAIChatResponse } from '@/server/gateway/modules/openai/chat/openai-chat-response';
 
 function createWebSearchRequest(model: string): ClaudeRequest {
   return {
@@ -137,23 +136,20 @@ describe('ClaudeRequestMapper web-search model compatibility', () => {
 
   it('preserves ordinary apply_patch function arguments and adapts explicit custom tools', () => {
     const command = `echo ${'long-argument '.repeat(200)}`;
-    const response = {
-      id: 'msg_apply_patch',
-      type: 'message' as const,
-      role: 'assistant' as const,
-      model: 'gpt-5-codex',
-      content: [
-        {
-          id: 'call_apply_patch',
-          type: 'tool_use' as const,
-          name: 'apply_patch',
-          input: { command },
-        },
-      ],
-      stop_reason: 'tool_use',
-      usage: { input_tokens: 1, output_tokens: 1 },
-    };
-    const ordinaryFunction = convertClaudeToOpenAIResponse(response, 'gpt-5-codex', [
+    const decodeToolCall = (args: { command: string } | { input: string }) =>
+      decodeAntigravityGenerationResult({
+        candidates: [
+          {
+            content: {
+              role: 'model',
+              parts: [{ functionCall: { id: 'call_apply_patch', name: 'apply_patch', args } }],
+            },
+            finishReason: 'STOP',
+          },
+        ],
+        usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1 },
+      });
+    const ordinaryFunction = toOpenAIChatResponse(decodeToolCall({ command }), 'gpt-5-codex', [
       {
         type: 'function',
         function: {
@@ -162,8 +158,8 @@ describe('ClaudeRequestMapper web-search model compatibility', () => {
         },
       },
     ]);
-    const customTool = convertClaudeToOpenAIResponse(
-      { ...response, content: [{ ...response.content[0], input: { input: 'patch text' } }] },
+    const customTool = toOpenAIChatResponse(
+      decodeToolCall({ input: 'patch text' }),
       'gpt-5-codex',
       [{ type: 'custom', name: 'apply_patch' }],
     );

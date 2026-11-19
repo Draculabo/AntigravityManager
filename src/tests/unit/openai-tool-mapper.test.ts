@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { OpenAIService as ProxyService } from '../../server/gateway/modules/openai/openai.service';
+import { decodeAntigravityGenerationResult } from '@/modules/proxy-gateway/antigravity/AntigravityResponseDecoder';
 import { generateGeminiWithAggregationFallback } from '@/server/gateway/common/aggregate-gemini-fallback';
 import type { GeminiResponse } from '@/server/gateway/common/interfaces/request-interfaces';
 import { convertOpenAIGenerationTools } from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
+import { toOpenAIChatResponse } from '@/server/gateway/modules/openai/chat/openai-chat-response';
 
 describe('OpenAI tool mapper compatibility', () => {
   it('maps a Responses apply_patch custom tool to the upstream freeform input schema', () => {
@@ -63,21 +64,27 @@ describe('OpenAI tool mapper compatibility', () => {
   });
 
   it('preserves incomplete PowerShell arguments without inserting an executable command', () => {
-    const service = Object.create(ProxyService.prototype) as ProxyService;
-    const result = Reflect.get(service, 'convertClaudeToOpenAIResponse').call(
-      service,
-      {
-        content: [
+    const result = toOpenAIChatResponse(
+      decodeAntigravityGenerationResult({
+        candidates: [
           {
-            id: 'call_powershell',
-            input: { description: 'sensitive tool detail' },
-            name: 'PowerShell',
-            type: 'tool_use',
+            content: {
+              role: 'model',
+              parts: [
+                {
+                  functionCall: {
+                    id: 'call_powershell',
+                    name: 'PowerShell',
+                    args: { description: 'sensitive tool detail' },
+                  },
+                },
+              ],
+            },
+            finishReason: 'STOP',
           },
         ],
-        stop_reason: 'tool_use',
-        usage: { input_tokens: 1, output_tokens: 1 },
-      },
+        usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1 },
+      }),
       'gpt-5-codex',
     );
 

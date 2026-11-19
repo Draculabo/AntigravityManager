@@ -3,8 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { OpenAIOperations } from '@/server/gateway/modules/openai/openai-operations.service';
 import { OpenAIResponsesSessionStore } from '@/server/gateway/modules/openai/responses/openai-responses-session.store';
-import { toGeminiUsageMetadata } from '@/server/gateway/modules/openai/responses/openai-responses-adapters';
-import { toOpenAIUsageFromGeminiUsageMetadata } from '@/modules/proxy-gateway/antigravity/OpenAIUsageMapper';
+import { decodeAntigravityStreamFrame } from '@/modules/proxy-gateway/antigravity/AntigravityStreamDecoder';
+import { GenerationOutputState } from '@/modules/proxy-gateway/antigravity/GenerationOutputState';
+import { toOpenAIUsage } from '@/modules/proxy-gateway/antigravity/OpenAIUsageMapper';
 import { proxyModelAvailabilityStore } from '@/server/gateway/shared/services/model-availability.service';
 import {
   collect,
@@ -17,9 +18,7 @@ import {
 } from './proxy-real-path.harness';
 
 vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
-  ...(await original<
-    typeof import('@/server/gateway/common/utils/request-user-agent')
-  >()),
+  ...(await original<typeof import('@/server/gateway/common/utils/request-user-agent')>()),
   resolveRequestUserAgent: async () => 'reasoning-usage-test',
 }));
 
@@ -133,7 +132,17 @@ describe('modality reasoning usage through production protocol paths', () => {
   });
 
   it('narrows malformed modality entries at the upstream Responses boundary', () => {
-    const normalized = toGeminiUsageMetadata({
+    const decodeUsage = (usageMetadata: object) => {
+      const frame = decodeAntigravityStreamFrame(
+        JSON.stringify({ usageMetadata }),
+        new GenerationOutputState(),
+      );
+      if (frame.kind !== 'response') {
+        throw new Error(`Expected a response frame, got ${frame.kind}`);
+      }
+      return frame.usage;
+    };
+    const normalized = decodeUsage({
       ...usageMetadata,
       candidatesTokensDetails: [
         ...usageMetadata.candidatesTokensDetails,
@@ -144,14 +153,11 @@ describe('modality reasoning usage through production protocol paths', () => {
         { tokenCount: 100 },
       ],
     });
-    expect(normalized?.candidatesTokensDetails).toEqual(usageMetadata.candidatesTokensDetails);
-    expect(toOpenAIUsageFromGeminiUsageMetadata(normalized)).toEqual({
+    expect(toOpenAIUsage(normalized)).toEqual({
       ...chatUsage,
       prompt_tokens_details: undefined,
     });
-    expect(
-      toGeminiUsageMetadata({ candidatesTokensDetails: 'THINKING' })?.candidatesTokensDetails,
-    ).toBeUndefined();
+    expect(decodeUsage({ candidatesTokensDetails: 'THINKING' })?.reasoningTokens).toBe(0);
   });
 
   it.each([false, true])(

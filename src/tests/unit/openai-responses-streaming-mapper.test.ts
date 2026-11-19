@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
-import { OpenAIResponsesStreamingMapper } from '@/modules/proxy-gateway/antigravity/OpenAIResponsesStreamingMapper';
+import { OpenAIResponsesStreamingMapper } from '@/server/gateway/modules/openai/responses/OpenAIResponsesStreamingMapper';
 import type { OpenAITool } from '@/server/gateway/common/interfaces/request-interfaces';
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
 
@@ -42,8 +42,8 @@ describe('OpenAIResponsesStreamingMapper', () => {
       mapper.createResponseCreatedEvent(),
       mapper.createResponseInProgressEvent(),
       ...mapper.processPart({
-        functionCall: {
-          args: { cmd: 'dir' },
+        toolCall: {
+          arguments: { cmd: 'dir' },
           id: 'call_shell_1',
           name: 'shell',
         },
@@ -89,8 +89,8 @@ describe('OpenAIResponsesStreamingMapper', () => {
     });
     const events = [
       ...mapper.processPart({
-        functionCall: {
-          args: { command: 'pwd' },
+        toolCall: {
+          arguments: { command: 'pwd' },
           id: 'call_shell_name',
           name: 'shell',
         },
@@ -113,8 +113,8 @@ describe('OpenAIResponsesStreamingMapper', () => {
     });
     const events = [
       ...mapper.processPart({
-        functionCall: {
-          args: { command: '   ', input: 'Get-Location' },
+        toolCall: {
+          arguments: { command: '   ', input: 'Get-Location' },
           id: 'call_powershell',
           name: 'powershell',
         },
@@ -170,7 +170,7 @@ describe('OpenAIResponsesStreamingMapper', () => {
     const patch = '--- a/src/example.ts\r\n+++ b/src/example.ts\r\n@@ -1 +1 @@\r\n-x\r\n+y\r\n';
     const events = [
       ...mapper.processPart({
-        functionCall: { args: { input: patch }, id: 'call_patch_1', name: 'apply_patch' },
+        toolCall: { arguments: { input: patch }, id: 'call_patch_1', name: 'apply_patch' },
       }),
       ...mapper.complete(),
     ].map(parseEvent);
@@ -205,7 +205,7 @@ describe('OpenAIResponsesStreamingMapper', () => {
       };
       const events = [
         ...mapper.processPart({
-          functionCall: { args, id: 'call_patch', name: 'apply_patch' },
+          toolCall: { arguments: args, id: 'call_patch', name: 'apply_patch' },
         }),
       ].map(parseEvent);
       expect(events.map((event) => event.type)).toEqual([
@@ -230,8 +230,8 @@ describe('OpenAIResponsesStreamingMapper', () => {
     const events = [
       ...mapper.processPart({ text: 'Hello' }),
       ...mapper.processPart({
-        functionCall: {
-          args: { query: 'Gemini API' },
+        toolCall: {
+          arguments: { query: 'Gemini API' },
           id: 'call_search_1',
           name: 'search_docs',
         },
@@ -262,8 +262,8 @@ describe('OpenAIResponsesStreamingMapper', () => {
   it('emits native reasoning summaries before the final answer', () => {
     const mapper = createMapper();
     const events = [
-      ...mapper.processPart({ text: '<think>inspect\n', thought: true }),
-      ...mapper.processPart({ text: 'files</think>', thought: true }),
+      ...mapper.processPart({ text: '<think>inspect\n', reasoning: true }),
+      ...mapper.processPart({ text: 'files</think>', reasoning: true }),
       ...mapper.processPart({ text: 'Done.' }),
       ...mapper.complete(),
     ].map(parseEvent);
@@ -315,7 +315,7 @@ describe('OpenAIResponsesStreamingMapper', () => {
   it('keeps output item ids independent from the public response id', () => {
     const mapper = createMapper();
     const events = [
-      ...mapper.processPart({ text: 'Inspecting', thought: true }),
+      ...mapper.processPart({ text: 'Inspecting', reasoning: true }),
       ...mapper.processPart({ text: 'Done.' }),
       ...mapper.complete(),
     ].map(parseEvent);
@@ -333,10 +333,10 @@ describe('OpenAIResponsesStreamingMapper', () => {
   it('closes reasoning before a tool call and keeps their output indexes distinct', () => {
     const mapper = createMapper();
     const events = [
-      ...mapper.processPart({ text: 'Inspecting', thought: true }),
+      ...mapper.processPart({ text: 'Inspecting', reasoning: true }),
       ...mapper.processPart({
-        functionCall: {
-          args: { query: 'Responses API' },
+        toolCall: {
+          arguments: { query: 'Responses API' },
           id: 'call_reasoning_tool',
           name: 'search_docs',
         },
@@ -368,7 +368,7 @@ describe('OpenAIResponsesStreamingMapper', () => {
   it('closes a reasoning-only stream with a completed native output item', () => {
     const mapper = createMapper();
     const events = [
-      ...mapper.processPart({ text: 'Inspecting', thought: true }),
+      ...mapper.processPart({ text: 'Inspecting', reasoning: true }),
       ...mapper.complete(),
     ].map(parseEvent);
 
@@ -406,7 +406,7 @@ describe('OpenAIResponsesStreamingMapper', () => {
   it('marks native reasoning incomplete when the stream is truncated', () => {
     const mapper = createMapper();
     const events = [
-      ...mapper.processPart({ text: 'Inspecting', thought: true }),
+      ...mapper.processPart({ text: 'Inspecting', reasoning: true }),
       ...mapper.complete('MAX_TOKENS'),
     ].map(parseEvent);
 
@@ -430,7 +430,7 @@ describe('OpenAIResponsesStreamingMapper', () => {
     const mapper = createMapper();
     Array.from(mapper.processPart({ text: 'Final answer' }));
 
-    expect([...mapper.processPart({ text: 'late thought', thought: true })]).toEqual([]);
+    expect([...mapper.processPart({ text: 'late thought', reasoning: true })]).toEqual([]);
 
     const completed = [...mapper.complete()].map(parseEvent).at(-1);
     expect(completed).toMatchObject({
@@ -464,14 +464,14 @@ describe('OpenAIResponsesStreamingMapper', () => {
     const mapper = createMapper();
     const events = [
       ...mapper.processPart({
-        functionCall: {
-          args: { query: 'same query' },
+        toolCall: {
+          arguments: { query: 'same query' },
           name: 'search_docs',
         },
       }),
       ...mapper.processPart({
-        functionCall: {
-          args: { query: 'same query' },
+        toolCall: {
+          arguments: { query: 'same query' },
           name: 'search_docs',
         },
       }),
@@ -496,13 +496,13 @@ describe('OpenAIResponsesStreamingMapper', () => {
     ).toString('base64');
     const events = [
       ...mapper.processPart({
-        functionCall: {
-          args: { command: 'pwd' },
+        toolCall: {
+          arguments: { command: 'pwd' },
           id: 'call_thought_1',
           name: 'shell',
         },
-        thought: true,
-        thoughtSignature: encodedSignature,
+        reasoning: true,
+        signature: encodedSignature,
       }),
     ];
 
@@ -533,7 +533,7 @@ describe('OpenAIResponsesStreamingMapper', () => {
     });
     const encodedSignature = Buffer.from('session a thought signature').toString('base64');
 
-    Array.from(mapper.processPart({ thought: true, thoughtSignature: encodedSignature }));
+    Array.from(mapper.processPart({ reasoning: true, signature: encodedSignature }));
 
     expect(SignatureStore.get({ model: 'gemini-3-pro', sessionKey: 'openai:session-a' })).toBe(
       encodedSignature,
@@ -559,8 +559,8 @@ describe('OpenAIResponsesStreamingMapper', () => {
     const encodedSignature = Buffer.from('physical model signature').toString('base64');
     Array.from(
       mapper.processPart({
-        thought: true,
-        thoughtSignature: encodedSignature,
+        reasoning: true,
+        signature: encodedSignature,
       }),
     );
 
@@ -582,8 +582,8 @@ describe('OpenAIResponsesStreamingMapper', () => {
 
     Array.from(
       mapper.processPart({
-        functionCall: { args: {}, id: 'call_shared', name: 'shell' },
-        thoughtSignature: encodedSignature,
+        toolCall: { arguments: {}, id: 'call_shared', name: 'shell' },
+        signature: encodedSignature,
       }),
     );
 
@@ -607,15 +607,13 @@ describe('OpenAIResponsesStreamingMapper', () => {
     const mapper = createMapper();
     const events = [
       ...mapper.processGrounding({
-        groundingChunks: [
+        sources: [
           {
-            web: {
-              title: 'Gemini API documentation',
-              uri: 'https://example.com/gemini',
-            },
+            title: 'Gemini API documentation',
+            uri: 'https://example.com/gemini',
           },
         ],
-        webSearchQueries: ['Gemini API'],
+        queries: ['Gemini API'],
       }),
       ...mapper.complete(),
     ].map(parseEvent);

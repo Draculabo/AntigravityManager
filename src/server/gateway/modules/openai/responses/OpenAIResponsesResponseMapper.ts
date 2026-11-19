@@ -1,12 +1,12 @@
 import type {
   OpenAIChatResponse,
   OpenAIToolCall,
-} from '../../../server/gateway/common/interfaces/request-interfaces';
+} from '../../../common/interfaces/request-interfaces';
 import {
   isMalformedFunctionCallFinishReason,
   MALFORMED_FUNCTION_CALL_RECOVERY_TEXT,
-} from './GeminiFinishReason';
-import { toOpenAIResponsesUsage } from './OpenAIUsageMapper';
+} from '@/modules/proxy-gateway/antigravity/GeminiFinishReason';
+import { toOpenAIResponsesUsage } from '@/modules/proxy-gateway/antigravity/OpenAIUsageMapper';
 import { toIncompleteReason, type ResponsesOutputStatus } from './openai-responses-incomplete';
 
 function toResponsesToolOutputItem(toolCall: OpenAIToolCall): Record<string, unknown> | undefined {

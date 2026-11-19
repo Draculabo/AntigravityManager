@@ -8,7 +8,9 @@ import { PassThrough, Readable } from 'node:stream';
 import { AnthropicService } from '../../server/gateway/modules/anthropic/anthropic.service';
 import { GeminiService } from '../../server/gateway/modules/gemini/gemini.service';
 import { OpenAIService } from '../../server/gateway/modules/openai/openai.service';
+import { decodeAntigravityGenerationResult } from '@/modules/proxy-gateway/antigravity/AntigravityResponseDecoder';
 import { toOpenAIGenerationInput } from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
+import { toOpenAIChatResponse } from '@/server/gateway/modules/openai/chat/openai-chat-response';
 import { Observable } from 'rxjs';
 import { GeminiClient } from '../../server/gateway/modules/gemini/gemini-client.service';
 import { Upstream4xxCaptureService } from '../../server/gateway/common/upstream-4xx-capture.service';
@@ -1951,29 +1953,24 @@ describe('ProxyService Protocol Parity Fixtures', () => {
     });
   });
 
-  it('maps Anthropic response to OpenAI response with reasoning and tool_calls', () => {
-    const service = new TestableOpenAIService();
-
-    const anthropicResponse = {
-      content: [
-        { type: 'thinking', thinking: 'Need to call tool first.' },
-        {
-          type: 'tool_use',
-          id: 'tool-1',
-          name: 'search_docs',
-          input: { query: 'api key' },
-        },
-        { type: 'text', text: 'Here are the docs.' },
-      ],
-      stop_reason: 'tool_use',
-      usage: {
-        input_tokens: 20,
-        output_tokens: 30,
-      },
-    };
-
-    const openaiResponse = (service as any).convertClaudeToOpenAIResponse(
-      anthropicResponse,
+  it('maps upstream reasoning and tool calls into an OpenAI response', () => {
+    const openaiResponse = toOpenAIChatResponse(
+      decodeAntigravityGenerationResult({
+        candidates: [
+          {
+            content: {
+              role: 'model',
+              parts: [
+                { thought: true, text: 'Need to call tool first.' },
+                { functionCall: { id: 'tool-1', name: 'search_docs', args: { query: 'api key' } } },
+                { text: 'Here are the docs.' },
+              ],
+            },
+            finishReason: 'STOP',
+          },
+        ],
+        usageMetadata: { promptTokenCount: 20, candidatesTokenCount: 30 },
+      }),
       'gpt-4o-mini',
     );
 
@@ -1986,15 +1983,19 @@ describe('ProxyService Protocol Parity Fixtures', () => {
 
   it('retains reasoning when a non-stream response is emitted as Chat or Responses SSE', async () => {
     const service = new TestableOpenAIService();
-    const response = (service as any).convertClaudeToOpenAIResponse(
-      {
-        content: [
-          { type: 'thinking', thinking: 'Check the input.' },
-          { type: 'text', text: 'The answer.' },
+    const response = toOpenAIChatResponse(
+      decodeAntigravityGenerationResult({
+        candidates: [
+          {
+            content: {
+              role: 'model',
+              parts: [{ thought: true, text: 'Check the input.' }, { text: 'The answer.' }],
+            },
+            finishReason: 'STOP',
+          },
         ],
-        stop_reason: 'end_turn',
-        usage: { input_tokens: 4, output_tokens: 8 },
-      },
+        usageMetadata: { promptTokenCount: 4, candidatesTokenCount: 8 },
+      }),
       'gpt-4o-mini',
     );
     const collect = async (stream: Observable<string>): Promise<string[]> => {

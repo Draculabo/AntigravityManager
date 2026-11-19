@@ -5,8 +5,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { Observable } from 'rxjs';
 
 import { OpenAIService as ProxyService } from '../../server/gateway/modules/openai/openai.service';
+import { decodeAntigravityGenerationResult } from '@/modules/proxy-gateway/antigravity/AntigravityResponseDecoder';
+import type { GeminiResponse } from '@/modules/proxy-gateway/antigravity/types';
 import type { OpenAIChatRequest } from '@/server/gateway/common/interfaces/request-interfaces';
 import { toOpenAIGenerationInput } from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
+import { toOpenAIChatResponse } from '@/server/gateway/modules/openai/chat/openai-chat-response';
 
 const mockAccountLeaseService = {
   getNextToken: vi.fn(),
@@ -28,10 +31,6 @@ class TestableProxyService extends ProxyService {
       {} as any,
       {} as any,
     );
-  }
-
-  public toOpenAI(response: any, model: string, clientTools?: OpenAIChatRequest['tools']): any {
-    return (this as any).convertClaudeToOpenAIResponse(response, model, clientTools);
   }
 
   public streamToOpenAI(upstreamStream: any, model: string): Observable<string> {
@@ -115,12 +114,10 @@ describe('Proxy Parity Fixtures', () => {
     expect(actual.tools?.[0]?.input_schema?.properties?.query).not.toHaveProperty('tools');
   });
 
-  it('maps Anthropic response fixture to expected OpenAI response semantics', () => {
-    const service = new TestableProxyService();
-    const input = readFixture<any>('response/anthropic.tool-use.input.json');
-    const expected = readFixture<any>('response/anthropic.tool-use.expected.json');
-
-    const actual = service.toOpenAI(input, expected.model);
+  it('maps the Antigravity response fixture to expected OpenAI response semantics', () => {
+    const input = readFixture<GeminiResponse>('response/antigravity.tool-use.input.json');
+    const expected = readFixture<any>('response/openai.tool-use.expected.json');
+    const actual = toOpenAIChatResponse(decodeAntigravityGenerationResult(input), expected.model);
 
     expect(actual.model).toBe(expected.model);
     expect(actual.choices[0].message.content).toBe(expected.message.content);
@@ -131,38 +128,44 @@ describe('Proxy Parity Fixtures', () => {
   });
 
   it('preserves the upstream shell tool name', () => {
-    const service = new TestableProxyService();
-
-    const actual = service.toOpenAI(
-      {
-        content: [
+    const actual = toOpenAIChatResponse(
+      decodeAntigravityGenerationResult({
+        candidates: [
           {
-            type: 'tool_use',
-            id: 'call_shell',
-            name: 'shell',
-            input: { command: 'pwd' },
+            content: {
+              role: 'model',
+              parts: [
+                { functionCall: { id: 'call_shell', name: 'shell', args: { command: 'pwd' } } },
+              ],
+            },
+            finishReason: 'STOP',
           },
         ],
-        stop_reason: 'tool_use',
-        usage: { input_tokens: 1, output_tokens: 1 },
-      },
+        usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1 },
+      }),
       'gpt-5-codex',
     );
 
-    expect(actual.choices[0].message.tool_calls[0].function.name).toBe('shell');
+    expect(actual.choices[0].message.tool_calls?.[0]?.function?.name).toBe('shell');
   });
 
   it('passes declared custom tool input through the Chat response unchanged', () => {
-    const service = new TestableProxyService();
     const patch = '--- a/example.ts\r\n+++ b/example.ts\r\n@@ -1 +1 @@\r\n-x\r\n+y\r\n';
-    const actual = service.toOpenAI(
-      {
-        content: [
-          { type: 'tool_use', id: 'call_patch', name: 'apply_patch', input: { input: patch } },
+    const actual = toOpenAIChatResponse(
+      decodeAntigravityGenerationResult({
+        candidates: [
+          {
+            content: {
+              role: 'model',
+              parts: [
+                { functionCall: { id: 'call_patch', name: 'apply_patch', args: { input: patch } } },
+              ],
+            },
+            finishReason: 'STOP',
+          },
         ],
-        stop_reason: 'tool_use',
-        usage: { input_tokens: 1, output_tokens: 1 },
-      },
+        usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1 },
+      }),
       'gpt-5-codex',
       [{ type: 'custom', custom: { name: 'apply_patch' } }],
     );

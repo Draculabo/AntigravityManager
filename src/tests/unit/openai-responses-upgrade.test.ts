@@ -11,7 +11,7 @@ import {
 } from '@/server/gateway/modules/openai/responses/openai-responses-session.store';
 import { OPENAI_RESPONSES_SESSION_FILENAME } from '@/server/gateway/modules/openai/responses/openai-responses-session.service';
 import { buildResponsesChatRequest } from '@/server/gateway/modules/openai/responses/openai-responses-request';
-import { toOpenAIResponsesResponse } from '@/modules/proxy-gateway/antigravity/OpenAIResponsesResponseMapper';
+import { toOpenAIResponsesResponse } from '@/server/gateway/modules/openai/responses/OpenAIResponsesResponseMapper';
 
 const fixtureText = fs.readFileSync(
   path.resolve('src/tests/fixtures/responses-format-v1/old-responses-session.json'),

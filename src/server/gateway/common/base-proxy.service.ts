@@ -9,7 +9,8 @@ import {
 import { AccountLeaseService } from '../modules/account-lease/account-lease.service';
 import { v4 as uuidv4 } from 'uuid';
 import { getServerConfig } from '@/server/server-config';
-import { isFunction, isNumber, isPlainObject, isString } from 'lodash-es';
+import { isFunction, isNumber, isPlainObject } from 'lodash-es';
+import { responseHasInlineImageData } from '@/modules/proxy-gateway/antigravity/AntigravityStreamDecoder';
 import {
   ProxyRetryService,
   ProxyTokenRetryState,
@@ -416,7 +417,7 @@ export abstract class BaseProxyService {
     model: string,
     response: GeminiResponse,
   ): void {
-    if (!isGeminiImageModel(model) || this.responseHasInlineImageData(response)) {
+    if (!isGeminiImageModel(model) || responseHasInlineImageData(response)) {
       this.markUpstreamSuccess(token, model);
     }
   }
@@ -441,23 +442,8 @@ export abstract class BaseProxyService {
     }
     return {
       failed: false,
-      hasImageData: this.responseHasInlineImageData(response),
+      hasImageData: responseHasInlineImageData(response),
     };
-  }
-
-  protected responseHasInlineImageData(response: GeminiResponse): boolean {
-    return Boolean(
-      response.candidates?.some((candidate) =>
-        candidate.content?.parts?.some((part) => {
-          const inlineData = part.inlineData;
-          return (
-            inlineData !== undefined &&
-            isString(inlineData.data) &&
-            inlineData.data.trim().length > 0
-          );
-        }),
-      ),
-    );
   }
 
   protected shouldRecordImagePenaltyBeforeGrace(model: string, error: unknown): boolean {

@@ -1,5 +1,5 @@
 /**
- * Request and response conversion between the OpenAI surface and the internal Claude shape.
+ * Converts OpenAI requests into the shared generation input.
  * Client thinking control preserves explicit budgets, effort and disabled settings.
  *
  * `OpenAIService` remains the protocol owner and keeps the orchestration. This module holds
@@ -9,35 +9,27 @@
 import { BadRequestException } from '@nestjs/common';
 import { getServerConfig } from '@/server/server-config';
 import { recordPromptTransformation } from '../../../common/prompt-transformation-diagnostics';
-import { isEmpty, isNil, isPlainObject, isString } from 'lodash-es';
-import { v4 as uuidv4 } from 'uuid';
-import {
-  isDeclaredOpenAICustomTool,
-  readCustomToolInput,
-} from '@/modules/proxy-gateway/antigravity/CustomToolCall';
+import { isEmpty, isPlainObject, isString } from 'lodash-es';
 import { mapGeminiFinishReasonToOpenAI } from '@/modules/proxy-gateway/antigravity/GeminiFinishReason';
 import { normalizeObjectJsonSchema } from '@/modules/proxy-gateway/antigravity/JsonSchemaUtils';
 import { isGoogleSearchToolType } from '@/modules/proxy-gateway/antigravity/ToolChoiceCompat';
 import { SchemaConversionBatch } from '@/modules/proxy-gateway/antigravity/schema/SchemaConversion';
-import { toOpenAIUsage } from '@/modules/proxy-gateway/antigravity/OpenAIUsageMapper';
 import { InvalidToolResultAssociationError } from '@/modules/proxy-gateway/antigravity/ClaudeToolResultAssociation';
 import {
   flattenOpenAITools,
   getOpenAIToolName,
-  splitNamespaceToolName,
 } from '@/modules/proxy-gateway/antigravity/ToolNamespace';
 import { hashSessionAnchor } from '@/server/gateway/common/session-anchor-hash';
 import {
   resolveGenerationOutput,
   type AntigravityGenerationInput,
 } from '@/modules/proxy-gateway/antigravity/generation-input';
-import type { ClaudeResponse, ContentBlock, Tool } from '@/modules/proxy-gateway/antigravity/types';
+import type { ContentBlock, Tool } from '@/modules/proxy-gateway/antigravity/types';
 import { resolveOpenAIImageUrl } from '../openai-image-url';
 import { parseOpenAIInputAudio } from './openai-input-audio';
 import { resolveOpenAIVideoUrl } from './openai-video-url';
 import {
   OpenAIChatRequest,
-  OpenAIChatResponse,
   OpenAIContentPart,
   OpenAIToolCall,
 } from '@/server/gateway/common/interfaces/request-interfaces';
@@ -608,120 +600,4 @@ export function convertOpenAIGenerationTools(
 
 export function mapGeminiFinishReasonToOpenAIFinishReason(finishReason?: string): string | null {
   return mapGeminiFinishReasonToOpenAI(finishReason);
-}
-
-export function mapAnthropicStopReasonToOpenAIFinishReason(
-  stopReason?: string | null,
-): string | null {
-  if (!stopReason) {
-    return null;
-  }
-
-  if (stopReason === 'end_turn') {
-    return 'stop';
-  }
-  if (stopReason === 'max_tokens') {
-    return 'length';
-  }
-  if (stopReason === 'tool_use') {
-    return 'tool_calls';
-  }
-
-  return stopReason;
-}
-
-export function normalizeToolCallArguments(input: unknown): string {
-  if (isString(input)) {
-    return input;
-  }
-  if (isNil(input)) {
-    return '{}';
-  }
-
-  try {
-    return JSON.stringify(input);
-  } catch {
-    return '{}';
-  }
-}
-
-// Convert Claude response to OpenAI format
-export function convertClaudeToOpenAIResponse(
-  claudeResponse: ClaudeResponse,
-  model: string,
-  clientTools?: OpenAIChatRequest['tools'],
-): OpenAIChatResponse {
-  const contentBlocks = Array.isArray(claudeResponse?.content) ? claudeResponse.content : [];
-
-  const textContent = contentBlocks
-    .filter(
-      (
-        block,
-      ): block is Extract<ClaudeResponse['content'][number], { type: 'text'; text: string }> =>
-        block?.type === 'text',
-    )
-    .map((block) => block.text || '')
-    .join('');
-
-  const reasoningContent = contentBlocks
-    .filter(
-      (
-        block,
-      ): block is Extract<
-        ClaudeResponse['content'][number],
-        { type: 'thinking'; thinking: string }
-      > => block?.type === 'thinking',
-    )
-    .map((block) => block.thinking || '')
-    .join('');
-
-  const toolCalls = contentBlocks
-    .filter(
-      (
-        block,
-      ): block is Extract<
-        ClaudeResponse['content'][number],
-        { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
-      > => block?.type === 'tool_use',
-    )
-    .map((block, index: number): OpenAIToolCall => {
-      const splitName = splitNamespaceToolName(block.name || 'unknown_tool', clientTools);
-      const functionName = splitName.name;
-      const identity = {
-        id: block.id || `tool-call-${index}`,
-        namespace: splitName.namespace,
-      };
-      return isDeclaredOpenAICustomTool(block.name, clientTools)
-        ? {
-            ...identity,
-            type: 'custom',
-            custom: { name: functionName, input: readCustomToolInput(block.input) },
-          }
-        : {
-            ...identity,
-            type: 'function',
-            function: { name: functionName, arguments: normalizeToolCallArguments(block.input) },
-          };
-    });
-
-  return {
-    id: `chatcmpl-${uuidv4()}`,
-    object: 'chat.completion',
-    created: Math.floor(Date.now() / 1000),
-    model: model,
-    choices: [
-      {
-        index: 0,
-        message: {
-          role: 'assistant',
-          content: textContent || null,
-          tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
-          reasoning_content: reasoningContent || undefined,
-          refusal: claudeResponse.refusal,
-        },
-        finish_reason: mapAnthropicStopReasonToOpenAIFinishReason(claudeResponse.stop_reason),
-      },
-    ],
-    usage: toOpenAIUsage(claudeResponse.usage),
-  };
 }

@@ -7,7 +7,7 @@ import {
 } from '@/server/gateway/common/flow-controlled-sse-stream';
 import { createResponsesStream } from '@/server/gateway/modules/openai/responses/openai-responses-stream';
 import { createSyntheticResponsesStream } from '@/server/gateway/modules/openai/openai-synthetic-streams';
-import type { GeminiResponsesStreamPart } from '@/modules/proxy-gateway/antigravity/OpenAIResponsesStreamingMapper';
+import type { GeminiPart } from '@/modules/proxy-gateway/antigravity/types';
 
 const eventSchema = z.object({ type: z.string(), sequence_number: z.number() }).passthrough();
 function parse(frame: string) {
@@ -19,7 +19,6 @@ function createLiveStream(source: PassThrough) {
     { model: 'fixture', responseId: 'resp_fixture' },
     {
       requiresCleanImageEnd: false,
-      inspectImage: () => ({ hasImageData: false, failed: false }),
       markImageSuccess: vi.fn(),
       release: vi.fn(),
       logError: vi.fn(),
@@ -94,7 +93,7 @@ describe('Responses frame demand', () => {
       part: { functionCall: { args: { query: 'fixture' }, id: 'call_fixture', name: 'search' } },
       delta: 'response.function_call_arguments.delta',
     },
-  ] satisfies Array<{ part: GeminiResponsesStreamPart; delta: string }>)(
+  ] satisfies Array<{ part: GeminiPart; delta: string }>)(
     'serializes only the requested frame for $delta, including same-event completion',
     async ({ part, delta }) => {
       const source = new PassThrough();

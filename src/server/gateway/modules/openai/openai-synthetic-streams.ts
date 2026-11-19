@@ -6,7 +6,7 @@ import type {
   OpenAIChatResponse,
   OpenAIChatRequest,
 } from '../../common/interfaces/request-interfaces';
-import { OpenAIResponsesStreamingMapper } from '../../../../modules/proxy-gateway/antigravity/OpenAIResponsesStreamingMapper';
+import { OpenAIResponsesStreamingMapper } from './responses/OpenAIResponsesStreamingMapper';
 import { toOpenAIResponsesUsage } from '../../../../modules/proxy-gateway/antigravity/OpenAIUsageMapper';
 import { qualifyNamespaceToolName } from '../../../../modules/proxy-gateway/antigravity/ToolNamespace';
 import { parseOpenAIFunctionArguments } from './chat/openai-claude-conversion';
@@ -165,7 +165,7 @@ export function createSyntheticResponsesStream(
       yield mapper.createResponseInProgressEvent();
       mapper.setUsage(toOpenAIResponsesUsage(response.usage));
       if (reasoningContent) {
-        for (const event of mapper.processPart({ text: reasoningContent, thought: true })) {
+        for (const event of mapper.processPart({ text: reasoningContent, reasoning: true })) {
           yield event;
         }
       }
@@ -185,8 +185,8 @@ export function createSyntheticResponsesStream(
           continue;
         }
         for (const event of mapper.processPart({
-          functionCall: {
-            args:
+          toolCall: {
+            arguments:
               (custom ? { input: custom.input } : toolCall.operation) ??
               parseOpenAIFunctionArguments(toolCall.function?.arguments ?? '{}'),
             id: toolCall.call_id || toolCall.id,

@@ -124,6 +124,11 @@ They preserve ordinary tool names and arguments; malformed generation retains va
 adds an explicit assistant explanation and records an upstream audit diagnostic without
 turning the signal into a transport retry.
 
+The Antigravity response decoders translate Google generation payloads before the client adapters
+project unary results and stream events. Chat and Responses consume normalized stream parts and
+token counts. Their adapters own event ordering, tool-call projection and terminal behavior.
+Anthropic Messages projects the shared unary result into its own response and signature format.
+
 Generation ingress owns one configured `generation_timeout` deadline through preparation,
 physical sends, recovery and final consumption. The shared policy separates it from
 non-generation `request_timeout` operations and owns initial-output, activity and transition

@@ -2,15 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import { transformResponse } from '@/modules/proxy-gateway/antigravity/ClaudeResponseMapper';
+import { decodeAntigravityGenerationResult } from '@/modules/proxy-gateway/antigravity/AntigravityResponseDecoder';
+import { decodeAntigravityStreamFrame } from '@/modules/proxy-gateway/antigravity/AntigravityStreamDecoder';
 import {
   PartProcessor,
   StreamingState,
 } from '@/modules/proxy-gateway/antigravity/ClaudeStreamingMapper';
 import { MALFORMED_FUNCTION_CALL_RECOVERY_TEXT } from '@/modules/proxy-gateway/antigravity/GeminiFinishReason';
-import { toOpenAIResponsesResponse } from '@/modules/proxy-gateway/antigravity/OpenAIResponsesResponseMapper';
-import { OpenAIResponsesStreamingMapper } from '@/modules/proxy-gateway/antigravity/OpenAIResponsesStreamingMapper';
-import type { GeminiPart } from '@/modules/proxy-gateway/antigravity/types';
-import { convertClaudeToOpenAIResponse } from '@/server/gateway/modules/openai/chat/openai-claude-conversion';
+import { GenerationOutputState } from '@/modules/proxy-gateway/antigravity/GenerationOutputState';
+import { toOpenAIResponsesResponse } from '@/server/gateway/modules/openai/responses/OpenAIResponsesResponseMapper';
+import { OpenAIResponsesStreamingMapper } from '@/server/gateway/modules/openai/responses/OpenAIResponsesStreamingMapper';
+import type { GeminiPart, GeminiResponse } from '@/modules/proxy-gateway/antigravity/types';
+import { toOpenAIChatResponse } from '@/server/gateway/modules/openai/chat/openai-chat-response';
 
 const tool = {
   name: 'shell',
@@ -46,11 +49,12 @@ describe('malformed generation across unary and streaming protocol mappers', () 
     ({ parts }) => {
       const hasText = parts.some((part) => part.text);
       const hasTool = parts.some((part) => part.functionCall);
-      const claude = transformResponse({
+      const upstream: GeminiResponse = {
         candidates: [
           { content: { role: 'model', parts }, finishReason: 'MALFORMED_FUNCTION_CALL' },
         ],
-      });
+      };
+      const claude = transformResponse(upstream);
       expect(claude.stop_reason).toBe(hasTool ? 'tool_use' : 'end_turn');
       expect(claude.content.filter((block) => block.type === 'text')).toEqual([
         ...(hasText ? [{ type: 'text', text: 'Existing text.' }] : []),
@@ -61,7 +65,7 @@ describe('malformed generation across unary and streaming protocol mappers', () 
       );
 
       const response = toOpenAIResponsesResponse(
-        convertClaudeToOpenAIResponse(claude, 'gemini-3-flash'),
+        toOpenAIChatResponse(decodeAntigravityGenerationResult(upstream), 'gemini-3-flash'),
       );
       expect(response.status).toBe('completed');
       expect(response.error).toBeNull();
@@ -106,9 +110,17 @@ describe('malformed generation across unary and streaming protocol mappers', () 
         model: 'gemini-3-flash',
         responseId: 'resp_failure',
       });
+      const frame = decodeAntigravityStreamFrame(
+        JSON.stringify(upstream),
+        new GenerationOutputState(),
+      );
+      if (frame.kind !== 'response') {
+        throw new Error(`Expected an Antigravity response frame, received ${frame.kind}`);
+      }
+      const candidate = frame.candidates[Symbol.iterator]().next().value;
       const events = parse([
-        ...parts.flatMap((part) => [...mapper.processPart(part)]),
-        ...mapper.complete('MALFORMED_FUNCTION_CALL'),
+        ...Array.from(candidate?.parts ?? []).flatMap((part) => [...mapper.processPart(part)]),
+        ...mapper.complete(candidate?.finishReason),
       ]);
       expect(events.at(-1)?.type).toBe('response.completed');
       expect(

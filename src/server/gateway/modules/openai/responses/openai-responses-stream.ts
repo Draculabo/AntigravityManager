@@ -1,26 +1,19 @@
-import { isString } from 'lodash-es';
 import { errorProcessOwner } from '@/modules/error-diagnostics/public';
+import { decodeAntigravityStreamFrame } from '@/modules/proxy-gateway/antigravity/AntigravityStreamDecoder';
 import { getTrafficAuditRequestContext } from '../../../../../modules/proxy-gateway/audit/traffic-audit-context';
 import { classifyTransportError } from '../../../../../modules/proxy-gateway/antigravity/stream-error-utils';
-import { OpenAIResponsesStreamingMapper } from '../../../../../modules/proxy-gateway/antigravity/OpenAIResponsesStreamingMapper';
+import { OpenAIResponsesStreamingMapper } from './OpenAIResponsesStreamingMapper';
 import { readUpstreamErrorStatus } from '../../../common/upstream-error-codec';
 import {
-  decodeInternalSseData,
   describeInternalSseError,
   IncrementalSseDataParser,
 } from '../../../../../modules/proxy-gateway/antigravity/internal-sse';
 import {
   toOpenAIResponsesUsage,
-  toOpenAIUsageFromGeminiUsageMetadata,
+  toOpenAIUsage,
 } from '../../../../../modules/proxy-gateway/antigravity/OpenAIUsageMapper';
 import { createFrameControlledSseStream } from '../../../common/flow-controlled-sse-stream';
 import { IncrementalSseLines } from '../../../common/incremental-sse-lines';
-import {
-  toGeminiUsageMetadata,
-  toResponsesGroundingMetadata,
-  toResponsesStreamPart,
-  toUnknownRecord,
-} from './openai-responses-adapters';
 import {
   registerSerializedResponsesFrames,
   SerializedResponsesFrames,
@@ -32,7 +25,6 @@ import { UpstreamGenerationError } from '../../../../../modules/proxy-gateway/an
 
 interface ResponsesStreamHooks {
   requiresCleanImageEnd: boolean;
-  inspectImage(data: string): { hasImageData: boolean; failed: boolean };
   markImageSuccess(): void;
   release(): void;
   logError(error: Error): void;
@@ -143,13 +135,13 @@ export function createResponsesStream(
             continue;
           }
           try {
-            if (hooks.requiresCleanImageEnd) {
-              const observation = hooks.inspectImage(data);
-              sawImageData ||= observation.hasImageData;
-              streamFailed ||= observation.failed;
-            }
-            const decoded = decodeInternalSseData(data);
+            const decoded = decodeAntigravityStreamFrame(
+              data,
+              outputState,
+              hooks.requiresCleanImageEnd,
+            );
             if (decoded.kind === 'error') {
+              streamFailed ||= hooks.requiresCleanImageEnd;
               fail(
                 readUpstreamErrorStatus({ error: decoded.error }) ?? 'upstream_error',
                 describeInternalSseError(decoded.error),
@@ -157,6 +149,7 @@ export function createResponsesStream(
               return;
             }
             if (decoded.kind === 'invalid') {
+              streamFailed ||= hooks.requiresCleanImageEnd;
               fail(
                 'invalid_upstream_response',
                 new UpstreamGenerationError('invalid_upstream_response').message,
@@ -166,39 +159,30 @@ export function createResponsesStream(
             if (decoded.kind !== 'response') {
               continue;
             }
+            sawImageData ||= decoded.hasImageData;
             idle.reset();
-            const payload = decoded.response;
-            outputState.observe(payload);
-            const usage = toGeminiUsageMetadata(payload.usageMetadata);
-            if (usage) {
-              mapper.setUsage(toOpenAIResponsesUsage(toOpenAIUsageFromGeminiUsageMetadata(usage)));
+            if (decoded.usage) {
+              mapper.setUsage(toOpenAIResponsesUsage(toOpenAIUsage(decoded.usage)));
             }
-            if (payload.promptFeedback?.blockReason && !payload.candidates?.length) {
+            if (decoded.blocked) {
               complete('SAFETY');
               return;
             }
-            if (!Array.isArray(payload.candidates)) {
+            const primary = decoded.candidates.next();
+            if (primary.done) {
               continue;
             }
-            const candidate = toUnknownRecord(payload.candidates[0]);
-            const content = toUnknownRecord(candidate?.content);
-            if (Array.isArray(content?.parts)) {
-              for (const part of content.parts) {
-                const normalized = toResponsesStreamPart(part);
-                if (normalized) {
-                  for (const event of mapper.processPart(normalized)) {
-                    yield event;
-                  }
-                }
-              }
+            const candidate = primary.value;
+            for (const part of candidate.parts) {
+              yield* mapper.processPart(part);
             }
-            const grounding = toResponsesGroundingMetadata(candidate?.groundingMetadata);
+            const grounding = candidate.grounding;
             if (grounding) {
               for (const event of mapper.processGrounding(grounding)) {
                 yield event;
               }
             }
-            if (isString(candidate?.finishReason) && candidate.finishReason.length > 0) {
+            if (candidate.finishReason) {
               const failure = outputState.failure();
               if (failure) {
                 fail(failure.code, failure.message);

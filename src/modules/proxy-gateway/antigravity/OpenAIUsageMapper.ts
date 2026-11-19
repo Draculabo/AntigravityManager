@@ -1,9 +1,5 @@
-import type { Usage } from './types';
-import { getGeminiReasoningTokens } from './GeminiReasoningUsage';
-import type {
-  GeminiUsageMetadata,
-  OpenAIUsage,
-} from '../../../server/gateway/common/interfaces/request-interfaces';
+import type { AntigravityTokenUsage } from './AntigravityResponseDecoder';
+import type { OpenAIUsage } from '../../../server/gateway/common/interfaces/request-interfaces';
 
 export interface OpenAIResponsesUsage {
   input_tokens: number;
@@ -18,60 +14,22 @@ export interface OpenAIResponsesUsage {
 }
 
 /**
- * Maps Gemini-compatible usage to OpenAI usage without changing the upstream
- * totals. Cached and reasoning counts are supplemental details for billing UI.
+ * Preserves the upstream total when the decoded response provides one.
  */
-export function toOpenAIUsage(usage: Usage | undefined): OpenAIUsage {
-  const promptTokens = usage?.input_tokens ?? 0;
-  const completionTokens = usage?.output_tokens ?? 0;
-  const cachedTokens = usage?.cache_read_input_tokens ?? 0;
-  const reasoningTokens = usage?.reasoning_tokens ?? 0;
+export function toOpenAIUsage(usage: AntigravityTokenUsage | undefined): OpenAIUsage {
+  const promptTokens = usage?.inputTokens ?? 0;
+  const completionTokens = usage?.outputTokens ?? 0;
+  const cachedTokens = usage?.cachedInputTokens ?? 0;
+  const reasoningTokens = usage?.reasoningTokens ?? 0;
 
   return {
     prompt_tokens: promptTokens,
     completion_tokens: completionTokens,
-    total_tokens: promptTokens + completionTokens,
+    total_tokens: usage?.totalTokens ?? promptTokens + completionTokens,
     prompt_tokens_details: cachedTokens > 0 ? { cached_tokens: cachedTokens } : undefined,
     completion_tokens_details:
       reasoningTokens > 0 ? { reasoning_tokens: reasoningTokens } : undefined,
   };
-}
-
-/**
- * Converts the upstream Gemini usage shape before applying the shared OpenAI
- * normalization, so streamed and non-streamed responses report the same fields.
- */
-export function toOpenAIUsageFromGeminiUsageMetadata(
-  usage: GeminiUsageMetadata | undefined,
-): OpenAIUsage {
-  const reasoningTokens = getGeminiReasoningTokens(usage);
-  const toolUseTokens = usage?.total_tool_use_tokens ?? 0;
-  /**
-   * Gemini's legacy candidatesTokenCount already includes thought/tool-use
-   * tokens. The Interactions-style total_output_tokens field reports generated
-   * output separately, so only that format needs the supplemental counts.
-   */
-  const outputTokens =
-    usage?.total_output_tokens === undefined
-      ? (usage?.candidatesTokenCount ?? 0)
-      : usage.total_output_tokens + reasoningTokens + toolUseTokens;
-
-  const normalizedUsage = toOpenAIUsage(
-    usage
-      ? {
-          input_tokens: usage.total_input_tokens ?? usage.promptTokenCount ?? 0,
-          output_tokens: outputTokens,
-          cache_read_input_tokens:
-            usage.total_cached_tokens ?? usage.cachedContentTokenCount ?? usage.cachedTokens ?? 0,
-          reasoning_tokens: reasoningTokens,
-        }
-      : undefined,
-  );
-  const upstreamTotalTokens = usage?.total_tokens ?? usage?.totalTokenCount;
-
-  return upstreamTotalTokens === undefined
-    ? normalizedUsage
-    : { ...normalizedUsage, total_tokens: upstreamTotalTokens };
 }
 
 /**

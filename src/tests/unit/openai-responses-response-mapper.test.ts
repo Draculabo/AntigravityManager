@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { MALFORMED_FUNCTION_CALL_RECOVERY_TEXT } from '@/modules/proxy-gateway/antigravity/GeminiFinishReason';
-import { toOpenAIResponsesResponse } from '../../modules/proxy-gateway/antigravity/OpenAIResponsesResponseMapper';
+import { toOpenAIResponsesResponse } from '@/server/gateway/modules/openai/responses/OpenAIResponsesResponseMapper';
 
 describe('OpenAI Responses non-stream mapper', () => {
   it('emits safety feedback as a Responses refusal content part', () => {

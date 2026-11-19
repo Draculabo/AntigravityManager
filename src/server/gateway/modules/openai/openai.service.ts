@@ -35,13 +35,13 @@ import {
   validateOpenAIRequestTools,
   type PreparedOpenAISchemas,
 } from './chat/openai-schema-preparation';
-import { isString } from 'lodash-es';
 import { captureCurrentAuditSession } from '../../../../modules/proxy-gateway/audit/traffic-audit-context';
 import { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
 import { GeminiClient } from '@/server/gateway/modules/gemini/gemini-client.service';
 import { v4 as uuidv4 } from 'uuid';
 import { Observable } from 'rxjs';
 import { buildAntigravityGenerationRequest } from '@/modules/proxy-gateway/antigravity/AntigravityRequestBuilder';
+import { decodeAntigravityStreamFrame } from '@/modules/proxy-gateway/antigravity/AntigravityStreamDecoder';
 import { resolveGlobalSystemPrompt } from '@/modules/proxy-gateway/antigravity/GlobalSystemPrompt';
 import {
   cleanImageModelName,
@@ -51,9 +51,9 @@ import {
   isMalformedFunctionCallFinishReason,
   MALFORMED_FUNCTION_CALL_RECOVERY_TEXT,
 } from '@/modules/proxy-gateway/antigravity/GeminiFinishReason';
-import { transformResponse } from '@/modules/proxy-gateway/antigravity/ClaudeResponseMapper';
+import { decodeAntigravityGenerationResult } from '@/modules/proxy-gateway/antigravity/AntigravityResponseDecoder';
 import { usesAuthoritativeThinkingBudget } from '@/modules/proxy-gateway/antigravity/model-variant-registry';
-import { toOpenAIUsageFromGeminiUsageMetadata } from '@/modules/proxy-gateway/antigravity/OpenAIUsageMapper';
+import { toOpenAIUsage } from '@/modules/proxy-gateway/antigravity/OpenAIUsageMapper';
 import { createResponsesStream } from './responses/openai-responses-stream';
 import {
   isDeclaredOpenAICustomTool,
@@ -61,9 +61,7 @@ import {
 } from '@/modules/proxy-gateway/antigravity/CustomToolCall';
 import { splitNamespaceToolName } from '@/modules/proxy-gateway/antigravity/ToolNamespace';
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
-import { readThoughtSignature } from '@/modules/proxy-gateway/antigravity/signature-utils';
 import {
-  decodeInternalSseData,
   describeInternalSseError,
   IncrementalSseDataParser,
 } from '@/modules/proxy-gateway/antigravity/internal-sse';
@@ -86,14 +84,12 @@ import {
   markProxyCleanComplete,
   markProxyNormalizationStarted,
 } from '@/server/gateway/common/proxy-response-timing';
-import { toGeminiUsageMetadata, toUnknownRecord } from './responses/openai-responses-adapters';
-import type { ClaudeResponse } from '@/modules/proxy-gateway/antigravity/types';
 import {
-  convertClaudeToOpenAIResponse,
   mapGeminiFinishReasonToOpenAIFinishReason,
   normalizeOpenAIChatToolCallIds,
   toOpenAIGenerationInput,
 } from './chat/openai-claude-conversion';
+import { toOpenAIChatResponse } from './chat/openai-chat-response';
 import { GenerationConstraintsService } from '@/server/gateway/shared/services/generation-constraints.service';
 import { ModelRoutingService } from '@/server/gateway/shared/services/model-routing.service';
 import {
@@ -435,7 +431,7 @@ export class OpenAIService extends BaseProxyService {
             this.logger.log(
               `Upstream response snippet after stream fallback: ${safeStringifyPacket(response).substring(0, 500)}`,
             );
-            const claudeResponse = transformResponse(response, {
+            const result = decodeAntigravityGenerationResult(response, {
               toolCallIdentity,
               model: geminiBody.model,
               family: effectiveVariantRequest.variant?.canonicalModel ?? null,
@@ -443,11 +439,7 @@ export class OpenAIService extends BaseProxyService {
               signatureSessionKey: responseSessionKey,
               signatureMessageCount: generationInput.messages.length,
             });
-            const openaiResponse = this.convertClaudeToOpenAIResponse(
-              claudeResponse,
-              request.model,
-              routedRequest.tools,
-            );
+            const openaiResponse = toOpenAIChatResponse(result, request.model, routedRequest.tools);
             return outputProtocol === 'responses'
               ? this.createSyntheticResponsesStream(
                   openaiResponse,
@@ -484,8 +476,7 @@ export class OpenAIService extends BaseProxyService {
           this.logger.log(
             `Upstream response snippet (non-stream): ${safeStringifyPacket(response).substring(0, 500)}`,
           );
-          // Transform Gemini response to OpenAI format
-          const claudeResponse = transformResponse(response, {
+          const result = decodeAntigravityGenerationResult(response, {
             toolCallIdentity,
             model: geminiBody.model,
             family: effectiveVariantRequest.variant?.canonicalModel ?? null,
@@ -494,13 +485,9 @@ export class OpenAIService extends BaseProxyService {
             signatureMessageCount: generationInput.messages.length,
           });
           this.logger.log(
-            `Transformed Claude response snippet: ${safeStringifyPacket(claudeResponse).substring(0, 500)}`,
+            `Decoded generation result snippet: ${safeStringifyPacket(result).substring(0, 500)}`,
           );
-          return this.convertClaudeToOpenAIResponse(
-            claudeResponse,
-            request.model,
-            routedRequest.tools,
-          );
+          return toOpenAIChatResponse(result, request.model, routedRequest.tools);
         }
       } catch (err) {
         if (err instanceof MediaWindowLimitError) {
@@ -612,7 +599,7 @@ export class OpenAIService extends BaseProxyService {
             this.commitUpstreamSession(token, signal);
             this.markUpstreamSuccessForResponse(token, fallbackBody.model, response);
             this.releaseImagePermit(retryState);
-            const claudeResponse = transformResponse(response, {
+            const result = decodeAntigravityGenerationResult(response, {
               toolCallIdentity,
               model: fallbackBody.model,
               family: effectiveVariantRequest.variant?.canonicalModel ?? null,
@@ -620,11 +607,7 @@ export class OpenAIService extends BaseProxyService {
               signatureSessionKey: responseSessionKey,
               signatureMessageCount: generationInput.messages.length,
             });
-            return this.convertClaudeToOpenAIResponse(
-              claudeResponse,
-              request.model,
-              routedRequest.tools,
-            );
+            return toOpenAIChatResponse(result, request.model, routedRequest.tools);
           } catch (fallbackErr) {
             if (fallbackErr instanceof UpstreamProxyConfigurationError) {
               this.releaseImagePermit(retryState);
@@ -774,7 +757,6 @@ export class OpenAIService extends BaseProxyService {
       },
       {
         requiresCleanImageEnd: isGeminiImageModel(signatureSourceModel),
-        inspectImage: (data) => this.inspectImageSseData(data),
         markImageSuccess: () => {
           if (successLease) {
             this.markUpstreamSuccess(successLease, signatureSourceModel ?? model);
@@ -954,13 +936,13 @@ export class OpenAIService extends BaseProxyService {
             }
 
             try {
-              if (requiresCleanImageEnd) {
-                const observation = this.inspectImageSseData(dataStr);
-                sawImageData ||= observation.hasImageData;
-                streamFailed ||= observation.failed;
-              }
-              const decoded = decodeInternalSseData(dataStr);
+              const decoded = decodeAntigravityStreamFrame(
+                dataStr,
+                outputState,
+                requiresCleanImageEnd,
+              );
               if (decoded.kind === 'error') {
+                streamFailed ||= requiresCleanImageEnd;
                 fail(
                   'upstream_error',
                   describeInternalSseError(decoded.error),
@@ -969,6 +951,7 @@ export class OpenAIService extends BaseProxyService {
                 return;
               }
               if (decoded.kind === 'invalid') {
+                streamFailed ||= requiresCleanImageEnd;
                 fail(
                   'invalid_upstream_response',
                   new UpstreamGenerationError('invalid_upstream_response').message,
@@ -978,18 +961,13 @@ export class OpenAIService extends BaseProxyService {
               if (decoded.kind !== 'response') {
                 continue;
               }
+              sawImageData ||= decoded.hasImageData;
               idleTimer.reset();
 
-              const responsePayload = decoded.response;
-              outputState.observe(responsePayload);
-              const usageMetadata = toGeminiUsageMetadata(responsePayload.usageMetadata);
-              if (usageMetadata) {
-                lastUsage = toOpenAIUsageFromGeminiUsageMetadata(usageMetadata);
+              if (decoded.usage) {
+                lastUsage = toOpenAIUsage(decoded.usage);
               }
-              if (
-                responsePayload.promptFeedback?.blockReason &&
-                !responsePayload.candidates?.length
-              ) {
+              if (decoded.blocked) {
                 sawFinishReason = true;
                 pushChunk({
                   id: streamId,
@@ -1008,43 +986,27 @@ export class OpenAIService extends BaseProxyService {
                 continue;
               }
 
-              const candidates = Array.isArray(responsePayload.candidates)
-                ? responsePayload.candidates
-                : [];
-              for (const [candidateIndex, candidateValue] of candidates.entries()) {
-                const candidate = toUnknownRecord(candidateValue);
-                const content = toUnknownRecord(candidate?.content);
-                const parts = Array.isArray(content?.parts) ? content.parts : [];
+              for (const { index: candidateIndex, parts, finishReason } of decoded.candidates) {
                 // Keep these streams separate because clients can render thought text twice when
                 // reasoning_content and content are present in the same delta.
                 let reasoningContent = '';
                 let responseContent = '';
 
-                for (const partValue of parts) {
-                  const part = toUnknownRecord(partValue);
-                  if (!part) {
-                    continue;
-                  }
-
-                  if (isString(part.text)) {
+                for (const part of parts) {
+                  if (part.text !== undefined) {
                     const cleanText = part.text
                       .replaceAll('<think>\n', '')
                       .replaceAll('<think>', '')
                       .replaceAll('\n</think>', '')
                       .replaceAll('</think>', '');
-                    if (part.thought === true) {
+                    if (part.reasoning) {
                       reasoningContent += cleanText;
                     } else {
                       responseContent += cleanText;
                     }
                   }
 
-                  const rawSignature = isString(part.thoughtSignature)
-                    ? part.thoughtSignature
-                    : isString(part.thought_signature)
-                      ? part.thought_signature
-                      : undefined;
-                  const signature = readThoughtSignature(rawSignature);
+                  const { signature } = part;
                   if (signature) {
                     if (signatureSourceModel) {
                       SignatureStore.store({
@@ -1058,10 +1020,9 @@ export class OpenAIService extends BaseProxyService {
                     }
                   }
 
-                  const functionCall = toUnknownRecord(part.functionCall);
-                  if (functionCall && isString(functionCall.name)) {
-                    const suppliedId = isString(functionCall.id) ? functionCall.id : undefined;
-                    const dedupeKey = suppliedId ? JSON.stringify(functionCall) : undefined;
+                  const functionCall = part.toolCall;
+                  if (functionCall) {
+                    const dedupeKey = functionCall.repeatKey;
                     if (dedupeKey && emittedToolCalls.has(dedupeKey)) {
                       continue;
                     }
@@ -1071,7 +1032,7 @@ export class OpenAIService extends BaseProxyService {
 
                     const splitName = splitNamespaceToolName(functionCall.name, clientTools);
                     const functionName = splitName.name;
-                    const rawArguments = toUnknownRecord(functionCall.args) ?? {};
+                    const rawArguments = functionCall.arguments;
                     const toolPayload = isDeclaredOpenAICustomTool(functionCall.name, clientTools)
                       ? {
                           type: 'custom',
@@ -1085,7 +1046,7 @@ export class OpenAIService extends BaseProxyService {
                       functionCall.name,
                       rawArguments,
                       toolCallIndex,
-                      suppliedId,
+                      functionCall.id,
                     );
                     if (signature && signatureSourceModel) {
                       SignatureStore.store({
@@ -1125,12 +1086,8 @@ export class OpenAIService extends BaseProxyService {
                     toolCallIndex += 1;
                   }
 
-                  const inlineData = toUnknownRecord(part.inlineData);
-                  if (inlineData) {
-                    const mimeType = isString(inlineData.mimeType)
-                      ? inlineData.mimeType
-                      : 'image/jpeg';
-                    const data = isString(inlineData.data) ? inlineData.data : '';
+                  if (part.media) {
+                    const { mimeType = 'image/jpeg', data = '' } = part.media;
                     responseContent += `\n\n![Generated Image](data:${mimeType};base64,${data})\n\n`;
                   }
                 }
@@ -1156,9 +1113,6 @@ export class OpenAIService extends BaseProxyService {
                   pushChunk(reasoningChunk);
                 }
 
-                const finishReason = isString(candidate?.finishReason)
-                  ? candidate.finishReason
-                  : undefined;
                 const isMalformedFunctionCall = isMalformedFunctionCallFinishReason(finishReason);
                 if (isMalformedFunctionCall) {
                   responseContent += `${responseContent || hasEmittedContent ? '\n\n' : ''}${MALFORMED_FUNCTION_CALL_RECOVERY_TEXT}`;
@@ -1182,7 +1136,7 @@ export class OpenAIService extends BaseProxyService {
                   hasEmittedContent = true;
                 }
 
-                if (candidate && isString(candidate.finishReason)) {
+                if (finishReason !== undefined) {
                   const failure = outputState.failure();
                   if (failure) {
                     fail(failure.code, failure.message);
@@ -1336,14 +1290,6 @@ export class OpenAIService extends BaseProxyService {
       responseId,
       clientTools,
     );
-  }
-
-  private convertClaudeToOpenAIResponse(
-    claudeResponse: ClaudeResponse,
-    model: string,
-    clientTools?: OpenAIChatRequest['tools'],
-  ): OpenAIChatResponse {
-    return convertClaudeToOpenAIResponse(claudeResponse, model, clientTools);
   }
 
   private toOpenAISessionKey(sessionId: string): string {

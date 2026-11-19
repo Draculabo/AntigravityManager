@@ -1,41 +1,23 @@
 import { randomUUID } from 'node:crypto';
-import { SignatureStore } from './SignatureStore';
-import { ResponseToolCallIdentity } from './ResponseToolCallIdentity';
-import { hashSessionAnchor } from '../../../server/gateway/common/session-anchor-hash';
-import { readThoughtSignature } from './signature-utils';
-import { isDeclaredOpenAICustomTool, readCustomToolInput } from './CustomToolCall';
+import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
+import { ResponseToolCallIdentity } from '@/modules/proxy-gateway/antigravity/ResponseToolCallIdentity';
+import { hashSessionAnchor } from '../../../common/session-anchor-hash';
+import type {
+  GenerationStreamGrounding,
+  GenerationStreamPart,
+  GenerationStreamToolCall,
+} from '@/modules/proxy-gateway/antigravity/AntigravityStreamDecoder';
 import {
   isMalformedFunctionCallFinishReason,
   MALFORMED_FUNCTION_CALL_RECOVERY_TEXT,
-} from './GeminiFinishReason';
-import { splitNamespaceToolName } from './ToolNamespace';
+} from '@/modules/proxy-gateway/antigravity/GeminiFinishReason';
 import { toIncompleteReason, type ResponsesOutputStatus } from './openai-responses-incomplete';
-import type { OpenAIResponsesUsage } from './OpenAIUsageMapper';
-import type { OpenAITool } from '../../../server/gateway/common/interfaces/request-interfaces';
-export interface GeminiResponsesStreamPart {
-  functionCall?: {
-    args: Record<string, unknown>;
-    id?: string;
-    name: string;
-  };
-  inlineData?: {
-    data: string;
-    mimeType: string;
-  };
-  text?: string;
-  thought?: boolean;
-  thoughtSignature?: string;
-  thought_signature?: string;
-}
-export interface GeminiResponsesGroundingMetadata {
-  groundingChunks?: Array<{
-    web?: {
-      title?: string;
-      uri?: string;
-    };
-  }>;
-  webSearchQueries?: string[];
-}
+import type { OpenAIResponsesUsage } from '@/modules/proxy-gateway/antigravity/OpenAIUsageMapper';
+import type { OpenAITool } from '../../../common/interfaces/request-interfaces';
+import {
+  createResponsesToolCallProjection,
+  type ResponsesToolCallOutputItem,
+} from './responses-tool-call-projection';
 interface ResponsesMessageOutputItem {
   content: Array<{
     annotations: [];
@@ -57,29 +39,10 @@ interface ResponsesReasoningOutputItem {
   }>;
   type: 'reasoning';
 }
-interface ResponsesFunctionCallOutputItem {
-  arguments: string;
-  call_id: string;
-  id: string;
-  name: string;
-  namespace?: string;
-  status: 'completed';
-  type: 'function_call';
-}
-interface ResponsesCustomToolCallOutputItem {
-  call_id: string;
-  id: string;
-  input: string;
-  name: string;
-  namespace?: string;
-  status: 'completed';
-  type: 'custom_tool_call';
-}
 type ResponsesOutputItem =
   | ResponsesMessageOutputItem
   | ResponsesReasoningOutputItem
-  | ResponsesFunctionCallOutputItem
-  | ResponsesCustomToolCallOutputItem;
+  | ResponsesToolCallOutputItem;
 interface ActiveMessageOutput {
   item: ResponsesMessageOutputItem;
   itemId: string;
@@ -156,53 +119,46 @@ export class OpenAIResponsesStreamingMapper {
       type: 'response.in_progress',
     });
   }
-  public *processPart(part: GeminiResponsesStreamPart): Generator<string> {
+  public *processPart(part: GenerationStreamPart): Generator<string> {
     if (this.completed) {
       return;
     }
 
-    const signature = readThoughtSignature(part.thoughtSignature ?? part.thought_signature);
-    if (part.functionCall) {
-      yield* this.processFunctionCall(part.functionCall, signature);
+    const { signature } = part;
+    if (part.toolCall?.name) {
+      yield* this.processFunctionCall(part.toolCall, signature);
       return;
     }
     if (signature) {
       this.storeSignature(signature);
     }
-    if (part.thought && part.text) {
+    if (part.reasoning && part.text) {
       yield* this.processThought(part.text);
       return;
     }
-    if (part.inlineData?.data) {
-      const mimeType = part.inlineData.mimeType || 'image/jpeg';
+    if (part.media?.data && part.media.mimeType !== undefined) {
+      const mimeType = part.media.mimeType || 'image/jpeg';
       yield* this.processText(
-        `\n\n![Generated Image](data:${mimeType};base64,${part.inlineData.data})\n\n`,
+        `\n\n![Generated Image](data:${mimeType};base64,${part.media.data})\n\n`,
       );
       return;
     }
     if (part.text) {
       yield* this.processText(part.text);
-      return;
     }
-    return;
   }
-  public *processGrounding(grounding: GeminiResponsesGroundingMetadata): Generator<string> {
+  public *processGrounding(grounding: GenerationStreamGrounding): Generator<string> {
     let groundingText = '';
-    if (grounding.webSearchQueries && grounding.webSearchQueries.length > 0) {
-      groundingText += `\n\n---\n**🔍 Searched for you:** ${grounding.webSearchQueries.join(', ')}`;
+    if (grounding.queries?.length) {
+      groundingText += `\n\n---\n**🔍 Searched for you:** ${grounding.queries.join(', ')}`;
     }
-    if (grounding.groundingChunks) {
-      const links = grounding.groundingChunks.flatMap((chunk, index) => {
-        if (!chunk.web) {
-          return [];
-        }
-        const title = chunk.web.title || 'Web source';
-        const uri = chunk.web.uri || '#';
-        return [`[${index + 1}] [${title}](${uri})`];
+    if (grounding.sources?.length) {
+      const links = grounding.sources.map((source, index) => {
+        const title = source.title || 'Web source';
+        const uri = source.uri || '#';
+        return `[${index + 1}] [${title}](${uri})`;
       });
-      if (links.length > 0) {
-        groundingText += `\n\n**🌐 Citations:**\n${links.join('\n')}`;
-      }
+      groundingText += `\n\n**🌐 Citations:**\n${links.join('\n')}`;
     }
     if (groundingText) {
       yield* this.processText(groundingText);
@@ -263,7 +219,6 @@ export class OpenAIResponsesStreamingMapper {
       },
       type: 'response.failed',
     });
-    return;
   }
   private *startMessage(): Generator<string> {
     if (this.activeMessage) {
@@ -312,7 +267,6 @@ export class OpenAIResponsesStreamingMapper {
       },
       type: 'response.content_part.added',
     });
-    return;
   }
   private *startThought(): Generator<string> {
     if (this.activeThought) {
@@ -356,7 +310,6 @@ export class OpenAIResponsesStreamingMapper {
       summary_index: 0,
       type: 'response.reasoning_summary_part.added',
     });
-    return;
   }
   private *closeThought(status: ResponsesOutputStatus = 'completed'): Generator<string> {
     const thought = this.activeThought;
@@ -365,7 +318,6 @@ export class OpenAIResponsesStreamingMapper {
     }
     this.activeThought = null;
     yield* this.finishThought(thought, status);
-    return;
   }
   private *closeMessage(
     phase: 'commentary' | 'final_answer',
@@ -377,7 +329,6 @@ export class OpenAIResponsesStreamingMapper {
     }
     this.activeMessage = null;
     yield* this.finishMessage(message, phase, status);
-    return;
   }
   private *finishMessage(
     message: ActiveMessageOutput,
@@ -410,7 +361,6 @@ export class OpenAIResponsesStreamingMapper {
       output_index: message.outputIndex,
       type: 'response.output_item.done',
     });
-    return;
   }
   private *finishThought(
     thought: ActiveReasoningOutput,
@@ -438,17 +388,14 @@ export class OpenAIResponsesStreamingMapper {
       output_index: thought.outputIndex,
       type: 'response.output_item.done',
     });
-    return;
   }
   private *processFunctionCall(
-    functionCall: NonNullable<GeminiResponsesStreamPart['functionCall']>,
+    functionCall: GenerationStreamToolCall,
     signature: string | undefined,
   ): Generator<string> {
-    const splitName = splitNamespaceToolName(functionCall.name, this.options.clientTools);
-    const functionName = splitName.name;
     const callId = this.toolCallIdentity.resolve(
       functionCall.name,
-      functionCall.args ?? {},
+      functionCall.arguments,
       this.toolCallPosition,
       functionCall.id,
     );
@@ -462,95 +409,22 @@ export class OpenAIResponsesStreamingMapper {
     if (functionCall.id) {
       this.emittedToolCallIds.add(callId);
     }
-    const normalizedArguments = functionCall.args;
-    const isCustomTool = isDeclaredOpenAICustomTool(functionCall.name, this.options.clientTools);
-    const argumentsString = JSON.stringify(normalizedArguments);
-    const input = isCustomTool ? readCustomToolInput(normalizedArguments) : '';
     const outputIndex = this.nextOutputIndex;
+    const projection = createResponsesToolCallProjection(
+      functionCall,
+      callId,
+      `item_${this.options.responseId}_${outputIndex}`,
+      outputIndex,
+      this.options.clientTools,
+    );
     this.nextOutputIndex += 1;
-    const itemId = `item_${this.options.responseId}_${outputIndex}`;
-    const inProgressItem = isCustomTool
-      ? {
-          call_id: callId,
-          id: itemId,
-          input: '',
-          name: functionName,
-          ...(splitName.namespace ? { namespace: splitName.namespace } : {}),
-          status: 'in_progress' as const,
-          type: 'custom_tool_call' as const,
-        }
-      : {
-          arguments: '',
-          call_id: callId,
-          id: itemId,
-          name: functionName,
-          ...(splitName.namespace ? { namespace: splitName.namespace } : {}),
-          status: 'in_progress' as const,
-          type: 'function_call' as const,
-        };
-    const completedItem: ResponsesFunctionCallOutputItem | ResponsesCustomToolCallOutputItem =
-      isCustomTool
-        ? {
-            call_id: callId,
-            id: itemId,
-            input,
-            name: functionName,
-            ...(splitName.namespace ? { namespace: splitName.namespace } : {}),
-            status: 'completed',
-            type: 'custom_tool_call',
-          }
-        : {
-            arguments: argumentsString,
-            call_id: callId,
-            id: itemId,
-            name: functionName,
-            ...(splitName.namespace ? { namespace: splitName.namespace } : {}),
-            status: 'completed',
-            type: 'function_call',
-          };
-    this.outputItems.push(completedItem);
+    this.outputItems.push(projection.completedItem);
     this.hasToolCall = true;
     yield* this.closeThought();
     yield* this.closeMessage('commentary');
-    yield this.serialize({
-      item: inProgressItem,
-      output_index: outputIndex,
-      type: 'response.output_item.added',
-    });
-    if (isCustomTool) {
-      yield this.serialize({
-        call_id: callId,
-        delta: input,
-        item_id: itemId,
-        output_index: outputIndex,
-        type: 'response.custom_tool_call_input.delta',
-      });
-      yield this.serialize({
-        call_id: callId,
-        input,
-        item_id: itemId,
-        output_index: outputIndex,
-        type: 'response.custom_tool_call_input.done',
-      });
-    } else {
-      yield this.serialize({
-        delta: argumentsString,
-        item_id: itemId,
-        output_index: outputIndex,
-        type: 'response.function_call_arguments.delta',
-      });
-      yield this.serialize({
-        arguments: argumentsString,
-        item_id: itemId,
-        output_index: outputIndex,
-        type: 'response.function_call_arguments.done',
-      });
+    for (const event of projection.events()) {
+      yield this.serialize(event);
     }
-    yield this.serialize({
-      item: completedItem,
-      output_index: outputIndex,
-      type: 'response.output_item.done',
-    });
   }
   private storeSignature(signature: string, toolCallId?: string, toolName?: string): void {
     if (!this.options.signatureSourceModel) {
@@ -590,10 +464,7 @@ export class OpenAIResponsesStreamingMapper {
       .replaceAll('<think>', '')
       .replaceAll('\n</think>', '')
       .replaceAll('</think>', '');
-    if (!cleanText) {
-      return;
-    }
-    if (this.hasSeenRegularText) {
+    if (!cleanText || this.hasSeenRegularText) {
       return;
     }
     yield* this.startThought();
