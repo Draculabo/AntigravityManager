@@ -76,9 +76,7 @@ describe('ClaudeRequestMapper cache compatibility', () => {
     );
     const systemInstruction = body.request.systemInstruction?.parts[0]?.text;
 
-    expect(systemInstruction).toContain(
-      "You are Claude Code, Anthropic's official CLI for Claude.",
-    );
+    expect(systemInstruction).toBe('You are a coding assistant.');
     expect(systemInstruction).not.toContain(
       "You are a Claude agent, built on Anthropic's Claude Agent SDK.",
     );
@@ -101,10 +99,7 @@ describe('ClaudeRequestMapper cache compatibility', () => {
     );
     const systemInstruction = body.request.systemInstruction?.parts[0]?.text;
 
-    expect(systemInstruction).toContain(
-      "You are Claude Code, Anthropic's official CLI for Claude.",
-    );
-    expect(systemInstruction).toContain('Keep this instruction unchanged.');
+    expect(systemInstruction).toBe('You are a coding assistant.\nKeep this instruction unchanged.');
     expect(systemInstruction).not.toContain(
       "You are a Claude agent, built on Anthropic's Claude Agent SDK.",
     );
@@ -149,7 +144,7 @@ describe('ClaudeRequestMapper cache compatibility', () => {
     );
     const systemInstruction = body.request.systemInstruction?.parts[0]?.text;
 
-    expect(systemInstruction).toBe("You are Claude Code, Anthropic's official CLI for Claude.");
+    expect(systemInstruction).toBe('You are a coding assistant.');
   });
 
   it('preserves an explicit Codex identity without injecting Antigravity', () => {

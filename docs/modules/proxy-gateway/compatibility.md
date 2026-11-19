@@ -471,8 +471,8 @@ contiguous system/developer messages enter the initial instruction; later remind
 remain at their original conversation position. User-supplied repetitions and
 dynamic dates, paths, UUIDs and request/session identifiers remain significant.
 
-Exact standalone Claude Agent SDK identities, including the Claude Code identity
-that names the SDK runtime, map to Claude Code. Other recognized
+Exact standalone Claude Code and Claude Agent SDK identity templates map to
+`You are a coding assistant.`. Other recognized
 English attributed identity heads can become `You are an AI Agent.` only when
 they contain an identity opening, an agent/assistant/AI noun and an adjacent
 attribution verb. Recognition covers at most the first four sentences and 8192
@@ -641,9 +641,9 @@ of thinking at very small caps. The planner retains adjustment reasons for these
 
 ## Claude Agent SDK Client Identity
 
-Claude request mapping normalizes the exact top-level Claude Agent SDK identity sentence to the Claude Code identity before cache sanitization. The rule applies to a string `system` value and to matching text blocks in a top-level `system` array. It is intentionally exact: mentions inside longer text, whitespace-padded variants, and embedded role-bearing system messages remain unchanged.
-
-The normalized Claude Code text remains a client customization rather than an official-provider identity marker. The mapper therefore retains the Antigravity fallback identity alongside it, preserving the existing cache and provider-routing contract.
+Claude request mapping applies the [system text normalization rules](#system-prompt-normalization)
+to each system text block. Each matching standalone identity is normalized independently of the
+other blocks, so adjacent instructions retain their order and content.
 
 ## Cowork Coordination State
 

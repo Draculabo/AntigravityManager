@@ -53,9 +53,9 @@ export function normalizeSystemPrompt(
       return '';
     }
   }
-  if (cleaned === SDK_IDENTITY || cleaned === SDK_CLI_IDENTITY) {
+  if (cleaned === SDK_IDENTITY || cleaned === SDK_CLI_IDENTITY || cleaned === CODE_IDENTITY) {
     onChange?.('identity-normalized');
-    return CODE_IDENTITY;
+    return 'You are a coding assistant.';
   }
   let headEnd = Math.min(cleaned.length, MAX_HEAD_CHARACTERS);
   let sentences = 0;

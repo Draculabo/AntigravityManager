@@ -12,6 +12,7 @@ const attributed = 'You are Example, an AI assistant created by Example Labs.';
 const neutral = 'You are an AI Agent.';
 const sdk = "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
 const code = "You are Claude Code, Anthropic's official CLI for Claude.";
+const codingAssistant = 'You are a coding assistant.';
 
 beforeEach(() => setServerConfig(DEFAULT_APP_CONFIG.proxy));
 afterEach(() => setServerConfig(DEFAULT_APP_CONFIG.proxy));
@@ -48,7 +49,8 @@ function system(protocol: 'claude' | 'chat' | 'gemini', text: string): string {
 
 describe.each(['claude', 'chat', 'gemini'] as const)('%s system text ownership', (protocol) => {
   it.each([
-    [sdk, code],
+    [sdk, codingAssistant],
+    [code, codingAssistant],
     [attributed + '\r\nKeep this exact rule.  ', neutral + '\r\nKeep this exact rule.  '],
     ['You are an AI assistant created by Example Labs  ', neutral + '  '],
     [

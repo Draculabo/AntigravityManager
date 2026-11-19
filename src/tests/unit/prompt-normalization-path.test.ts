@@ -23,6 +23,7 @@ vi.mock('@/server/gateway/common/utils/request-user-agent', () => ({
 
 const sdk = "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
 const code = "You are Claude Code, Anthropic's official CLI for Claude.";
+const codingAssistant = 'You are a coding assistant.';
 const sdkInCli =
   "You are Claude Code, Anthropic's official CLI for Claude, running within the Claude Agent SDK.";
 const clientPolicy = [
@@ -48,8 +49,9 @@ describe.each(['chat', 'responses', 'messages', 'gemini'] as const)(
   '%s prompt normalization execution',
   (protocol) => {
     it.each([
-      [sdk, code],
-      [sdkInCli, code],
+      [sdk, codingAssistant],
+      [sdkInCli, codingAssistant],
+      [code, codingAssistant],
       [sdkInCli + '\nKeep the deployment checks.', sdkInCli + '\nKeep the deployment checks.'],
       [
         'You are Example, an AI assistant created by Example Labs; Keep all source paths relative.',

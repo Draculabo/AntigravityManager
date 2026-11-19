@@ -18,8 +18,11 @@ client identity fields remain byte-preserved in the system instruction. Cache
 reuse must follow actual prompt identity rather than a guessed normalized string.
 
 Initial system text across Claude, OpenAI conversion/Responses instructions and
-native Gemini uses the same normalization owner. Exact standalone Claude Agent SDK
-identities, including the CLI-with-SDK variant, map to Claude Code. Otherwise,
+native Gemini uses the same normalization owner. Exact standalone Claude Code
+and Claude Agent SDK identity templates map to `You are a coding assistant.`.
+Live Sonnet tool tasks returned upstream 429 with the Claude Code identity.
+The same task completed after the identity was made neutral with the existing
+prompt composition and adaptive thinking settings. Otherwise,
 only a recognized English identity
 opening, identity noun and adjacent attribution verb in the first four sentences
 (at most 8192 UTF-16 code units) can become `You are an AI Agent.`. Version decimal
