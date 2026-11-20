@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import semanticRelease from 'semantic-release';
 import { reconcileRelease } from './deliver-release-assets.mjs';
 import {
@@ -248,6 +250,56 @@ async function rewrittenMain(t) {
   };
   return { cwd, origin, previous, releases, candidate };
 }
+
+test('the Release resume entry accepts either form spelling and emits the frozen candidate', async (t) => {
+  const { cwd, candidate } = await rewrittenMain(t);
+  await recordHistoryMigration(cwd, candidate);
+  git(cwd, ['fetch', '--tags', 'origin', 'main']);
+  const script = fileURLToPath(new URL('./manage-release.mjs', import.meta.url));
+  const fakeGitHub = `
+    import childProcess from 'node:child_process';
+    import { syncBuiltinESMExports } from 'node:module';
+    import assert from 'node:assert/strict';
+    const run = childProcess.execFileSync;
+    childProcess.execFileSync = (file, args, options) => {
+      if (file !== 'gh') return run(file, args, options);
+      assert.deepEqual(args, ['api', '--paginate', '--slurp', 'repos/fixture/project/releases?per_page=100']);
+      return '[[]]';
+    };
+    syncBuiltinESMExports();
+  `;
+  const preload = `data:text/javascript;base64,${Buffer.from(fakeGitHub).toString('base64')}`;
+  const invoke = (input, filename) =>
+    spawnSync(process.execPath, ['--import', preload, script, 'plan', filename], {
+      cwd,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        GITHUB_REF_NAME: 'main',
+        GITHUB_REPOSITORY: 'fixture/project',
+        GITHUB_OUTPUT: `${filename}.out`,
+        RELEASE_OPERATION: 'resume',
+        RELEASE_TAG: input,
+        RELEASE_MIGRATION_VERSION: '',
+      },
+    });
+
+  for (const [index, input] of ['0.33.0', 'v0.33.0'].entries()) {
+    const file = path.join(cwd, `candidate-${index}.json`);
+    const result = invoke(input, file);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(await readFile(file, 'utf8')), candidate);
+    assert.equal(
+      await readFile(`${file}.out`, 'utf8'),
+      `has_candidate=true\nsource=${candidate.source}\nversion=0.33.0\ntag=v0.33.0\n`,
+    );
+  }
+  const invalidFile = path.join(cwd, 'invalid-candidate.json');
+  const invalid = invoke('0.33', invalidFile);
+  assert.equal(invalid.status, 1);
+  assert.match(invalid.stderr, /Enter an existing version in release_tag/);
+  await assert.rejects(readFile(invalidFile), { code: 'ENOENT' });
+});
 
 function previewVersion(cwd, repositoryUrl) {
   return semanticRelease(

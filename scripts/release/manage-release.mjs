@@ -33,6 +33,15 @@ const cwd = process.cwd();
 const notesPlugin = './scripts/release/github-release-notes.mjs';
 const channelRef = (channel) => `refs/remotes/origin/${channel}`;
 
+function requestedReleaseTag() {
+  const input = process.env.RELEASE_TAG?.trim() ?? '';
+  const result = ReleaseTag.safeParse(input.startsWith('v') ? input : `v${input}`);
+  if (!result.success) {
+    throw new Error('Enter an existing version in release_tag, such as v0.33.0 or 0.33.0');
+  }
+  return result.data;
+}
+
 function candidateCommit(channel, tag) {
   return tagCommit(cwd, tag) ?? latestCandidateCommit(cwd, channel);
 }
@@ -283,7 +292,7 @@ switch (operation) {
     }
     writePlan(
       process.env.RELEASE_OPERATION === 'resume'
-        ? resumeCandidate(channel, ReleaseTag.parse(process.env.RELEASE_TAG))
+        ? resumeCandidate(channel, requestedReleaseTag())
         : await plan(channel, migrationVersion),
       file,
     );
@@ -292,7 +301,7 @@ switch (operation) {
     await record(Candidate.parse(JSON.parse(readFileSync(file, 'utf8'))), notesPath);
     break;
   case 'abandon':
-    abandon(channel, ReleaseTag.parse(process.env.RELEASE_TAG), file);
+    abandon(channel, requestedReleaseTag(), file);
     break;
   default:
     throw new Error(`Unknown release operation ${operation}`);

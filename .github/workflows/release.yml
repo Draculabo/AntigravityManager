@@ -9,7 +9,7 @@ on:
         options: [release, resume, abandon]
         default: release
       release_tag:
-        description: 'Existing candidate tag for resume or abandon'
+        description: 'Existing candidate version for resume or abandon (e.g. v0.33.0 or 0.33.0)'
         type: string
         required: false
       migration_version:

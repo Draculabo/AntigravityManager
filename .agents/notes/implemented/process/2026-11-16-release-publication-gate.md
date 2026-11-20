@@ -51,3 +51,5 @@ history. They verify collision handling, the migration commit and tag, and subse
 version selection.
 Draft fixtures cover a missing list entry, ID readback, content mismatches, asset replacement
 and publication of the verified ID.
+The recovery fixture exercises the CLI with the form's version value and verifies the
+recorded candidate and workflow outputs.

@@ -169,6 +169,7 @@ with `operation=resume` and `release_tag`, leaving `migration_version` empty.
   advances before the release commit is written, start a release from its new tip.
 - If a release commit or tag already exists and the original artifacts are unavailable, dispatch
   **Release** on the original channel with `operation=resume` and the recorded `release_tag`.
+  Enter the version with or without the `v` prefix, such as `v0.33.0` or `0.33.0`.
   It rebuilds the original source and version and continues the recorded candidate. A draft stays
   private until the full remote asset inventory matches.
   Dispatch a fresh resume run after changing the release scripts. The publish job uses the
