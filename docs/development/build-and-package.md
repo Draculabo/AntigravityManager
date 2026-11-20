@@ -9,7 +9,9 @@ Run commands from the repository root unless a step specifies another directory.
 Native process queries use `@draculabo/sysinfo-process-enhanced`. pnpm installs the matching prebuilt platform package; keep optional dependencies enabled. For a different packaging architecture, install dependencies on the target runner as the release workflow does.
 
 SQLite uses the `better-sqlite3` Node-API prebuild in both Electron and standalone Node. Standalone
-dependency tracing keeps the prebuild for its target.
+dependency tracing keeps the prebuild for its target. Linux desktop packaging keeps only the
+target architecture's glibc prebuild in the staged SQLite module. The build stops if that prebuild
+is missing. This keeps foreign-architecture binaries out of the RPM stripping step.
 
 `pnpm install --frozen-lockfile` applies the [Forge 7.11.1 patch](../../patches/@electron-forge__core@7.11.1.patch) through `patchedDependencies`. Forge's package-bin cleanup uses a relative glob with the package directory as `cwd`, so Windows path separators cannot make it scan unrelated workspace profiles. The patch is also applied when lifecycle scripts are disabled. Remove it when the installed Forge version includes this scoped scan and Windows packaging passes with inaccessible directories elsewhere in the workspace.
 

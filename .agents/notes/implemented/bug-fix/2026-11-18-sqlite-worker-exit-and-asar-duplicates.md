@@ -34,8 +34,15 @@ The supported desktop and standalone targets consume a published SQLite binary. 
 override leaves other OpenTelemetry packages at their existing versions. A future change to the
 override must check its consumers' ranges and the physical package layout.
 
+Linux RPM builds run the target runner's `strip` against staged ELF binaries. The SQLite npm
+package carries both x64 and ARM64 prebuilds, so the desktop copy retains only the target glibc
+binary before making installers. The dependency installation remains available to other targets.
+
 ## Verification
 
 The [delivery procedure](../../../../docs/testing/delivery.md#native-installed-runtime) covers
 standalone worker termination. Check the emitted Windows ASAR for a single semantic-conventions
 directory and use the existing package size budget to identify remaining growth.
+The desktop staging regression covers both Linux architectures and rejects a missing glibc
+prebuild. Native RPM verification requires building both packages and opening SQLite from each
+installed desktop payload.
