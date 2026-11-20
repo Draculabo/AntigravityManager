@@ -12,6 +12,10 @@ on:
         description: 'Existing candidate tag for resume or abandon'
         type: string
         required: false
+      migration_version:
+        description: 'Stable version to anchor main after a history rewrite (e.g. 0.33.0)'
+        type: string
+        required: false
       dry_run:
         description: 'Build and verify the proposed version without writing Git or GitHub releases'
         type: boolean
@@ -58,6 +62,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           RELEASE_OPERATION: ${{ inputs.operation }}
           RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_MIGRATION_VERSION: ${{ inputs.migration_version }}
         run: node scripts/release/manage-release.mjs plan "$RUNNER_TEMP/release-candidate.json"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.candidate.outputs.has_candidate == 'true'
@@ -162,6 +167,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_MIGRATION_VERSION: ${{ inputs.migration_version }}
         run: node scripts/release/manage-release.mjs abandon "$RUNNER_TEMP/release-notes.md"
 
   update-distribution:

@@ -14,9 +14,16 @@ import {
   readCandidate,
   releaseStatus,
   ReleaseTag,
+  repository,
   tagCommit,
 } from './release-candidate.mjs';
 import { git, resolveHead } from './release-source.mjs';
+import { generateNotes } from './github-release-notes.mjs';
+import {
+  historyMigrationBaseline,
+  recordHistoryMigration,
+  validateNewReleaseTag,
+} from './release-history-migration.mjs';
 
 const cwd = process.cwd();
 const notesPlugin = './scripts/release/github-release-notes.mjs';
@@ -50,7 +57,7 @@ function resumeCandidate(channel, tag) {
   return candidate;
 }
 
-async function plan(channel) {
+async function plan(channel, migrationVersion) {
   const source = resolveHead(cwd, 'HEAD');
   if (source !== resolveHead(cwd, channelRef(channel))) {
     throw new Error(`The checked out commit ${source} is no longer the tip of ${channel}`);
@@ -67,6 +74,30 @@ async function plan(channel) {
     }
   }
   const baseTag = publishedBase(cwd, channel, source, releases);
+  if (migrationVersion) {
+    const tag = `v${migrationVersion}`;
+    const historyMigrationFrom = historyMigrationBaseline(cwd, channel, source, tag, releases);
+    const notes = await generateNotes(
+      { baseTag },
+      {
+        cwd,
+        nextRelease: { version: migrationVersion, gitHead: source },
+        options: { repositoryUrl: `https://github.com/${repository()}.git` },
+        branch: { name: channel },
+        env: process.env,
+      },
+    );
+    return Candidate.parse({
+      channel,
+      source,
+      tag,
+      previousTag: historyMigrationFrom,
+      notesBase: baseTag,
+      preparedAt: new Date().toISOString(),
+      historyMigrationFrom,
+      notes: notes.trimEnd(),
+    });
+  }
   const result = await semanticRelease({
     dryRun: true,
     plugins: [releaseConfig.plugins[0], [notesPlugin, { baseTag }]],
@@ -77,6 +108,7 @@ async function plan(channel) {
   if (result.nextRelease.gitHead !== source) {
     throw new Error('Semantic Release preview selected a different source revision');
   }
+  validateNewReleaseTag(cwd, channel, result.nextRelease.gitTag, releases);
   return Candidate.parse({
     channel,
     source,
@@ -186,21 +218,30 @@ async function record(candidate, notesPath) {
       throw new Error(`The release job must check out the original source ${source}`);
     }
     const releases = listReleases();
-    if (releases.some(({ tag_name }) => tag_name === tag)) {
-      throw new Error(`GitHub already has a release for the unrecorded tag ${tag}`);
-    }
     if (publishedBase(cwd, channel, source, releases) !== candidate.notesBase) {
       throw new Error('The published notes baseline changed; start a new release');
     }
-    const result = await semanticRelease({
-      dryRun: false,
-      plugins: recordingPlugins(releaseConfig.plugins, candidate),
-    });
-    if (!result?.nextRelease) {
-      throw new Error(`Semantic Release did not record ${tag}`);
+    if (candidate.historyMigrationFrom) {
+      const latest = historyMigrationBaseline(cwd, channel, source, tag, releases);
+      if (latest !== candidate.historyMigrationFrom) {
+        throw new Error(`The migration baseline changed to ${latest}; start a new release`);
+      }
+      await recordHistoryMigration(cwd, candidate);
+    } else {
+      validateNewReleaseTag(cwd, channel, tag, releases);
+      const result = await semanticRelease({
+        dryRun: false,
+        plugins: recordingPlugins(releaseConfig.plugins, candidate),
+      });
+      if (!result?.nextRelease) {
+        throw new Error(`Semantic Release did not record ${tag}`);
+      }
     }
     git(cwd, ['fetch', '--tags', 'origin', channel]);
   } else if (!recent || readCandidate(cwd, recent)?.tag !== tag) {
+    if (tagCommit(cwd, tag)) {
+      throw new Error(`Release tag ${tag} already exists outside the recorded candidate`);
+    }
     throw new Error(`The source branch advanced to ${head}; start a new release from ${channel}`);
   }
 
@@ -243,6 +284,13 @@ function abandon(channel, tag, notesPath) {
 
 const [operation, file, notesPath] = process.argv.slice(2);
 const channel = Channel.parse(process.env.GITHUB_REF_NAME);
+const migrationVersion = process.env.RELEASE_MIGRATION_VERSION?.trim();
+if (
+  migrationVersion &&
+  (operation === 'abandon' || (operation === 'plan' && process.env.RELEASE_OPERATION !== 'release'))
+) {
+  throw new Error('A migration version can only be used when starting a release');
+}
 switch (operation) {
   case 'plan':
     if (!['release', 'resume'].includes(process.env.RELEASE_OPERATION)) {
@@ -251,7 +299,7 @@ switch (operation) {
     writePlan(
       process.env.RELEASE_OPERATION === 'resume'
         ? resumeCandidate(channel, ReleaseTag.parse(process.env.RELEASE_TAG))
-        : await plan(channel),
+        : await plan(channel, migrationVersion),
       file,
     );
     break;

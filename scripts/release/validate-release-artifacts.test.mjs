@@ -142,6 +142,13 @@ test('dry-run verification is read-only and gates publication before release wri
     readFileSync(new URL('../../.github/workflows/release.yml', import.meta.url), 'utf8'),
   );
   const publish = official.jobs.publish;
+  const migrationInput = official.on.workflow_dispatch.inputs.migration_version;
+  const plan = official.jobs.plan.steps.find((step) => step.id === 'candidate');
+  assert.deepEqual(
+    { type: migrationInput.type, required: migrationInput.required },
+    { type: 'string', required: false },
+  );
+  assert.equal(plan.env.RELEASE_MIGRATION_VERSION, '${{ inputs.migration_version }}');
   assert.equal(official.jobs.package.uses, './.github/workflows/publish.yaml');
   assert.deepEqual(verify.needs, ['resolve', 'build']);
   assert.deepEqual(publish.needs, ['plan', 'package']);

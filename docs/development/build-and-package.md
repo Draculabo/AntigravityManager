@@ -139,6 +139,19 @@ The final edit uses the Actions token so it does not start another packaging run
 distribution updates run after public release. The Windows feed and Linux metadata PR are
 updated only for the current stable release.
 
+#### Restore automatic versioning after a history rewrite
+
+If the latest published stable tag is outside `main` history, **Release** can anchor the rewritten
+history at a new stable version. Dispatch on `main` with `operation=release` and enter an unused
+version above the latest published stable version in `migration_version` (for example, `0.33.0`).
+First run with `dry_run=true` to verify all six targets. Repeat with the same version and
+`dry_run=false` to publish through the verified draft flow. The workflow checks that the source and
+version are still available before writing the release commit and tag. Published tags stay in place.
+
+After the migration is published, leave `migration_version` empty. The normal version calculation
+uses the new reachable tag. If a migration stops after recording the release commit, recover it
+with `operation=resume` and `release_tag`, leaving `migration_version` empty.
+
 ### Rebuild or repair an existing version
 
 - Dispatch **Publish Release** with `dry_run=true` for installers in Actions Artifacts.
