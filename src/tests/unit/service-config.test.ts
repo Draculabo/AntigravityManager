@@ -707,10 +707,20 @@ describe('service configuration', () => {
     expect(await fs.readFile(preferences(), 'utf8')).toBe('{invalid');
   });
 
-  it('restores saved appearance, defaults older profiles to 100%, and drops default zoom on reset', async () => {
+  it('keeps the legacy desktop language when seeding preferences', async () => {
+    await fs.writeFile(legacy(), JSON.stringify({ language: 'zh-CN' }));
+    const { desktopPreferencesStore } = await import('@/modules/config/ipc/desktop-preferences');
+    expect(await desktopPreferencesStore.load()).toMatchObject({
+      language: 'zh-CN',
+      zoom_percent: 100,
+    });
+  });
+
+  it('defaults a fresh desktop profile to English at 100% zoom and restores saved appearance', async () => {
+    await fs.unlink(legacy());
     const { configRouter } = await import('@/modules/config/ipc/router');
     const initial = await call(configRouter.desktop.load, undefined);
-    expect(initial.zoom_percent).toBe(100);
+    expect(initial).toMatchObject({ language: 'en', zoom_percent: 100 });
     expect(await fs.readFile(preferences(), 'utf8')).not.toContain('zoom_percent');
 
     const saved = await call(configRouter.desktop.save, { language: 'pt_BR', zoom_percent: 125 });
