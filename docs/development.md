@@ -61,6 +61,10 @@ resolve its prerequisite before starting the application; see [environment failu
 startup and gateway diagnostics appear in the terminal, while renderer diagnostics appear in
 Chromium DevTools. Stop the development process when finished.
 
+Tailwind detects renderer classes in `src/` and `index.html`. The stylesheet declares those
+sources independently of Vite's file watcher so local worktrees outside `src/` stay out of the
+renderer CSS build.
+
 The default launch can use the normal local profile and saved auto-start settings. It is not an
 isolated test profile. Close another runtime using the same profile, protect existing profile
 data and use the owning isolated acceptance procedure before testing account switching or other

@@ -3,6 +3,7 @@ import { once } from 'node:events';
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import tailwindcss from '@tailwindcss/vite';
 import spawn from 'cross-spawn';
 import { createServer, loadConfigFromFile } from 'vite';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -30,10 +31,16 @@ for (const name of ignoredDirectories) {
 }
 await mkdir(path.join(directory, 'nested-checkout', '.git'));
 await writeFile(path.join(directory, 'nested-worktree', '.git'), 'gitdir: fixture-only');
-await mkdir(path.join(directory, 'src'));
+await writeFile(path.join(directory, 'nested-worktree', 'view.html'), '<div class="z-[81049]">');
+await mkdir(path.join(directory, 'src/styles'), { recursive: true });
+await writeFile(
+  path.join(directory, 'src/styles/global.css'),
+  await readFile(path.join(projectRoot, 'src/styles/global.css')),
+);
 const moduleFile = path.join(directory, 'src', 'probe.js');
 const moduleSource = (value) =>
-  `window.__WATCH_PROBE_VALUE__ = '${value}'; if (import.meta.hot) { import.meta.hot.accept(); }`;
+  `document.querySelector('h1').classList.add('z-[81047]');
+window.__WATCH_PROBE_VALUE__ = '${value}'; if (import.meta.hot) { import.meta.hot.accept(); }`;
 await writeFile(moduleFile, moduleSource('initial'));
 let loaded;
 // Resolve the real development policy against a small isolated workspace, including Git markers.
@@ -48,6 +55,7 @@ const rendererName = 'main_window';
 const config = getConfig(
   { root: directory, mode: 'development', forgeConfigSelf: { name: rendererName } },
   {
+    plugins: [tailwindcss()],
     server: {
       ...loaded.config.server,
       port: 5173,
@@ -64,8 +72,14 @@ let child;
 try {
   await writeFile(
     path.join(directory, 'index.html'),
-    '<h1>Development connection verified</h1><script type="module" src="/src/probe.js"></script>',
+    '<h1 class="z-[81048]">Development connection verified</h1>' +
+      '<script type="module" src="/src/probe.js"></script>',
   );
+  const stylesheet = await server.transformRequest('/src/styles/global.css?direct');
+  assert(stylesheet);
+  assert(/z-index: 81047\b/.test(stylesheet.code), 'Tailwind omitted a class from renderer source');
+  assert(/z-index: 81048\b/.test(stylesheet.code), 'Tailwind omitted a class from the HTML entry');
+  assert(!/z-index: 81049\b/.test(stylesheet.code), 'Tailwind scanned a nested worktree');
   await server.listen();
   const address = server.httpServer.address();
   assert(address && typeof address === 'object');
@@ -179,7 +193,7 @@ setTimeout(() => app.exit(1), 15000).unref();
   assert.equal(result.value, 'updated', 'Source edit did not reach Electron through HMR');
   assert.equal(ignoredEvents, 0);
   console.log(
-    'PASS: IPv4 Forge URL, source HMR, and excluded output/cache/nested-checkout watches.',
+    'PASS: IPv4 Forge URL, source HMR, development watch exclusions, and Tailwind source scope.',
   );
 } finally {
   if (child && child.exitCode === null) {
