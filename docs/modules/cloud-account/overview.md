@@ -30,6 +30,7 @@ status, and remove accounts from Manager. Removing an account also removes saved
 references that point to it; it does not sign that account out of an official client or select a
 replacement. Startup cleanup removes stale references without switching clients. Account deletion
 and reference cleanup share a SQLite transaction, so cleanup failure rolls back the deletion.
+The Accounts page shows quota on each account card.
 
 Account cards always offer a Use dropdown. App, IDE and CLI badges below the email identify the
 clients using that account; accounts without an active client show Not in use. Each client tracks

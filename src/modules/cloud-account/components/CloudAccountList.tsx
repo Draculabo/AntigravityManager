@@ -37,7 +37,6 @@ import {
   CloudAccountLoadError,
   CloudAccountLoadingState,
 } from '@/modules/cloud-account/components/CloudAccountListFallbacks';
-import { CloudAccountListSummary } from '@/modules/cloud-account/components/CloudAccountListSummary';
 import { CloudAccountRecommendation } from '@/modules/cloud-account/components/CloudAccountRecommendation';
 import { CloudAccountToolbar } from '@/modules/cloud-account/components/CloudAccountToolbar';
 import type { QuotaWindow } from '@/modules/cloud-account/utils/quota-groups';
@@ -127,8 +126,6 @@ function CloudAccountListContent() {
     effectiveSelectedTierKeySet,
     hasActiveTierFilter,
     visibleAccountIds,
-    poolSummary,
-    setPoolScope,
   } = useCloudAccountListView(accounts, config, currentSort, recommendationTarget);
 
   const { refreshSelectedAccounts, deleteSelectedAccounts } = useCloudAccountBatchActions({
@@ -350,10 +347,7 @@ function CloudAccountListContent() {
 
   return (
     <div data-slot="cloud-account-list" className="flex flex-col gap-6 pb-20">
-      <CloudAccountListSummary
-        summary={poolSummary}
-        onScopeChange={setPoolScope}
-      />
+      <h1 className="sr-only">{t('cloud.title')}</h1>
 
       <CloudAccountToolbar
         visibleAccountIds={visibleAccountIds}

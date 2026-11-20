@@ -1,8 +1,6 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { CloudAccountListSummary } from '@/modules/cloud-account/components/CloudAccountListSummary';
-import type { AccountPoolSummary } from '@/modules/cloud-account/utils/account-pool-summary';
 import { CloudAccountToolbar } from '@/modules/cloud-account/components/CloudAccountToolbar';
 
 vi.mock('react-i18next', () => ({
@@ -10,13 +8,6 @@ vi.mock('react-i18next', () => ({
     i18n: { language: 'en' },
     t: (key: string) => {
       const translations: Record<string, string> = {
-        'cloud.title': 'Accounts',
-        'cloud.description': 'Manage your Google Gemini accounts.',
-        'cloud.total-accounts': 'Total accounts',
-        'cloud.card.active': 'Active',
-        'cloud.card.rateLimited': 'Rate Limited',
-        'cloud.globalQuota': 'Global Quota',
-        'cloud.weeklyQuota': 'Weekly Quota',
         'cloud.auto-switch-client': 'Auto-switch client account',
         'cloud.minimal-mode': 'Minimal mode',
       };
@@ -40,38 +31,6 @@ vi.mock('@/modules/cloud-account/components/AccountTierFilterDropdown', () => ({
 vi.mock('@/modules/cloud-account/components/QuotaGroupVisibilityMenu', () => ({
   QuotaGroupVisibilityMenu: () => null,
 }));
-
-describe('CloudAccountListSummary', () => {
-  it('shows pool counts and the account health details', () => {
-    const summary: AccountPoolSummary = {
-      totalAccounts: 5,
-      sourceAccountCount: 5,
-      states: { 'enabled-normal': 2, disabled: 1, exception: 1, unknown: 1 },
-      accounts: [{ id: 'sample', label: 'Sample account', state: 'enabled-normal' }],
-      currentClientAccounts: 1,
-      rateLimitedAccounts: 0,
-      scope: 'enabled-normal',
-      scopeAccountCount: 2,
-      families: [],
-    };
-
-    render(React.createElement(CloudAccountListSummary, { summary, onScopeChange: vi.fn() }));
-
-    expect(screen.getByRole('heading', { name: 'Accounts' })).toBeTruthy();
-    expect(screen.getByText('Manage your Google Gemini accounts.')).toBeTruthy();
-    expect(screen.getByText('Total accounts').nextElementSibling?.textContent).toBe('5');
-    expect(
-      screen.getByText('cloud.pool-summary.enabled-normal', { selector: 'dt' }).nextElementSibling
-        ?.textContent,
-    ).toBe('2');
-    expect(
-      screen.getByText('cloud.pool-summary.rate-limited').nextElementSibling?.textContent,
-    ).toBe('0');
-    expect(screen.getByText('Sample account').nextElementSibling?.textContent).toBe(
-      'cloud.pool-summary.enabled-normal',
-    );
-  });
-});
 
 describe('CloudAccountToolbar minimal mode', () => {
   const baseProps = {
