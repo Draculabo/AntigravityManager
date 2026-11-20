@@ -2,6 +2,62 @@
 
 # Changelog
 
+# 🚀 Antigravity Manager Release v0.33.1
+
+**Release Date:** 2026-11-20
+**Since v0.33.0:** 5 commits · 1 merged PR · 1 verified contributor
+
+> This release includes updates in Tooling & Maintenance, Desktop & User Experience, Security & Reliability.
+
+---
+
+## ✨ Highlights
+
+- **Fix** — resume publication using the verified release ID ([42a535a](https://github.com/Draculabo/AntigravityManager/commit/42a535af0a23ea5b187dea26dcfc196963ab2b1c))
+- **Fix** — accept version strings when resuming a release ([3644fda](https://github.com/Draculabo/AntigravityManager/commit/3644fda1f243dc386868628ce225eb6cba2b9250))
+- **Fix** — default new desktop profiles to English ([de3eb2f](https://github.com/Draculabo/AntigravityManager/commit/de3eb2f4e0a7ba56abac912c0a42923999884fba))
+- **Fix** — synchronize Windows IDE account credentials ([a96eb2d](https://github.com/Draculabo/AntigravityManager/commit/a96eb2dcc0784b91ea67cdd61fe300b790c507a7))
+- **Maintenance** — update package metadata to v0.33.0 ([#444](https://github.com/Draculabo/AntigravityManager/pull/444))
+
+---
+
+## 🔧 Tooling & Maintenance
+
+- **Fix** — resume publication using the verified release ID ([42a535a](https://github.com/Draculabo/AntigravityManager/commit/42a535af0a23ea5b187dea26dcfc196963ab2b1c))
+- **Fix** — accept version strings when resuming a release ([3644fda](https://github.com/Draculabo/AntigravityManager/commit/3644fda1f243dc386868628ce225eb6cba2b9250))
+
+---
+
+## 🖥️ Desktop & User Experience
+
+- **Maintenance** — update package metadata to v0.33.0 ([#444](https://github.com/Draculabo/AntigravityManager/pull/444))
+- **Fix** — default new desktop profiles to English ([de3eb2f](https://github.com/Draculabo/AntigravityManager/commit/de3eb2f4e0a7ba56abac912c0a42923999884fba))
+
+---
+
+## 🔒 Security & Reliability
+
+- **Fix** — synchronize Windows IDE account credentials ([a96eb2d](https://github.com/Draculabo/AntigravityManager/commit/a96eb2dcc0784b91ea67cdd61fe300b790c507a7))
+
+---
+
+## 👥 Contributors
+
+Thanks to everyone who contributed to this release.
+
+@Draculabo
+
+<details>
+<summary>Merged pull requests and authors</summary>
+
+- chore(linux): update package metadata to v0.33.0 by @Draculabo ([#444](https://github.com/Draculabo/AntigravityManager/pull/444))
+
+</details>
+
+---
+
+**Full Changelog:** https://github.com/Draculabo/AntigravityManager/compare/v0.33.0...v0.33.1
+
 # 🚀 Antigravity Manager Release v0.33.0
 
 **Release Date:** 2026-11-20
