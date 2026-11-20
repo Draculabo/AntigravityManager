@@ -11,10 +11,17 @@ import {
   Candidate,
   gh,
   listReleases,
+  ReleaseId,
   ReleaseTag,
   releaseStatus,
   repository,
 } from './release-candidate.mjs';
+import {
+  readReleaseById,
+  updateReleaseById,
+  uploadReleaseAssets,
+  verifyCandidateRelease,
+} from './github-release-api.mjs';
 import { validateReleaseArtifacts } from './validate-release-artifacts.mjs';
 
 const uploadExtensions = new Set([
@@ -31,6 +38,7 @@ const uploadExtensions = new Set([
   '.txt',
 ]);
 const Asset = z.object({
+  id: ReleaseId,
   name: z.string(),
   state: z.string(),
   size: z.number().int().nonnegative(),
@@ -81,14 +89,17 @@ export function reconcileRelease({ release, expected, mode }, client) {
   const alreadyPublished = formal && status === 'published';
   if (!alreadyPublished) {
     const allowReplace = status === 'draft' || mode === 'manual';
-    const pending = planAssetUploads(expected, client.assets(), allowReplace);
+    const remote = client.assets();
+    const pending = planAssetUploads(expected, remote, allowReplace);
     if (pending.length) {
-      client.upload(pending, allowReplace);
+      client.upload(pending, allowReplace, remote);
     }
   }
   const current = client.release();
   if (
     current.id !== release.id ||
+    current.tag_name !== release.tag_name ||
+    current.prerelease !== release.prerelease ||
     releaseStatus(current) !== status ||
     current.body !== release.body
   ) {
@@ -98,7 +109,13 @@ export function reconcileRelease({ release, expected, mode }, client) {
   if (formal && !alreadyPublished) {
     client.publish();
     const published = client.release();
-    if (published.id !== release.id || releaseStatus(published) !== 'published') {
+    if (
+      published.id !== release.id ||
+      published.tag_name !== release.tag_name ||
+      published.prerelease !== release.prerelease ||
+      published.body !== release.body ||
+      releaseStatus(published) !== 'published'
+    ) {
       throw new Error(`Unable to verify publication of ${release.tag_name}`);
     }
   }
@@ -174,21 +191,26 @@ async function buildAssetManifest({ sourceDir, release, candidate, temp }) {
   return Promise.all(files.sort().map(fingerprint));
 }
 
-async function deliver(mode, sourceDir, input) {
+async function deliver(mode, sourceDir, input, releaseId) {
   const candidate =
     mode === 'publish' ? Candidate.parse(JSON.parse(await readFile(input, 'utf8'))) : null;
   const tag = candidate?.tag ?? ReleaseTag.parse(input);
-  const release = findRelease(tag);
+  const release = candidate
+    ? readReleaseById(
+        z
+          .string()
+          .regex(/^[1-9]\d*$/)
+          .transform(Number)
+          .pipe(ReleaseId)
+          .parse(releaseId),
+      )
+    : findRelease(tag);
   const status = releaseStatus(release);
   if (status === 'abandoned') {
     throw new Error(`Release ${tag} has been abandoned`);
   }
-  if (
-    candidate &&
-    (release.body?.trimEnd() !== candidate.notes ||
-      release.prerelease !== (candidate.channel === 'beta'))
-  ) {
-    throw new Error(`Release ${tag} no longer matches the verified candidate`);
+  if (candidate) {
+    verifyCandidateRelease(candidate, release);
   }
   if (mode === 'event' && status !== 'published') {
     throw new Error(`Release ${tag} is no longer published`);
@@ -207,23 +229,16 @@ async function deliver(mode, sourceDir, input) {
     reconcileRelease(
       { release, expected, mode },
       {
-        release: () => findRelease(tag),
+        release: () => readReleaseById(release.id),
         assets: () => releaseAssets(release.id),
-        upload: (pending, allowReplace) =>
-          gh([
-            'release',
-            'upload',
-            tag,
-            ...(allowReplace ? ['--clobber'] : []),
-            ...pending.map(({ file }) => file),
-          ]),
+        upload: (pending, allowReplace, remote) =>
+          uploadReleaseAssets(release, pending, allowReplace, remote),
         publish: () =>
-          gh([
-            'release',
-            'edit',
-            tag,
-            '--draft=false',
-            candidate?.channel === 'main' ? '--latest' : '--latest=false',
+          updateReleaseById(release.id, [
+            '-F',
+            'draft=false',
+            '-f',
+            `make_latest=${candidate?.channel === 'main'}`,
           ]),
       },
     );
@@ -234,9 +249,9 @@ async function deliver(mode, sourceDir, input) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const [mode, sourceDir, input] = process.argv.slice(2);
+  const [mode, sourceDir, input, releaseId] = process.argv.slice(2);
   if (!['publish', 'event', 'manual'].includes(mode)) {
     throw new Error('Expected publish, event, or manual');
   }
-  await deliver(mode, sourceDir, input);
+  await deliver(mode, sourceDir, input, releaseId);
 }

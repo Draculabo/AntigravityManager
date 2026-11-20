@@ -7,7 +7,6 @@ import {
   assertCandidateMatches,
   Candidate,
   Channel,
-  gh,
   latestCandidateCommit,
   listReleases,
   publishedBase,
@@ -19,6 +18,11 @@ import {
 } from './release-candidate.mjs';
 import { git, resolveHead } from './release-source.mjs';
 import { generateNotes } from './github-release-notes.mjs';
+import {
+  ensureCandidateRelease,
+  readReleaseById,
+  updateReleaseById,
+} from './github-release-api.mjs';
 import {
   historyMigrationBaseline,
   recordHistoryMigration,
@@ -173,40 +177,19 @@ function ensureTagAndChannel(candidate, commit) {
   if (!existingTag || !remoteNote) {
     git(cwd, ['push', '--atomic', 'origin', `refs/tags/${tag}:refs/tags/${tag}`, `${ref}:${ref}`]);
   }
-}
-
-function verifyDraft(candidate, release) {
-  if (
-    releaseStatus(release) === 'abandoned' ||
-    release?.prerelease !== (candidate.channel === 'beta') ||
-    release.body?.trimEnd() !== candidate.notes
-  ) {
-    throw new Error(
-      `The GitHub Release for ${candidate.tag} does not match its recorded candidate`,
-    );
+  const tagRef = `refs/tags/${tag}`;
+  const peeledRef = `${tagRef}^{}`;
+  const remoteTags = new Map(
+    git(cwd, ['ls-remote', '--exit-code', 'origin', tagRef, peeledRef])
+      .split('\n')
+      .map((line) => {
+        const [hash, refName] = line.split('\t');
+        return [refName, hash];
+      }),
+  );
+  if ((remoteTags.get(peeledRef) ?? remoteTags.get(tagRef)) !== commit) {
+    throw new Error(`Remote release tag ${tag} does not point to ${commit}`);
   }
-}
-
-function ensureDraft(candidate, notesPath) {
-  const existing = findRelease(candidate.tag);
-  if (existing) {
-    verifyDraft(candidate, existing);
-    return;
-  }
-  writeFileSync(notesPath, candidate.notes);
-  gh([
-    'release',
-    'create',
-    candidate.tag,
-    '--draft',
-    '--verify-tag',
-    '--title',
-    candidate.tag,
-    '--notes-file',
-    notesPath,
-    ...(candidate.channel === 'beta' ? ['--prerelease', '--latest=false'] : []),
-  ]);
-  verifyDraft(candidate, findRelease(candidate.tag));
 }
 
 async function record(candidate, notesPath) {
@@ -252,7 +235,8 @@ async function record(candidate, notesPath) {
   }
   assertCandidateMatches(candidate, recorded);
   ensureTagAndChannel(candidate, commit);
-  ensureDraft(candidate, notesPath);
+  const release = ensureCandidateRelease(candidate, findRelease(tag), notesPath);
+  appendFileSync(process.env.GITHUB_OUTPUT, `release_id=${release.id}\n`);
 }
 
 function abandon(channel, tag, notesPath) {
@@ -266,7 +250,8 @@ function abandon(channel, tag, notesPath) {
   ) {
     throw new Error(`There is no current managed candidate ${tag} on ${channel}`);
   }
-  const status = releaseStatus(findRelease(tag));
+  const existing = findRelease(tag);
+  const status = releaseStatus(existing);
   if (status === 'abandoned') {
     return;
   }
@@ -274,10 +259,10 @@ function abandon(channel, tag, notesPath) {
     throw new Error(`Cannot abandon published release ${tag}`);
   }
   ensureTagAndChannel(candidate, commit);
-  ensureDraft(candidate, notesPath);
+  const release = ensureCandidateRelease(candidate, existing, notesPath);
   writeFileSync(notesPath, abandonedBody(candidate.notes));
-  gh(['release', 'edit', tag, '--notes-file', notesPath]);
-  if (releaseStatus(findRelease(tag)) !== 'abandoned') {
+  updateReleaseById(release.id, ['-F', `body=@${notesPath}`]);
+  if (releaseStatus(readReleaseById(release.id)) !== 'abandoned') {
     throw new Error(`Could not verify that ${tag} was abandoned`);
   }
 }

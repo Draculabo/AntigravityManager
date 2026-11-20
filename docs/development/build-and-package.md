@@ -134,6 +134,7 @@ verification. If there is no new candidate, the workflow ends after planning.
 
 After the build and verification succeed, the publish job enters the `release` environment.
 The job records the release commit and tag, creates a draft, and uploads the required assets.
+The GitHub Release ID identifies the draft through readback, upload and publication.
 It verifies the uploaded names, sizes and SHA-256 digests before the draft becomes public.
 The final edit uses the Actions token so it does not start another packaging run. Stable
 distribution updates run after public release. The Windows feed and Linux metadata PR are
@@ -170,6 +171,8 @@ with `operation=resume` and `release_tag`, leaving `migration_version` empty.
   **Release** on the original channel with `operation=resume` and the recorded `release_tag`.
   It rebuilds the original source and version and continues the recorded candidate. A draft stays
   private until the full remote asset inventory matches.
+  Dispatch a fresh resume run after changing the release scripts. The publish job uses the
+  dispatched workflow revision, while the build still uses the recorded candidate source.
 - Resolve the current unpublished candidate before releasing another version on that channel.
   To stop pursuing it, dispatch **Release** on the same channel with `operation=abandon` and the
   candidate tag. Abandonment retains the tag and reserves its version. The next release notes

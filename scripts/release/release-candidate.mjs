@@ -28,14 +28,16 @@ export const Candidate = CandidateMetadata.extend({ notes: z.string().min(1) })
     'A history migration must record its previous stable tag on main',
   );
 
-const Release = z.object({
-  id: z.number().int().positive(),
+export const ReleaseId = z.int().positive();
+export const Release = z.object({
+  id: ReleaseId,
   tag_name: z.string(),
   body: z.string().nullable(),
   draft: z.boolean(),
   prerelease: z.boolean(),
   created_at: z.iso.datetime(),
   published_at: z.iso.datetime().nullable(),
+  upload_url: z.string(),
 });
 const candidateTrailer = 'AGM-Release-Candidate:';
 const abandonedSuffix = '\n\n<!-- agm-release-abandoned -->';

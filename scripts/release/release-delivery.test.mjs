@@ -1,9 +1,17 @@
 import assert from 'node:assert/strict';
-import { writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import semanticRelease from 'semantic-release';
 import { reconcileRelease } from './deliver-release-assets.mjs';
+import {
+  ensureCandidateRelease,
+  readReleaseById,
+  updateReleaseById,
+  uploadReleaseAssets,
+  verifyCandidateRelease,
+} from './github-release-api.mjs';
 import {
   abandonedBody,
   commitTrailer,
@@ -22,6 +30,183 @@ const installer = { name: 'setup.exe', size: 42, digest: 'sha256:expected' };
 const updater = { name: 'updater.json', size: 20, digest: 'sha256:metadata' };
 const draft = { id: 10, tag_name: 'v0.24.1', draft: true, body: 'Release notes' };
 const uploaded = (asset) => ({ ...asset, state: 'uploaded' });
+
+async function draftFixture(t) {
+  const cwd = await mkdtemp(path.join(tmpdir(), 'agm-release-draft-'));
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+  const previousRepository = process.env.GITHUB_REPOSITORY;
+  process.env.GITHUB_REPOSITORY = 'fixture/project';
+  t.after(() => {
+    if (previousRepository === undefined) {
+      delete process.env.GITHUB_REPOSITORY;
+    } else {
+      process.env.GITHUB_REPOSITORY = previousRepository;
+    }
+  });
+  const release = {
+    ...draft,
+    prerelease: false,
+    created_at: '2026-11-20T08:00:00Z',
+    published_at: null,
+    upload_url: 'https://uploads.github.com/repos/fixture/project/releases/10/assets{?name,label}',
+  };
+  return {
+    release,
+    notesPath: path.join(cwd, 'notes.md'),
+    candidate: { tag: release.tag_name, channel: 'main', notes: release.body },
+  };
+}
+
+test('a draft absent from the release list can be read, uploaded and published by its returned ID', async (t) => {
+  const { release, notesPath, candidate } = await draftFixture(t);
+  const calls = [];
+  let current = release;
+  let assets = [];
+  const file = path.join(path.dirname(notesPath), installer.name);
+  const expected = [{ ...installer, file }];
+  const request = (args) => {
+    calls.push(args);
+    if (
+      args[1] === '--method' &&
+      args[2] === 'POST' &&
+      args[3] === 'repos/fixture/project/releases'
+    ) {
+      return JSON.stringify(current);
+    }
+    if (args[1] === 'repos/fixture/project/releases/10') {
+      return JSON.stringify(current);
+    }
+    if (
+      args[2] === 'POST' &&
+      args[3] ===
+        'https://uploads.github.com/repos/fixture/project/releases/10/assets?name=setup.exe'
+    ) {
+      assets = [uploaded(installer)];
+      return '{}';
+    }
+    if (args[2] === 'PATCH' && args[3] === 'repos/fixture/project/releases/10') {
+      current = { ...release, draft: false, published_at: '2026-11-20T08:30:00Z' };
+      return JSON.stringify(current);
+    }
+    assert.fail(`Unexpected GitHub request: ${args.join(' ')}`);
+  };
+
+  const recorded = ensureCandidateRelease(candidate, undefined, notesPath, request);
+  assert.equal(await readFile(notesPath, 'utf8'), candidate.notes);
+  reconcileRelease(
+    { release: recorded, expected, mode: 'publish' },
+    {
+      release: () => readReleaseById(recorded.id, request),
+      assets: () => assets,
+      upload: (pending, allowReplace, remote) =>
+        uploadReleaseAssets(recorded, pending, allowReplace, remote, request),
+      publish: () =>
+        updateReleaseById(recorded.id, ['-F', 'draft=false', '-f', 'make_latest=true'], request),
+    },
+  );
+  assert.equal(current.draft, false);
+  assert.deepEqual(calls, [
+    [
+      'api',
+      '--method',
+      'POST',
+      'repos/fixture/project/releases',
+      '-f',
+      `tag_name=${candidate.tag}`,
+      '-f',
+      `name=${candidate.tag}`,
+      '-F',
+      `body=@${notesPath}`,
+      '-F',
+      'draft=true',
+      '-F',
+      'prerelease=false',
+    ],
+    ['api', 'repos/fixture/project/releases/10'],
+    [
+      'api',
+      '--method',
+      'POST',
+      'https://uploads.github.com/repos/fixture/project/releases/10/assets?name=setup.exe',
+      '-H',
+      'Content-Type: application/octet-stream',
+      '-H',
+      'Content-Length: 42',
+      '--input',
+      file,
+    ],
+    ['api', 'repos/fixture/project/releases/10'],
+    [
+      'api',
+      '--method',
+      'PATCH',
+      'repos/fixture/project/releases/10',
+      '-F',
+      'draft=false',
+      '-f',
+      'make_latest=true',
+    ],
+    ['api', 'repos/fixture/project/releases/10'],
+  ]);
+});
+
+test('draft recovery reports unreadable IDs separately from mismatched notes and does not recreate an existing release', async (t) => {
+  const { release, notesPath, candidate } = await draftFixture(t);
+  const calls = [];
+  const request = (args) => {
+    calls.push(args);
+    return JSON.stringify({ ...release, body: 'Changed release notes' });
+  };
+  assert.throws(
+    () => ensureCandidateRelease(candidate, release, notesPath, request),
+    /ID 10.*differs from the recorded release notes/,
+  );
+  assert.deepEqual(calls, [['api', 'repos/fixture/project/releases/10']]);
+  const failure = new Error('HTTP 404');
+  assert.throws(
+    () =>
+      readReleaseById(release.id, () => {
+        throw failure;
+      }),
+    { message: 'Cannot read GitHub Release ID 10', cause: failure },
+  );
+  assert.throws(
+    () => verifyCandidateRelease(candidate, { ...release, prerelease: true }),
+    /wrong prerelease status/,
+  );
+  assert.throws(
+    () => verifyCandidateRelease(candidate, { ...release, tag_name: 'v0.24.2' }),
+    /expected v0\.24\.1/,
+  );
+});
+
+test('release uploads delete only the replaced asset and reject an upload endpoint for another release', async (t) => {
+  const { release } = await draftFixture(t);
+  const pending = [{ ...installer, file: 'setup.exe' }];
+  const remote = [{ ...uploaded(installer), id: 99, digest: 'sha256:old' }];
+  const calls = [];
+  const request = (args) => calls.push(args);
+  uploadReleaseAssets(release, pending, true, remote, request);
+  assert.deepEqual(calls[0], [
+    'api',
+    '--method',
+    'DELETE',
+    'repos/fixture/project/releases/assets/99',
+  ]);
+  assert.match(calls[1][3], /\/releases\/10\/assets/);
+  assert.throws(
+    () =>
+      uploadReleaseAssets(
+        { ...release, upload_url: release.upload_url.replace('/10/', '/11/') },
+        pending,
+        true,
+        remote,
+        request,
+      ),
+    /invalid asset upload URL for Release ID 10/,
+  );
+  assert.equal(calls.length, 2);
+});
 
 async function rewrittenMain(t) {
   const { cwd } = await fixture(t);

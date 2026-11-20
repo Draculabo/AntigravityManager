@@ -36,6 +36,10 @@ unused version through the existing artifact gate. The release commit and new ta
 and a recorded migration can be resumed through the same candidate metadata. Existing release
 tags remain available to installed clients and historical release pages.
 
+The Release list discovers existing drafts. The create response identifies a newly created
+draft by ID so immediate verification and delivery can continue even when the list omits it.
+Recovery uses the dispatched revision for publication tools while building the recorded source.
+
 ## Verification
 
 The release artifact workflow contract verifies the dependency and write order. Delivery fixtures
@@ -45,3 +49,5 @@ owns the six-target rehearsal and isolated live exercise. Remote publication evi
 The delivery fixtures also exercise version recovery against a local Git remote with divergent
 history. They verify collision handling, the migration commit and tag, and subsequent automatic
 version selection.
+Draft fixtures cover a missing list entry, ID readback, content mismatches, asset replacement
+and publication of the verified ID.
