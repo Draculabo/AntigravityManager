@@ -13,6 +13,8 @@ const state = vi.hoisted(() => ({
   writeAgyCliToken: vi.fn(),
   writeGoogleOAuthCredentials: vi.fn(),
   prepareRecovery: vi.fn(async () => async () => undefined),
+  writeNativeWindows: vi.fn(async (_target: string, _account: string, _payload: string) => {}),
+  readNativeWindows: vi.fn(async (_target: string): Promise<string | null> => null),
   writeStandalone: vi.fn(),
   prepareLinuxRecovery: vi.fn(async () => async () => undefined),
   writeLinuxPayload: vi.fn(async (_payload: string) => undefined),
@@ -54,9 +56,23 @@ vi.mock('@/modules/antigravity-runtime/utils/antigravityVersion', () => ({
   isCredentialStoreVersion: (version: { shortVersion: string }) =>
     Number(version.shortVersion.split('.')[0]) >= 2,
 }));
-vi.mock('@/modules/antigravity-runtime/credentials/antigravityCredentialStore', () => ({
-  writeAntigravityCredentialStoreToken: vi.fn(),
-  readAntigravityCredentialStoreToken: vi.fn(),
+vi.mock(
+  '@/modules/antigravity-runtime/credentials/antigravityCredentialStore',
+  async (importOriginal) => {
+    const store =
+      await importOriginal<
+        typeof import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore')
+      >();
+    return {
+      ...store,
+      writeAntigravityCredentialStoreToken: vi.fn(store.writeAntigravityCredentialStoreToken),
+      readAntigravityCredentialStoreToken: vi.fn(),
+    };
+  },
+);
+vi.mock('@/modules/antigravity-runtime/credentials/windowsCredentialStore', () => ({
+  writeWindowsCredential: state.writeNativeWindows,
+  readWindowsCredential: state.readNativeWindows,
 }));
 vi.mock('@/modules/antigravity-runtime/credentials/agyCliTokenStore', () => ({
   writeAgyCliToken: state.writeAgyCliToken,
@@ -132,6 +148,9 @@ const originalPlatform = process.platform;
 beforeEach(() => {
   Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' });
   vi.clearAllMocks();
+  state.readNativeWindows.mockImplementation(
+    async () => state.writeNativeWindows.mock.lastCall?.[2] ?? null,
+  );
   vi.spyOn(macCredentials, 'writeMacOSKeychainPayload').mockImplementation(state.writeMacPayload);
   vi.spyOn(macCredentials, 'syncMacOSIdeCredentialFiles').mockImplementation(
     state.writeStandalonePayload,
