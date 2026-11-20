@@ -7,19 +7,17 @@ before installing a client. Reopen the client after applying changes.
 
 ## Configure and recover
 
-In **Gateway → Coding tools**, each tool has one entry. **Set up** writes the current
-local gateway address and Manager-managed credentials, using models from eligible
-accounts with observed quota. Set the Manager proxy key under **Manual setup** for tools that use it.
-OpenCode registers the available models using its dedicated key with account-plugin export off.
-DSH setup requires an initialized `web` profile. Review an existing Claude Code or Codex
-provider before replacing it.
+In **Gateway → Coding tools**, choose **Connect** on a tool's row. Manager writes the
+current local gateway address and credentials, using models from eligible accounts with
+observed quota. Set the Manager key under **Manual setup** for tools that require it.
+OpenCode registers available models with its dedicated key and leaves account export off.
+DSH needs an initialized `web` profile. Manager asks for confirmation before replacing an
+existing Claude Code or Codex provider.
 
-Open **Manage** on the same tool to edit its connection, inspect its configuration, or
-remove or restore settings where supported. Saved connections are listed under their
-own tool. For a custom connection, **Save and preview** stores the plan and identifies
-the native files it will change. Apply the preview to write those files. Claude Code, Codex and Hermes have one active connection. Remove the current Manager
-configuration before applying a separate saved connection for those tools.
-Existing saved connections and their credentials remain available.
+**Disconnect** removes the settings owned by Manager, including applied saved connections.
+Manager asks for confirmation if it finds multiple active connections for the tool. Saved
+profiles and their credential records remain available to the backend. The row's optional menu
+provides read-only configuration previews and backup recovery where the tool supports them.
 
 A saved configuration indicates that Manager wrote settings. Reopen the tool, send a
 request and check **Traffic** to verify that it uses the gateway.
@@ -51,14 +49,13 @@ Manager routing are not one transaction. An added routing entry can remain if th
 client write fails. The original client backup remains available for recovery.
 
 - **View configuration** shows only Claude/Codex connection fields with credentials hidden.
-- **Remove connection** restores prior owned connection fields and keeps later unrelated edits
+- **Disconnect** restores prior owned connection fields and keeps later unrelated edits
   and the backup. A different active provider or changed connection key requires reading and
   configuring the current settings again before removal.
 - **Restore backup** replaces the entire settings file with its first backup, overwriting later
   edits. If no file existed originally, the newly created file is removed. Successful restoration
   consumes the backup.
-- OpenCode removal keeps other providers. Its optional account-plugin export stays off by default
-  and requires a trusted computer. A direct-login plugin can use a different provider.
+- OpenCode removal keeps other providers. A direct-login plugin can use a different provider.
 
 Original Claude/Codex backups may contain prior client credentials. See the private-file policy
 in [security.md](../../security.md). Configuration and previews do not prove upstream availability.
@@ -66,7 +63,7 @@ Use the [live acceptance SOP](./acceptance/live-agent.md) to verify requests and
 
 ## Independent connection profiles
 
-The connection list can hold multiple plans for the same client. Each plan has a name, address,
+The backend catalog can hold multiple plans for the same client. Each plan has a name, address,
 supported protocol/SDK combination, model set and an existing backend credential source.
 The existing Manager key, existing OpenCode dedicated key and the current client-configured key
 are snapshot sources. They do not create new proxy keys. Profile credentials never enter public
@@ -307,8 +304,9 @@ DSH profile. The CLI uses the same selected Core owner as the desktop DSH card.
 
 ## Packaged desktop acceptance tutorial
 
-Use a separately prepared profile with an existing gateway key, English UI preferences and
-`desktop-embedded` ownership. The script refuses to overwrite an existing acceptance tool file.
+Use a separately prepared profile with an existing gateway key, at least one eligible account
+with observed text-model quota, English UI preferences and `desktop-embedded` ownership. The
+script refuses to overwrite an existing acceptance tool file.
 It launches the supplied executable, configures through the UI, checks the written file and
 hidden preview, removes the connection and restores the backup. Windows startup registration
 is saved and restored; Linux uses `--no-sandbox` only for this isolated acceptance process.
@@ -323,8 +321,6 @@ Omitting it checks configuration and recovery only. Reports state the failing st
 recovery finished. A failed run can leave its isolated tool settings and backup for diagnosis;
 never point this script at a production profile. Screenshots capture only the tool cards.
 
-Use `--model-name <visible-label>` to select a particular displayed model. When aliases share a
-label, the script selects the first entry and records the actual model ID from the written file;
-the displayed label alone is not evidence of the physical model used.
+The acceptance runner reads the actual model ID selected by Manager from the written file.
 
 Independent connection profiles require the original owner keyring for credential and recovery access. Read the [connection profile upgrade and recovery guide](../../upgrade-guides/next/connection-profiles.md) before copying profiles, resetting credentials or downgrading. Its recovery procedure is not runtime-verified for this source snapshot.

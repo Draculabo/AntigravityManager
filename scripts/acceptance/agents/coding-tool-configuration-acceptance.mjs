@@ -22,7 +22,6 @@ const values = new Command()
   )
   .option('--bin <path>', 'Coding tool executable')
   .addOption(new Option('--live <enabled>', 'Run the TODO request SOP').choices(['true']))
-  .option('--model-name <label>', 'Visible model label to select')
   .addOption(
     new Option('--codex-shell-profile <mode>', 'Explicit shell-startup diagnostic')
       .choices(['default', 'disabled'])
@@ -138,25 +137,14 @@ try {
   assert(page, 'Electron renderer was not ready');
   await page.getByRole('main').waitFor({ state: 'visible', timeout: 30000 });
   await page.locator('a[href="/proxy"]').first().click();
-  await page.getByText('Connect your coding tools', { exact: true }).waitFor({ state: 'visible' });
-  const card = page.getByText(title, { exact: true }).locator('..').locator('..');
-  const configure = card.getByRole('button', { name: 'Configure', exact: true });
-  await configure.waitFor({ state: 'visible' });
-  await configure.click();
+  await page.getByText('Coding tools', { exact: true }).waitFor({ state: 'visible' });
+  const card = page.getByRole('region', { name: title, exact: true });
   const dialog = page.getByRole('dialog');
-  step = 'configure';
-  if (values.modelName) {
-    step = 'model-selection';
-    await dialog.getByRole('combobox').click();
-    // Provider aliases can share display names; the written model ID is checked below.
-    await page.getByRole('option', { name: values.modelName, exact: true }).first().click();
-  }
-  step = 'confirm-configuration';
-  await dialog.getByRole('button', { name: 'Confirm', exact: true }).click();
-  await dialog.waitFor({ state: 'hidden', timeout: 30000 });
+  step = 'connect';
+  await card.getByRole('button', { name: 'Connect', exact: true }).click();
   step = 'verify-configuration';
-  await card.getByText('Configuration saved', { exact: true }).waitFor({ state: 'visible' });
-  await card.getByText('Requests not verified', { exact: true }).waitFor({ state: 'visible' });
+  await card.getByRole('button', { name: 'Disconnect', exact: true }).waitFor({ state: 'visible' });
+  const more = card.getByRole('button', { name: `More actions for ${title}` });
   const source = await fs.readFile(settings, 'utf8');
   const root = client === 'codex' ? parseToml(source) : parseJsonc(source);
   const model = z.string().min(1).parse(root.model);
@@ -171,7 +159,8 @@ try {
     `${client === 'codex' ? 'Bearer ' : ''}${config.proxy.api_key}`,
   );
   step = 'preview';
-  await card.getByRole('button', { name: 'View configuration', exact: true }).click();
+  await more.click();
+  await page.getByRole('menuitem', { name: 'View configuration', exact: true }).click();
   step = 'preview-content';
   await dialog.locator('pre').filter({ hasText: '[REDACTED]' }).waitFor({ state: 'visible' });
   assert(
@@ -181,7 +170,7 @@ try {
   step = 'preview-close';
   await dialog.getByRole('button', { name: 'Close', exact: true }).first().click();
   // Only tool cards are captured; other proxy panels can contain private connection examples.
-  await card.locator('..').screenshot({ path: path.join(output, `${client}-configuration.png`) });
+  await card.screenshot({ path: path.join(output, `${client}-configuration.png`) });
   if (values.live === 'true') {
     step = 'live-task';
     const runner = spawn(
@@ -230,15 +219,14 @@ try {
     assert.equal(code, 0, 'Generated-configuration TODO task failed');
     assert(taskSummary?.passed, 'A successful task report was not produced');
   }
-  step = 'remove';
-  await card.getByRole('button', { name: 'Remove connection', exact: true }).click();
-  await dialog.getByRole('button', { name: 'Confirm', exact: true }).click();
-  await dialog.waitFor({ state: 'hidden', timeout: 30000 });
-  await card.getByText('Not configured', { exact: true }).waitFor({ state: 'visible' });
+  step = 'disconnect';
+  await card.getByRole('button', { name: 'Disconnect', exact: true }).click();
+  await card.getByRole('button', { name: 'Connect', exact: true }).waitFor({ state: 'visible' });
   const removed = await fs.readFile(settings, 'utf8');
   assert(!removed.includes(config.proxy.api_key), 'Connection key was retained after removal');
   step = 'restore';
-  await card.getByRole('button', { name: 'Restore backup', exact: true }).click();
+  await more.click();
+  await page.getByRole('menuitem', { name: 'Restore backup', exact: true }).click();
   await dialog.getByRole('button', { name: 'Confirm', exact: true }).click();
   await dialog.waitFor({ state: 'hidden', timeout: 30000 });
   await assert.rejects(fs.access(settings), { code: 'ENOENT' });

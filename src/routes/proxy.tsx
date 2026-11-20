@@ -161,7 +161,6 @@ function ProxyPage() {
         {!showSettings && (
           <GatewayTools
             baseUrl={baseUrl}
-            models={exampleModels}
             quickModels={quickModels}
             hasGatewayKey={proxyConfig.api_key_configured}
           />
