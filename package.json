@@ -96,7 +96,7 @@
     "@electron-forge/plugin-fuses": "^7.11.1",
     "@electron-forge/plugin-vite": "^7.11.1",
     "@electron-forge/publisher-github": "^7.11.1",
-    "@electron-forge/shared-types": "^7.11.1",
+    "@electron-forge/shared-types": "^8.0.1",
     "@electron/fuses": "~1.8.0",
     "@electron/rebuild": "^3.7.1",
     "@eslint/compat": "^1.4.1",
