@@ -12,20 +12,32 @@ const CandidateMetadata = z.strictObject({
   previousTag: ReleaseTag.nullable(),
   notesBase: ReleaseTag.nullable(),
   preparedAt: z.iso.datetime(),
+  historyMigrationFrom: ReleaseTag.optional(),
 });
-export const Candidate = CandidateMetadata.extend({ notes: z.string().min(1) }).refine(
-  ({ channel, tag }) => isChannelTag(tag, channel),
-  'The tag must belong to the release channel',
-);
+export const Candidate = CandidateMetadata.extend({ notes: z.string().min(1) })
+  .refine(
+    ({ channel, tag }) => isChannelTag(tag, channel),
+    'The tag must belong to the release channel',
+  )
+  .refine(
+    ({ channel, previousTag, historyMigrationFrom }) =>
+      historyMigrationFrom === undefined ||
+      (channel === 'main' &&
+        historyMigrationFrom === previousTag &&
+        isChannelTag(historyMigrationFrom, 'main')),
+    'A history migration must record its previous stable tag on main',
+  );
 
-const Release = z.object({
-  id: z.number().int().positive(),
+export const ReleaseId = z.int().positive();
+export const Release = z.object({
+  id: ReleaseId,
   tag_name: z.string(),
   body: z.string().nullable(),
   draft: z.boolean(),
   prerelease: z.boolean(),
   created_at: z.iso.datetime(),
   published_at: z.iso.datetime().nullable(),
+  upload_url: z.string(),
 });
 const candidateTrailer = 'AGM-Release-Candidate:';
 const abandonedSuffix = '\n\n<!-- agm-release-abandoned -->';
@@ -67,18 +79,25 @@ export function isChannelTag(tag, channel) {
 
 export function publishedBase(cwd, channel, source, releases) {
   const reachable = new Set(git(cwd, ['tag', '--merged', source, '--list', 'v*']).split('\n'));
-  const previouslyPublished = releases.filter(
-    (release) => releaseStatus(release) === 'published' && reachable.has(release.tag_name),
+  const reachableReleases = releases.filter(({ tag_name }) => reachable.has(tag_name));
+  return (
+    latestPublishedTag(channel, reachableReleases) ??
+    (channel === 'beta' ? latestPublishedTag('main', reachableReleases) : null)
   );
-  const latest = (targetChannel) =>
-    previouslyPublished
+}
+
+export function latestPublishedTag(channel, releases) {
+  return (
+    releases
       .filter(
-        ({ tag_name, prerelease }) =>
-          prerelease === (targetChannel === 'beta') && isChannelTag(tag_name, targetChannel),
+        (release) =>
+          releaseStatus(release) === 'published' &&
+          release.prerelease === (channel === 'beta') &&
+          isChannelTag(release.tag_name, channel),
       )
       .map(({ tag_name }) => tag_name)
-      .sort(semver.rcompare)[0];
-  return latest(channel) ?? (channel === 'beta' ? latest('main') : undefined) ?? null;
+      .sort(semver.rcompare)[0] ?? null
+  );
 }
 
 export function releaseStatus(release) {

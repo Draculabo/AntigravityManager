@@ -111,6 +111,11 @@ Windows Classic credential storage uses the official target `gemini:antigravity`
 
 Windows IDE 2.6 ordinary switches reuse that native target. Recovery snapshots preserve exact payload bytes and writable metadata; entries with native attributes are rejected before mutation because their recovery is unsupported. The plaintext JSON sibling `state.vscdb.account-switch.credentials.backup` holds the pre-write native item and standalone file, including absence. It requires no Manager key. Capture occurs after shutdown, once per prepared operation, and backup write/readback must succeed before client state changes. It is replaced on the next switch; retain it with its corresponding SQLite `.account-switch.backup` for manual recovery. Historical encrypted records remain readable with their original key.
 
+Windows IDE 2.6 and later ordinary switches write one Agent credential envelope to the native
+item and the standalone fallback file. The account email and optional ID token are top-level
+fields. The nested token carries its absolute expiry, `expires_in: 3599` and any enterprise project.
+Each destination requires exact readback before the runtime starts the IDE and confirms its Agent.
+
 `restoreWindowsIdeCredentials` is a trusted runtime recovery API, not renderer IPC. It holds the runtime's switch guard, refuses running official IDE/App clients, reads and validates the selected profile's backup, rejects redirected standalone paths, restores native credentials with full readback, and restores or removes the standalone file with byte readback. It does not restore SQLite or start the client. A separate maintenance process must first stop the Manager/Core owner as well; the switch guard is process-local. Keep clients stopped while separately restoring the matching SQLite backup, without mixing in a later WAL. Restoration across these stores is not atomic; a failed restore remains an error and preserves the recovery files. Moving a native recovery record to another HOME is rejected. Native recovery records restore the original environment; use account snapshots for account migration. Code rollback alone does not restore accounts.
 
 ## Linux Secret Service collections

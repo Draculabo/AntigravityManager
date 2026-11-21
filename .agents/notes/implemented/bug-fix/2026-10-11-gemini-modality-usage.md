@@ -40,6 +40,5 @@ field is introduced.
 
 Focused mapper and real-path tests cover fallback, explicit scalar precedence, explicit zero,
 legacy and Interactions accounting, malformed nested entries and streaming placement.
-The [acceptance report](../../../../artifacts/protocol-gap-fix-2026-10-11/report.zh-CN.md)
-records executed checks and isolated native HTTP/SSE evidence separately from live-provider
-and packaged Electron evidence.
+The acceptance checks covered isolated native HTTP/SSE. Live-provider and packaged Electron
+behavior require separate evidence.

@@ -6,6 +6,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import { hasErrorCode, isErrorWithCode } from '@/shared/errors/error-guards';
 import { logger } from '@/shared/logging/logger';
+import { CredentialReadbackError } from '@/shared/auth/credentialReadbackError';
 import type { CredentialStoreTokenInput } from '@/shared/auth/credentialStoreToken';
 import { writePrivateFileAtomically } from '@/shared/persistence/privateFile';
 import { readWindowsCredential, writeWindowsCredential } from './windowsCredentialStore';
@@ -17,6 +18,8 @@ import {
   writeMacOSCredentialStore,
 } from './macosCredentialStore';
 import { readLinuxIdeCredentialSnapshot } from './linuxIdeCredentialStore';
+
+const WINDOWS_CREDENTIAL_TARGET = 'gemini:antigravity';
 
 export interface CredentialStoreToken {
   accessToken?: string;
@@ -269,7 +272,7 @@ export async function readAntigravityCredentialStoreToken({
   }
   if (process.platform === 'win32') {
     try {
-      const payload = await readWindowsCredential('gemini:antigravity');
+      const payload = await readWindowsCredential(WINDOWS_CREDENTIAL_TARGET);
       return payload === null ? null : parseCredentialStorePayload(payload);
     } catch (error) {
       throw classifyCredentialStoreReadError(error);
@@ -352,6 +355,14 @@ export interface CredentialStoreWriteOptions {
   syncClassicOAuthFile?: true;
 }
 
+/** Confirm the entire IDE envelope, including identity metadata omitted by token reads. */
+export async function writeWindowsIdeCredentialPayload(payload: string): Promise<void> {
+  await writeWindowsCredential(WINDOWS_CREDENTIAL_TARGET, 'antigravity', payload);
+  if ((await readWindowsCredential(WINDOWS_CREDENTIAL_TARGET)) !== payload) {
+    throw new CredentialReadbackError('Windows IDE credential write could not be confirmed', {});
+  }
+}
+
 export async function writeAntigravityCredentialStoreToken(
   token: CredentialStoreTokenInput,
   options: CredentialStoreWriteOptions = {},
@@ -381,7 +392,7 @@ export async function writeAntigravityCredentialStoreToken(
 
 async function writeToSystemCredentialStore(payload: string): Promise<void> {
   if (process.platform === 'win32') {
-    await writeWindowsCredential('gemini:antigravity', 'antigravity', payload);
+    await writeWindowsCredential(WINDOWS_CREDENTIAL_TARGET, 'antigravity', payload);
     return;
   }
   if (process.platform === 'linux' && isSecretToolAvailable()) {
