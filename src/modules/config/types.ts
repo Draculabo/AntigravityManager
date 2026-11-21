@@ -233,7 +233,7 @@ export type AppConfig = z.infer<typeof AppConfigSchema>;
 
 export const DEFAULT_APP_CONFIG: AppConfig = {
   error_diagnostics: { max_storage_mib: 500 },
-  language: 'zh-CN',
+  language: 'en',
   theme: 'dark',
   auto_refresh: false,
   refresh_interval: 15,

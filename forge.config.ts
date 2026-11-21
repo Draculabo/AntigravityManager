@@ -25,6 +25,7 @@ import * as path from 'path';
 import { stringify as yamlStringify } from 'yaml';
 import { getArtifactFileName } from './src/shared/packaging/artifactNames';
 import { packageIgnorePatterns } from './src/shared/packaging/forgeIgnore';
+import { pruneLinuxSqlitePrebuilds } from './src/shared/packaging/linuxSqlitePrebuilds';
 import { normalizeSquirrelArtifacts } from './src/shared/packaging/squirrelArtifacts';
 import { shouldIncludeInElectronUpdaterMetadata } from './src/shared/packaging/updateMetadata';
 
@@ -195,7 +196,10 @@ const config: ForgeConfig = {
         const destPath = path.join(nodeModulesPath, moduleName);
 
         if (fs.existsSync(srcPath)) {
-          fs.cpSync(srcPath, destPath, { recursive: true });
+          fs.cpSync(srcPath, destPath, {
+            recursive: true,
+            dereference: platform === 'linux' && moduleName === 'better-sqlite3',
+          });
           console.log(`Copied native module: ${moduleName}`);
           return;
         }
@@ -211,6 +215,10 @@ const config: ForgeConfig = {
 
       for (const moduleName of nativeModules) {
         copyModuleRecursive(moduleName);
+      }
+
+      if (platform === 'linux') {
+        pruneLinuxSqlitePrebuilds(path.join(nodeModulesPath, 'better-sqlite3'), arch);
       }
 
       if (platform === 'win32') {

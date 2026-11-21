@@ -249,7 +249,14 @@ try {
       const {
         readAntigravityCredentialStoreToken,
         writeAntigravityCredentialStoreToken,
+        writeWindowsIdeCredentialPayload,
       } = require('../src/modules/antigravity-runtime/credentials/antigravityCredentialStore.ts');
+      const {
+        buildWindowsIdeCredentialPayload,
+      } = require('../src/modules/antigravity-runtime/credentials/antigravityCredentialPayload.ts');
+      const {
+        readWindowsCredential,
+      } = require('../src/modules/antigravity-runtime/credentials/windowsCredentialStore.ts');
       for (const selected of [a, b, a]) {
         await writeAntigravityCredentialStoreToken(selected.token);
         const expected = {
@@ -260,6 +267,12 @@ try {
           ...(selected.token.project_id ? { projectId: selected.token.project_id } : {}),
         };
         assert.deepEqual(await readAntigravityCredentialStoreToken(), expected);
+        assert.deepEqual(await readAntigravityCredentialStoreToken(), expected);
+        await writeWindowsIdeCredentialPayload(buildWindowsIdeCredentialPayload(selected));
+        const payload = JSON.parse(await readWindowsCredential(credentialTarget));
+        assert.equal(payload.id_token_email, selected.email);
+        assert.equal(payload.id_token, selected.token.id_token);
+        assert.equal(payload.token.expires_in, 3599);
         assert.deepEqual(await readAntigravityCredentialStoreToken(), expected);
       }
       const hostCredential = await readAntigravityCredentialStoreToken();
@@ -346,6 +359,7 @@ try {
           ...(nativeWindows
             ? [
                 'native Windows exact-target A-B-A, independent enumeration and nondestructive reads',
+                'Windows IDE identity envelope round-trips through the native store',
                 'Agy CLI writes preserve the host credential target',
                 'IDE profile writes preserve peer SQLite and host credentials',
               ]

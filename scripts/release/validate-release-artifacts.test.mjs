@@ -142,7 +142,25 @@ test('dry-run verification is read-only and gates publication before release wri
     readFileSync(new URL('../../.github/workflows/release.yml', import.meta.url), 'utf8'),
   );
   const publish = official.jobs.publish;
+  const migrationInput = official.on.workflow_dispatch.inputs.migration_version;
+  const plan = official.jobs.plan.steps.find((step) => step.id === 'candidate');
+  assert.deepEqual(
+    { type: migrationInput.type, required: migrationInput.required },
+    { type: 'string', required: false },
+  );
+  assert.equal(plan.env.RELEASE_MIGRATION_VERSION, '${{ inputs.migration_version }}');
   assert.equal(official.jobs.package.uses, './.github/workflows/publish.yaml');
+  assert.equal(official.jobs.package.with.source_sha, '${{ needs.plan.outputs.source }}');
+  assert.equal(publish.steps[0].with.ref, '${{ github.sha }}');
+  assert.equal(
+    publish.steps.find((step) => step.run?.includes('manage-release.mjs record')).id,
+    'draft',
+  );
+  assert.equal(
+    publish.steps.find((step) => step.run?.includes('deliver-release-assets.mjs publish')).env
+      .RELEASE_ID,
+    '${{ steps.draft.outputs.release_id }}',
+  );
   assert.deepEqual(verify.needs, ['resolve', 'build']);
   assert.deepEqual(publish.needs, ['plan', 'package']);
   assert.equal(publish.environment, 'release');

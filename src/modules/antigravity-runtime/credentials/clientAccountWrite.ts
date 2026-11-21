@@ -14,14 +14,22 @@ import { createClientSqliteWriter, validateClientSqliteDestination } from './cli
 import {
   readAntigravityCredentialStoreToken,
   writeAntigravityCredentialStoreToken,
+  writeWindowsIdeCredentialPayload,
 } from './antigravityCredentialStore';
-import { buildAntigravityCredentialPayload } from './antigravityCredentialPayload';
+import {
+  buildAntigravityCredentialPayload,
+  buildWindowsIdeCredentialPayload,
+} from './antigravityCredentialPayload';
 import { writeAgyCliToken } from './agyCliTokenStore';
 import { writeGoogleOAuthCredentials } from './googleOAuthCredentialStore';
 import { prepareMacOSClientAccountWrite } from './macosClientAccountWrite';
 import { CredentialReadbackError } from '@/shared/auth/credentialReadbackError';
 import { prepareWindowsIdeRecovery } from './windowsIdeRecovery';
-import { validateIdeStandaloneDestination, writeIdeStandaloneToken } from './ideStandaloneToken';
+import {
+  validateIdeStandaloneDestination,
+  writeIdeStandaloneCredentialPayload,
+  writeIdeStandaloneToken,
+} from './ideStandaloneToken';
 import { prepareLinuxIdeRecovery } from './linuxIdeRecovery';
 import { writeLinuxIdeCredentialPayload } from './linuxIdeCredentialStore';
 import {
@@ -172,6 +180,12 @@ export async function prepareClientAccountWrite(
           writeIdeStandaloneToken(credentials.token);
           return;
         }
+        if (syncIde && process.platform === 'win32') {
+          const payload = buildWindowsIdeCredentialPayload(credentials);
+          await writeWindowsIdeCredentialPayload(payload);
+          writeIdeStandaloneCredentialPayload(payload);
+          return;
+        }
         await writeAntigravityCredentialStoreToken(
           credentials.token,
           target === 'classic' ? { syncClassicOAuthFile: true } : {},
@@ -195,9 +209,6 @@ export async function prepareClientAccountWrite(
               projectId: written?.projectId === (credentials.token.project_id || undefined),
             },
           );
-        }
-        if (syncIde) {
-          writeIdeStandaloneToken(credentials.token);
         }
       },
     };

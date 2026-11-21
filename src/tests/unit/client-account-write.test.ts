@@ -78,14 +78,6 @@ describe('client account destination', () => {
       shortVersion: '2.6.0',
       bundleVersion: '2.6.0',
     });
-    vi.mocked(readAntigravityCredentialStoreToken).mockResolvedValue({
-      accessToken: 'access',
-      refreshToken: 'refresh',
-      expiryTimestamp: 1800000000,
-      idToken: 'id-token',
-      projectId: 'project-a',
-    });
-
     const pathOptions = {
       userDataDir: '/fixture/isolated-ide',
       executablePath: '/fixture/ide.exe',
@@ -94,18 +86,34 @@ describe('client account destination', () => {
     expect(prepared.storage).toBe('credential-store');
     await prepared.write();
 
-    expect(writeAntigravityCredentialStoreToken).toHaveBeenCalledExactlyOnceWith(
-      credentials.token,
-      {},
+    const expected = {
+      token: {
+        access_token: 'access',
+        token_type: 'Bearer',
+        refresh_token: 'refresh',
+        expiry: '2027-01-15T08:00:00.000000Z',
+        expires_in: 3599,
+        project_id: 'project-a',
+      },
+      auth_method: 'consumer',
+      id_token_email: 'fixture@example.org',
+      id_token: 'id-token',
+    };
+    const nativePayload = state.writeNativeWindows.mock.lastCall?.[2];
+    expect(nativePayload && JSON.parse(nativePayload)).toEqual(expected);
+    expect(state.writeNativeWindows).toHaveBeenCalledExactlyOnceWith(
+      'gemini:antigravity',
+      'antigravity',
+      nativePayload,
     );
-    expect(readAntigravityCredentialStoreToken).toHaveBeenCalledTimes(1);
+    expect(state.readNativeWindows).toHaveBeenCalledExactlyOnceWith('gemini:antigravity');
     expect(getAntigravityDbPaths).toHaveBeenCalledWith('ide', pathOptions);
     expect(JSON.parse(state.rows.get('antigravityAuthStatus')!)).toEqual({
       name: credentials.name,
       email: credentials.email,
       apiKey: credentials.token.access_token,
     });
-    expect(state.writeStandalone).toHaveBeenCalledExactlyOnceWith(credentials.token);
+    expect(state.writeStandalonePayload).toHaveBeenCalledExactlyOnceWith(nativePayload);
     expect(state.prepareRecovery).toHaveBeenCalledExactlyOnceWith('/fixture/state.vscdb');
   });
   it('does not expand workspace provisioning to the ordinary IDE switch destinations', async () => {
@@ -124,6 +132,7 @@ describe('client account destination', () => {
     await prepared.write();
     expect(state.opens).not.toHaveBeenCalled();
     expect(state.writeStandalone).not.toHaveBeenCalled();
+    expect(state.writeStandalonePayload).not.toHaveBeenCalled();
     expect(state.prepareRecovery).not.toHaveBeenCalled();
   });
   it('rejects an inaccessible IDE 2.6 database during preflight before touching native credentials', async () => {
@@ -135,7 +144,7 @@ describe('client account destination', () => {
       throw new Error('access denied');
     });
     await expect(prepareClientAccountWrite(credentials, 'ide')).rejects.toThrow('access denied');
-    expect(writeAntigravityCredentialStoreToken).not.toHaveBeenCalled();
+    expect(state.writeNativeWindows).not.toHaveBeenCalled();
   });
   it.each(['sqlite', 'native', 'readback', 'standalone'] as const)(
     'reports a required %s failure instead of completing a partial IDE switch',
@@ -144,36 +153,34 @@ describe('client account destination', () => {
         shortVersion: '2.6.0',
         bundleVersion: '2.6.0',
       });
-      vi.mocked(readAntigravityCredentialStoreToken).mockResolvedValue({
-        accessToken: 'access',
-        refreshToken: 'refresh',
-        expiryTimestamp: 1800000000,
-        idToken: 'id-token',
-        projectId: 'project-a',
-      });
+      let message = 'write failed';
       if (failure === 'sqlite') {
         state.failKey = 'antigravityAuthStatus';
       }
       if (failure === 'native') {
-        vi.mocked(writeAntigravityCredentialStoreToken).mockRejectedValueOnce(
-          new Error('native failed'),
-        );
+        message = 'native failed';
+        state.writeNativeWindows.mockRejectedValueOnce(new Error(message));
       }
       if (failure === 'readback') {
-        vi.mocked(readAntigravityCredentialStoreToken).mockResolvedValueOnce(null);
+        message = 'could not be confirmed';
+        state.readNativeWindows.mockImplementationOnce(async () => {
+          const payload = state.writeNativeWindows.mock.lastCall?.[2];
+          return payload?.replace(credentials.email, 'previous@example.org') ?? null;
+        });
       }
       if (failure === 'standalone') {
-        state.writeStandalone.mockImplementationOnce(() => {
-          throw new Error('standalone failed');
+        message = 'standalone failed';
+        state.writeStandalonePayload.mockImplementationOnce(() => {
+          throw new Error(message);
         });
       }
       const prepared = await prepareClientAccountWrite(credentials, 'ide');
-      await expect(prepared.write()).rejects.toThrow();
+      await expect(prepared.write()).rejects.toThrow(message);
       if (failure === 'sqlite') {
-        expect(writeAntigravityCredentialStoreToken).not.toHaveBeenCalled();
+        expect(state.writeNativeWindows).not.toHaveBeenCalled();
       }
       if (failure !== 'standalone') {
-        expect(state.writeStandalone).not.toHaveBeenCalled();
+        expect(state.writeStandalonePayload).not.toHaveBeenCalled();
       }
     },
   );

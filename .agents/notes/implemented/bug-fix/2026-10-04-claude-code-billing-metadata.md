@@ -48,15 +48,11 @@ private acceptance output. These replays establish first-turn compatibility, not
 Focused tests compare the complete emitted inner request with a metadata-free baseline and
 cover adjacent instructions, session metadata, code examples, signed tool history and user text.
 The version-independent regression also covers entrypoint-only lines, case/whitespace,
-quoted examples and user/tool history. Its native controlled acceptance is recorded in
-[the protocol gap report](../../../../artifacts/protocol-gap-fix-2026-10-11/report.zh-CN.md);
-it does not repeat the historical live-provider comparison below.
+quoted examples and user/tool history. The controlled native acceptance for this regression
+was conducted separately from the live-provider comparison below.
 The stock Claude Code client completes the full HTML task on Windows and Linux with both CLI
 and Electron gateway owners. Each of the four tasks records three successful gateway requests;
 both desktop owners also pass the Traffic Monitor comparison. Full results and original failures
 remain in the local acceptance report (`artifacts/live-proxy-acceptance-2026-10-04/report.md`).
 These passes do not establish thinking capture: the repaired runs report zero reasoning tokens
 and no new Thought Store record.
-
-Additional public observations are recorded separately in the linked acceptance report; the
-paired local replays above establish the behavior addressed by this change.
