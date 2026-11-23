@@ -34,6 +34,9 @@ recovered `items` field from the outbound object and retains its `required` list
 Array tool declarations keep their resolved `items` and discard misplaced `properties`.
 This follows the effective type after reference siblings and branch selection have been
 applied. Arrays without usable `items` receive the existing string-item fallback.
+An untyped element inside an array gets `type: array` when it has its own item schema and
+declares neither object properties nor required fields. This also applies to consecutive
+dimensions of the same nested array. Explicit types keep their existing interpretation.
 
 Native Gemini generation prepares supplied function parameter schemas once before account
 selection, including the native `OBJECT` root spelling. It preserves omitted parameter

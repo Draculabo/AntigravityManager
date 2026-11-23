@@ -371,5 +371,17 @@ function cleanJsonSchemaRecursive(
   }
   if (policy === 'tool' && map.type === 'array') {
     delete map.properties;
+    // An untyped element with its own item schema can describe another array dimension.
+    let element = map.items;
+    while (
+      isJsonSchemaMap(element) &&
+      element.type === undefined &&
+      element.properties === undefined &&
+      element.required === undefined &&
+      isJsonSchemaMap(element.items)
+    ) {
+      element.type = 'array';
+      element = element.items;
+    }
   }
 }

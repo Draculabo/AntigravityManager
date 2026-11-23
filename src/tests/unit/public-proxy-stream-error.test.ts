@@ -1,4 +1,4 @@
-import { Readable } from 'node:stream';
+import { PassThrough, Readable } from 'node:stream';
 import { Logger } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { z } from 'zod';
@@ -29,15 +29,18 @@ const partial = {
 const done = { response: { candidates: [{ finishReason: 'STOP' }] } };
 const frame = (value: unknown) => `data: ${JSON.stringify(value)}\n\n`;
 
-async function run(protocol: Protocol, chunks: string[], transportError?: Error) {
-  const source = Readable.from(
-    (function* () {
-      yield* chunks.map((chunk) => Buffer.from(chunk));
-      if (transportError) {
-        throw transportError;
-      }
-    })(),
-  );
+async function run(protocol: Protocol, input: string[] | Readable, transportError?: Error) {
+  const source =
+    input instanceof Readable
+      ? input
+      : Readable.from(
+          (function* () {
+            yield* input.map((chunk) => Buffer.from(chunk));
+            if (transportError) {
+              throw transportError;
+            }
+          })(),
+        );
   const upstream = createUpstream({});
   upstream.streamGenerateInternal.mockResolvedValue(source);
   const lease = createLease([createAccount('public-stream-controlled')]);
@@ -118,6 +121,34 @@ beforeEach(() => {
 });
 
 describe('Gemini complete-event privacy gate', () => {
+  it('delivers a complete final Gemini event at EOF without adding a heartbeat', async () => {
+    const final = {
+      candidates: [
+        { content: { role: 'model', parts: [{ text: 'controlled final' }] }, finishReason: 'STOP' },
+      ],
+      usageMetadata: { promptTokenCount: 4, candidatesTokenCount: 2, totalTokenCount: 6 },
+    };
+    vi.useFakeTimers();
+    const upstreamStream = new PassThrough();
+    try {
+      const replay = run('gemini', upstreamStream);
+      upstreamStream.write(frame(partial));
+      await vi.advanceTimersByTimeAsync(25_000);
+      upstreamStream.end(frame({ response: final }).trimEnd());
+      const { output, upstream, lease } = await replay;
+
+      expect(output).toContain('controlled partial');
+      expect(output).toContain(`data: ${JSON.stringify(final)}\n\n`);
+      expect(output).not.toMatch(/^:/mu);
+      expect(output).not.toContain('gatewayInterrupted');
+      expect(upstream.streamGenerateInternal).toHaveBeenCalledOnce();
+      expect(lease.markModelSuccess).toHaveBeenCalledOnce();
+    } finally {
+      upstreamStream.destroy();
+      vi.useRealTimers();
+    }
+  });
+
   it('retains the upstream rate-limit classification on an unterminated EOF event', async () => {
     const { output, upstream, lease } = await run('gemini', [
       frame(partial),

@@ -55,6 +55,10 @@ it('normalizes misplaced object and array keywords through both tool HTTP routes
         items: { type: 'integer' },
         properties: { unexpected: { type: 'string' } },
       },
+      commandArguments: {
+        type: 'array',
+        items: { items: { type: 'string' } },
+      },
     },
     required: ['filename'],
   };
@@ -65,6 +69,10 @@ it('normalizes misplaced object and array keywords through both tool HTTP routes
       filename: { type: 'string' },
       count: { type: 'integer' },
       offsets: { type: 'array', items: { type: 'integer' } },
+      commandArguments: {
+        type: 'array',
+        items: { type: 'array', items: { type: 'string' } },
+      },
     },
     required: ['filename'],
   };

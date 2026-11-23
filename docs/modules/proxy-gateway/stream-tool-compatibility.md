@@ -16,6 +16,8 @@ pauses the upstream and suppresses heartbeat generation. Draining resumes normal
 delivery without replaying missed heartbeats. Anthropic's first-event wrapper carries
 the same pause state into its mapper.
 
+Native Gemini forwards upstream SSE comments and generates no heartbeat frames of its own.
+
 Anthropic Messages uses the shared
 [generation deadline and output windows](compatibility.md#account-scheduling-and-stream-completion).
 Heartbeats and usage-only frames do not refresh those windows or count as successful

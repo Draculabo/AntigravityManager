@@ -37,6 +37,11 @@ the common branch requirements. The enclosing schema keeps explicit constraints.
 for mixed types and structured response schemas retains the existing branch selection. This keeps
 tool argument choices usable when the upstream schema cannot represent the original union.
 
+An array tool declaration can omit the type of an intermediate dimension. The converter
+infers `array` only from an untyped element's own item schema inside a known array. An
+explicit type or evidence of object fields takes precedence. Applying an array type to
+every node that carries `items` would change how misplaced object fields are recovered.
+
 Schema preparation uses the same explicit built-in type predicate as tool classification.
 An ordinary search-named function therefore passes declaration normalization and budgets
 before the mapper receives prepared schemas. This keeps the preparation path consistent
