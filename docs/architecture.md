@@ -20,11 +20,16 @@ and do not supply credentials, provider bodies or arbitrary metadata to reportin
 
 The desktop public envelope preserves validated `loginCode`/`switchCode` and the safe diagnostic.
 Standalone management and RPC carry the coordinator's identity; consumers reject mismatched
-identities. Management response version is `2` and owner compatibility is `15`; the handshake envelope
-format and diagnostic schema remain `1`. Compatibility `6` includes the required
+identities. Management response version is `2` and owner compatibility is `18`. The handshake
+envelope format and diagnostic schema remain `1`. Compatibility `6` includes the required
 independent Thought Store disk setting and coordinated management contracts.
 An incompatible owner fails startup verification before
 account mutations, with no local owner fallback.
+
+Owner compatibility `18` replaces the flat usage-trends model rows with bounded family and variant
+rows. The selected audit Worker calculates family totals before limiting details. Existing audit
+records retain their exact saved model IDs, and the audit database format is unchanged. See
+[minute usage trends](modules/proxy-gateway/diagnostic-retention.md#minute-usage-trends).
 
 Owner compatibility `10` retains audit archive-usage status and the derived
 `capture_interrupted` read outcome. Audit Worker initialization carries the owning

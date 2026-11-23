@@ -622,6 +622,7 @@ const ptBR = {
       requested: 'Modelo solicitado',
       actual: 'Modelo utilizado',
       model: 'Modelo exato',
+      'model-family': 'Família de modelos',
       apply: 'Aplicar',
       'filter-help': 'A filtragem por modelo segue a visualização selecionada.',
       retention:
@@ -642,8 +643,9 @@ const ptBR = {
         '{{count}} requisições têm dados de uso incompletos. Valores de tokens desconhecidos aparecem como lacunas.',
       'attempt-help':
         'Cada requisição é contada uma vez. As tentativas contam os envios ao provedor.',
-      overlap: 'Uma requisição pode aparecer na linha de mais de um modelo utilizado.',
-      truncated: 'Apenas as primeiras linhas de modelos são exibidas.',
+      overlap: 'Novas tentativas podem aparecer em várias famílias ou variantes de modelos.',
+      truncated: 'Apenas as famílias de modelos mais utilizadas são exibidas.',
+      'variants-truncated': 'Apenas as variantes mais utilizadas são exibidas.',
     },
     'detail-load-failed': 'Não foi possível carregar esta requisição. Tente novamente.',
     'detail-not-found': 'Este registro não está mais disponível. Ele pode ter sido limpo.',

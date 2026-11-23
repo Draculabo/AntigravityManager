@@ -576,6 +576,7 @@ const en = {
       requested: 'Requested model',
       actual: 'Actual model',
       model: 'Exact model',
+      'model-family': 'Model family',
       apply: 'Apply',
       'filter-help': 'Model filtering uses the selected model view.',
       retention: 'Only locally retained traffic is included; older records may have been removed.',
@@ -594,8 +595,9 @@ const en = {
       incomplete:
         '{{count}} requests have incomplete usage; unknown token values are shown as gaps.',
       'attempt-help': 'Requests count logical requests; attempts count upstream attempts.',
-      overlap: 'A request can appear in more than one actual-model row.',
-      truncated: 'Only the leading model rows are shown.',
+      overlap: 'Retries can appear under multiple model families or variants.',
+      truncated: 'Only the leading model families are shown.',
+      'variants-truncated': 'Only the leading variants are shown.',
     },
     'archive-storage-note':
       'Backups are kept separately and are not automatically removed by the audit capacity window.',

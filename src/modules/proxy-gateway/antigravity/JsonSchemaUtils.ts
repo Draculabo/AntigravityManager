@@ -60,8 +60,13 @@ function mergeSchemaInto(target: JsonSchemaMap, source: JsonSchemaMap) {
       const targetProperties = isJsonSchemaMap(target.properties) ? target.properties : {};
       target.properties = targetProperties;
       for (const [propertyName, propertySchema] of Object.entries(val)) {
-        if (targetProperties[propertyName] === undefined) {
-          targetProperties[propertyName] = propertySchema;
+        if (!Object.hasOwn(targetProperties, propertyName)) {
+          Object.defineProperty(targetProperties, propertyName, {
+            value: propertySchema,
+            enumerable: true,
+            writable: true,
+            configurable: true,
+          });
         }
       }
       continue;
@@ -79,13 +84,62 @@ function mergeSchemaInto(target: JsonSchemaMap, source: JsonSchemaMap) {
   }
 }
 
-/**
- * Collapses allOf/anyOf/oneOf into the node before the hard blacklist deletes them.
- * Gemini rejects the keywords, but deleting them outright also deletes the only place a
- * schema declared its shape, so the tool arrives with no properties at all. `allOf` merges
- * every branch; `anyOf` and `oneOf` take the first branch that carries a shape.
- */
-function collapseSchemaBranches(map: JsonSchemaMap) {
+function isObjectAlternative(branch: JsonSchemaValue): branch is JsonSchemaMap {
+  return (
+    isJsonSchemaMap(branch) &&
+    (branch.type === 'object' || (branch.type === undefined && isJsonSchemaMap(branch.properties))) &&
+    branch.allOf === undefined && branch.anyOf === undefined && branch.oneOf === undefined &&
+    branch.const === undefined && branch.enum === undefined
+  );
+}
+
+function mergeAlternativeProperty(left: JsonSchemaValue, right: JsonSchemaValue): JsonSchemaValue {
+  if (isEqual(left, right)) {
+    return left;
+  }
+  if (isObjectAlternative(left) && isObjectAlternative(right)) {
+    return mergeObjectAlternatives([left, right]);
+  }
+  if (isJsonSchemaMap(left) && isJsonSchemaMap(right)) {
+    // The recursive cleanup has already normalized both branch enums to strings.
+    if (Array.isArray(left.enum) && Array.isArray(right.enum)) {
+      return { type: 'string', enum: [...new Set([...left.enum, ...right.enum])] };
+    }
+    if (left.type === 'array' && right.type === 'array'
+        && isJsonSchemaMap(left.items) && isJsonSchemaMap(right.items)) {
+      return { type: 'array', items: mergeAlternativeProperty(left.items, right.items) };
+    }
+    if (isString(left.type) && left.type === right.type && left.type !== 'array') {
+      return { type: left.type };
+    }
+  }
+  // Gemini needs a concrete property type when the alternatives have incompatible shapes.
+  return left;
+}
+
+/** Project object alternatives to a property superset with only unconditional requirements. */
+function mergeObjectAlternatives(branches: JsonSchemaMap[]): JsonSchemaMap {
+  const properties = new Map<string, JsonSchemaValue>();
+  let required: JsonSchemaValue[] | undefined;
+  for (const branch of branches) {
+    const branchRequired = Array.isArray(branch.required) ? branch.required : [];
+    required = required ? required.filter((key) => branchRequired.includes(key)) : branchRequired;
+    if (isJsonSchemaMap(branch.properties)) {
+      for (const [name, schema] of Object.entries(branch.properties)) {
+        const previous = properties.get(name);
+        properties.set(name, previous === undefined ? schema : mergeAlternativeProperty(previous, schema));
+      }
+    }
+  }
+  return {
+    type: 'object',
+    properties: Object.fromEntries(properties),
+    ...(required?.length ? { required } : {}),
+  };
+}
+
+/** Keep representable shapes before removing composition keywords unsupported by Gemini. */
+function collapseSchemaBranches(map: JsonSchemaMap, policy: 'tool' | 'output' | 'compatibility') {
   const allOf = map['allOf'];
   if (Array.isArray(allOf)) {
     for (const branch of allOf) {
@@ -98,6 +152,10 @@ function collapseSchemaBranches(map: JsonSchemaMap) {
   for (const keyword of ['anyOf', 'oneOf']) {
     const branches = map[keyword];
     if (!Array.isArray(branches)) {
+      continue;
+    }
+    if (policy !== 'output' && branches.length > 1 && branches.every(isObjectAlternative)) {
+      mergeSchemaInto(map, mergeObjectAlternatives(branches));
       continue;
     }
     const usable = branches.find(
@@ -259,7 +317,7 @@ function cleanJsonSchemaRecursive(
   }
 
   // 4. Keep the declared shape before the blacklist removes the keyword that carried it
-  collapseSchemaBranches(map);
+  collapseSchemaBranches(map, policy);
 
   const schemaType = map.type;
   if (isString(schemaType) && schemaType.toLowerCase() === 'array' && map.items === undefined) {

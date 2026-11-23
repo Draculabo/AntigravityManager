@@ -11,6 +11,39 @@ import {
  * before the keyword is dropped.
  */
 describe('JSON schema branch collapse', () => {
+  it.each(['anyOf', 'oneOf'])('keeps every object alternative in %s without requiring branch-specific fields', (keyword) => {
+    const schema: JsonSchemaMap = {
+      type: 'object',
+      required: ['workspace'],
+      properties: { workspace: { type: 'string' } },
+      [keyword]: [
+        {
+          type: 'object',
+          required: ['kind', 'path'],
+          properties: { kind: { const: 'file' }, path: { type: 'string' } },
+        },
+        {
+          type: 'object',
+          required: ['kind', 'url'],
+          properties: { kind: { const: 'remote' }, url: { type: 'string' } },
+        },
+      ],
+    };
+
+    cleanJsonSchema(schema);
+
+    expect(schema).toEqual({
+      type: 'object',
+      required: ['workspace', 'kind'],
+      properties: {
+        workspace: { type: 'string' },
+        kind: { type: 'string', enum: ['file', 'remote'] },
+        path: { type: 'string' },
+        url: { type: 'string' },
+      },
+    });
+  });
+
   it('keeps properties declared only inside anyOf', () => {
     const schema: JsonSchemaMap = {
       type: 'object',
@@ -22,6 +55,52 @@ describe('JSON schema branch collapse', () => {
     expect(schema).not.toHaveProperty('anyOf');
     expect((schema as Record<string, any>).properties?.city?.type).toBe('string');
     expect((schema as Record<string, any>).required).toEqual(['city']);
+  });
+
+  it('leaves a shared free field open when another branch constrains it', () => {
+    const schema: JsonSchemaMap = {
+      oneOf: [
+        { properties: { mode: { enum: ['fixed'] } }, required: ['mode'] },
+        { properties: { mode: { type: 'string' } }, required: ['mode'] },
+      ],
+    };
+
+    cleanJsonSchema(schema);
+
+    expect(schema).toEqual({
+      type: 'object',
+      properties: { mode: { type: 'string' } },
+      required: ['mode'],
+    });
+  });
+
+  it('preserves array item alternatives and typed fallbacks for incompatible properties', () => {
+    const schema: JsonSchemaMap = {
+      oneOf: [
+        { properties: {
+          targets: { type: 'array', items: { type: 'object', properties: { path: { type: 'string' } } } },
+          key: { type: 'integer' },
+          constructor: { type: 'string' },
+        } },
+        { properties: {
+          targets: { type: 'array', items: { type: 'object', properties: { url: { type: 'string' } } } },
+          key: { type: 'string' },
+        } },
+      ],
+    };
+
+    cleanJsonSchema(schema);
+
+    expect(schema).toEqual({
+      type: 'object',
+      properties: {
+        targets: { type: 'array', items: {
+          type: 'object', properties: { path: { type: 'string' }, url: { type: 'string' } },
+        } },
+        key: { type: 'integer' },
+        constructor: { type: 'string' },
+      },
+    });
   });
 
   it('merges every allOf branch and unions required', () => {

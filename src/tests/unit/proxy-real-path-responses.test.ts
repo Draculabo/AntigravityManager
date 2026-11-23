@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import Fastify from 'fastify';
 import { Observable } from 'rxjs';
 import { z } from 'zod';
 import { PIXEL_PNG, PIXEL_GIF } from '../fixtures/image-content';
@@ -17,13 +18,10 @@ import {
   geminiTextResponse,
 } from './proxy-real-path.harness';
 
-vi.mock(
-  '@/server/gateway/common/utils/request-user-agent',
-  async (importOriginal) => ({
-    ...(await importOriginal<Record<string, unknown>>()),
-    resolveRequestUserAgent: async () => 'antigravity-parity-harness/0.0.0',
-  }),
-);
+vi.mock(import('@/server/gateway/common/utils/request-user-agent'), async (importOriginal) => ({
+  ...(await importOriginal()),
+  resolveRequestUserAgent: async () => 'antigravity-parity-harness/0.0.0',
+}));
 
 const responsesStreamEventSchema = z
   .object({ sequence_number: z.number().int(), type: z.string() })
@@ -41,6 +39,49 @@ describe('real request path, Responses input compatibility', () => {
     proxyModelAvailabilityStore.clearAccount('acc-1');
     OpenAIResponsesSessionStore.clear();
   });
+
+  it.each(['gemini-3-flash', 'claude-sonnet-4-6'])(
+    'preserves Codex commentary alongside its call before the tool result on %s',
+    async (model) => {
+      const upstream = createUpstream({ generate: geminiTextResponse('ok') });
+      const lease = createLease([createAccount('acc-1')]);
+      const controller = new OpenAIOperations(createGateway(upstream, lease).openAIService);
+      const reply = createReply();
+      const commentary = 'I am reading the project log.';
+
+      await controller.responses(
+        {
+          model,
+          stream: false,
+          store: false,
+          input: [
+            { role: 'user', content: 'Summarize the log.' },
+            { type: 'function_call', call_id: 'call_log', name: 'read_log', arguments: '{}' },
+            {
+              type: 'message',
+              role: 'assistant',
+              phase: 'commentary',
+              content: [{ type: 'output_text', text: commentary }],
+            },
+            { type: 'function_call_output', call_id: 'call_log', output: 'All checks passed.' },
+          ],
+        },
+        reply as never,
+      );
+
+      expect(reply.statusCode).toBe(200);
+      expect(upstream.calls).toHaveLength(1);
+      const contents = upstream.calls[0]?.body.request.contents ?? [];
+      const callTurn = contents.findIndex((turn) => turn.parts.some((part) => part.functionCall));
+      expect(callTurn).toBeGreaterThanOrEqual(0);
+      expect(contents[callTurn]?.parts).toContainEqual({ text: commentary });
+      expect(contents[callTurn + 1]?.parts).toEqual([
+        expect.objectContaining({
+          functionResponse: expect.objectContaining({ id: 'call_log', name: 'read_log' }),
+        }),
+      ]);
+    },
+  );
 
   it.each(['system input', 'instructions', 'custom opening'])(
     'preserves Codex rules and tools on the Gemini request with %s',
@@ -127,21 +168,29 @@ describe('real request path, Responses input compatibility', () => {
       });
       const lease = createLease([createAccount('acc-1')]);
       const controller = new OpenAIOperations(createGateway(upstream, lease).openAIService);
-      const reply = createReply();
-
-      await controller.responses(
-        { model: 'gemini-3-flash', input: 'Answer once.', stream: false, store: false },
-        reply as never,
+      const payload = {
+        model: 'gemini-3-flash',
+        input: 'Answer once.',
+        stream: false,
+        store: false,
+      };
+      const server = Fastify();
+      server.post<{ Body: typeof payload }>('/v1/responses', (request, reply) =>
+        controller.responses(request.body, reply, request),
       );
+      const reply = await server
+        .inject({ method: 'POST', url: '/v1/responses', payload })
+        .finally(() => server.close());
+      const body = reply.json<unknown>();
 
       const metadata = z
         .object({ id: z.string().min(1), created_at: z.number().int() })
-        .parse(reply.body);
+        .parse(body);
       expect(reply.statusCode).toBe(200);
       expect(upstream.calls.map((call) => call.kind)).toEqual(
         path === 'direct' ? ['generate'] : ['generate', 'stream'],
       );
-      expect(reply.body).toEqual({
+      expect(body).toEqual({
         id: metadata.id,
         created_at: metadata.created_at,
         model: 'gemini-3-flash',

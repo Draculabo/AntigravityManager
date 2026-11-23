@@ -32,6 +32,11 @@ The apply_patch freeform schema and argument adapter run only when the client de
 matching tool as `type: custom`. The tool name, description and runtime argument object for
 ordinary functions are preserved without command guessing or length-based truncation.
 
+For unions made entirely of object alternatives, the model sees each declared property and only
+the common branch requirements. The enclosing schema keeps explicit constraints. The fallback
+for mixed types and structured response schemas retains the existing branch selection. This keeps
+tool argument choices usable when the upstream schema cannot represent the original union.
+
 Schema preparation uses the same explicit built-in type predicate as tool classification.
 An ordinary search-named function therefore passes declaration normalization and budgets
 before the mapper receives prepared schemas. This keeps the preparation path consistent

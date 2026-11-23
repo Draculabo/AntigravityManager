@@ -92,6 +92,23 @@ describe('Responses input compatibility', () => {
     ).toEqual([]);
   });
 
+  it('keeps final-answer text separate from a pending call', () => {
+    const input = [
+      { type: 'function_call', call_id: 'call_read', name: 'read', arguments: '{}' },
+      { type: 'message', role: 'assistant', phase: 'final_answer', content: 'This is an answer.' },
+      { type: 'function_call_output', call_id: 'call_read', output: 'contents' },
+    ];
+
+    expect(buildResponsesChatRequest({ input }).messages).toEqual([
+      {
+        role: 'assistant', content: '',
+        tool_calls: [{ id: 'call_read', type: 'function', function: { name: 'read', arguments: '{}' } }],
+      },
+      { role: 'assistant', content: 'This is an answer.' },
+      { role: 'tool', tool_call_id: 'call_read', name: 'read', content: 'contents' },
+    ]);
+  });
+
   it('preserves untyped text, empty text separators, and text priority over images', () => {
     expect(
       normalizeResponsesMessageContent([

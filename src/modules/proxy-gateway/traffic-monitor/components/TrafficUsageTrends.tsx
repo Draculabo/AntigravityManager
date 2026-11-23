@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,6 +15,54 @@ import {
 } from '../usage-trends-preference';
 
 type Metric = 'requests' | 'totalTokens';
+type ModelFamily = UsageTrendsResult['modelFamilies'][number];
+
+function ModelFamilyRows({ family }: { family: ModelFamily }) {
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+  const label = family.family ?? t('traffic.trends.unknown');
+  const hasVariants = family.variantsTruncated || family.variants.some((variant) => variant.model !== family.family);
+  const number = (value: number | null) =>
+    value === null ? t('traffic.trends.unknown') : value.toLocaleString();
+
+  return (
+    <>
+      <tr className="border-t">
+        <th scope="row" className="py-1 pr-1 font-medium wrap-anywhere sm:min-w-28 sm:pr-2">
+          {hasVariants ? (
+            <button
+              type="button"
+              aria-expanded={expanded}
+              className="hover:bg-muted focus-visible:ring-ring flex min-h-7 w-full items-center gap-1 rounded-sm pr-1 text-left focus-visible:ring-2 focus-visible:ring-inset focus-visible:outline-none"
+              onClick={() => setExpanded(!expanded)}
+            >
+              <ChevronRight aria-hidden className={expanded ? 'size-4 shrink-0 rotate-90' : 'size-4 shrink-0'} />
+              <span className="min-w-0 wrap-anywhere">{label}</span>
+            </button>
+          ) : (
+            <span className="block pl-5">{label}</span>
+          )}
+        </th>
+        <td className="px-0.5 text-right wrap-anywhere sm:px-2">{number(family.requests)}</td>
+        <td className="px-0.5 text-right wrap-anywhere sm:px-2">{number(family.attempts)}</td>
+        <td className="text-right wrap-anywhere sm:pl-2">{number(family.totalTokens)}</td>
+      </tr>
+      {expanded && family.variants.map((variant) => (
+        <tr key={variant.model === null ? 'null' : `model:${variant.model}`} className="text-muted-foreground border-t">
+          <th scope="row" className="py-1 pr-1 pl-5 font-normal wrap-anywhere sm:pr-2 sm:pl-8">
+            {variant.model ?? t('traffic.trends.unknown')}
+          </th>
+          <td className="px-0.5 text-right wrap-anywhere sm:px-2">{number(variant.requests)}</td>
+          <td className="px-0.5 text-right wrap-anywhere sm:px-2">{number(variant.attempts)}</td>
+          <td className="text-right wrap-anywhere sm:pl-2">{number(variant.totalTokens)}</td>
+        </tr>
+      ))}
+      {expanded && family.variantsTruncated && (
+        <tr><td colSpan={4} className="text-muted-foreground py-1 pl-8">{t('traffic.trends.variants-truncated')}</td></tr>
+      )}
+    </>
+  );
+}
 
 function TrendChart({ buckets, metric, label }: {
   buckets: UsageTrendsResult['buckets'];
@@ -159,28 +208,24 @@ export function TrafficUsageTrends({ accounts }: { accounts: CloudAccountView[] 
             {data.totals.incompleteRequests > 0 && <p role="status">{t('traffic.trends.incomplete', { count: data.totals.incompleteRequests })}</p>}
             <p className="text-muted-foreground">{t('traffic.trends.attempt-help')} {filters.modelView === 'actual' && t('traffic.trends.overlap')}</p>
             <div className="max-h-48 overflow-auto">
-              <table className="w-full text-left tabular-nums">
+              <table className="w-full table-fixed text-left tabular-nums sm:table-auto">
+                <colgroup><col className="w-[30%] sm:w-auto" /><col /><col /><col /></colgroup>
                 <thead>
                   <tr>
-                    <th>{t('traffic.trends.model')}</th>
-                    <th>{t('traffic.trends.requests')}</th>
-                    <th>{t('traffic.trends.attempts')}</th>
-                    <th>{t('traffic.trends.tokens')}</th>
+                    <th scope="col">{t('traffic.trends.model-family')}</th>
+                    <th scope="col" className="text-right wrap-anywhere sm:px-2 sm:whitespace-nowrap">{t('traffic.trends.requests')}</th>
+                    <th scope="col" className="text-right wrap-anywhere sm:px-2 sm:whitespace-nowrap">{t('traffic.trends.attempts')}</th>
+                    <th scope="col" className="text-right wrap-anywhere sm:pl-2 sm:whitespace-nowrap">{t('traffic.trends.tokens')}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {data.models.map((row) => (
-                    <tr key={row.model === null ? 'null' : `model:${row.model}`} className="border-t">
-                      <td className="py-1 break-all">{row.model ?? t('traffic.trends.unknown')}</td>
-                      <td>{number(row.requests)}</td>
-                      <td>{number(row.attempts)}</td>
-                      <td>{number(row.totalTokens)}</td>
-                    </tr>
+                  {data.modelFamilies.map((family) => (
+                    <ModelFamilyRows key={family.family === null ? 'null' : `family:${family.family}`} family={family} />
                   ))}
                 </tbody>
               </table>
             </div>
-            {data.modelsTruncated && <p>{t('traffic.trends.truncated')}</p>}
+            {data.modelFamiliesTruncated && <p>{t('traffic.trends.truncated')}</p>}
           </>}
         </>}
       </div>}

@@ -23,6 +23,14 @@ const metrics = z.strictObject({
   totalTokens: count.nullable(),
   incompleteRequests: count,
 });
+export const USAGE_TRENDS_MODEL_LIMIT = 50;
+const modelId = z.string().max(256).nullable();
+const modelVariant = metrics.extend({ model: modelId });
+const modelFamily = metrics.extend({
+  family: modelId,
+  variants: z.array(modelVariant).max(USAGE_TRENDS_MODEL_LIMIT),
+  variantsTruncated: z.boolean(),
+});
 export const UsageTrendsResultSchema = z.strictObject({
   window: z.enum(['1h', '24h']),
   modelView: z.enum(['requested', 'actual']),
@@ -32,8 +40,8 @@ export const UsageTrendsResultSchema = z.strictObject({
   coverage: z.literal('retained-local-records'),
   totals: metrics,
   buckets: z.array(metrics.extend({ timestamp: count })).max(1441),
-  models: z.array(metrics.extend({ model: z.string().max(256).nullable() })).max(50),
-  modelsTruncated: z.boolean(),
+  modelFamilies: z.array(modelFamily).max(USAGE_TRENDS_MODEL_LIMIT),
+  modelFamiliesTruncated: z.boolean(),
   activity: z.array(z.strictObject({
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     requests: count,

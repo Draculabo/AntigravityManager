@@ -17,6 +17,8 @@ This applies to profiles using a standalone Core owner. Desktop-only profiles ca
    processes support the optional publication field.
 5. Use the manual Google sign-in field with an active login session. Desktop and Core require
    owner compatibility `15` to accept complete callback input through that field.
+6. Open **Traffic Monitor > Usage trends** and expand a model family. The grouped response
+   requires owner compatibility `18`. It reads existing audit records with their original model IDs.
 
 ## Data and recovery
 

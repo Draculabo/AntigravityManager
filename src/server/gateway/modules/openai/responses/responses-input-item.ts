@@ -6,6 +6,7 @@ const MessageItem = z.object({
   type: z.literal('message'),
   role: z.preprocess((role) => (typeof role === 'string' ? role : 'user'), z.string()),
   content: z.unknown().optional(),
+  phase: z.literal('commentary').optional().catch(undefined),
 });
 const FunctionCallItem = z.object({
   type: z.literal('function_call'),

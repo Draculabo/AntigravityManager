@@ -4,9 +4,12 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { TrafficMonitorPage } from '@/modules/proxy-gateway/traffic-monitor/TrafficMonitorPage';
 import { TrafficActivityHeatmap } from '@/modules/proxy-gateway/traffic-monitor/components/TrafficActivityHeatmap';
+import { TrafficUsageTrends } from '@/modules/proxy-gateway/traffic-monitor/components/TrafficUsageTrends';
+import type { UsageTrendsResult } from '@/modules/proxy-gateway/audit/usage-trends.schema';
 
 const mocks = vi.hoisted(() => ({
   read: vi.fn(),
+  trends: vi.fn(),
   accounts: [
     {
       id: 'private-account-id',
@@ -30,6 +33,7 @@ vi.mock('@/ipc/manager', () => ({
     client: {
       gateway: {
         auditList: mocks.read,
+        auditUsageTrends: mocks.trends,
         auditStats: async () => ({
           rows: 1,
           databaseBytes: 1000,
@@ -53,6 +57,7 @@ vi.mock('@/modules/cloud-account/hooks/useCloudAccounts', () => ({
 const clients: QueryClient[] = [];
 beforeEach(() => {
   mocks.read.mockReset();
+  mocks.trends.mockReset();
   vi.stubGlobal('electron', { onTrafficAuditEvent: () => () => undefined });
 });
 afterEach(() => {
@@ -74,6 +79,40 @@ function mount(initialAccountId?: string) {
   );
   return client;
 }
+
+it('shows model totals by family and reveals exact variants on demand', async () => {
+  const familyName = 'gemini-4-argon';
+  const metrics = { requests: 1, attempts: 2, inputTokens: 8, outputTokens: 2, totalTokens: 10, incompleteRequests: 0 };
+  const variantName = `${familyName}-high`;
+  mocks.trends.mockResolvedValue({
+    window: '1h', modelView: 'requested', from: 0, to: 3600000, bucketMs: 60000,
+    coverage: 'retained-local-records', totals: metrics, buckets: [],
+    modelFamiliesTruncated: false,
+    modelFamilies: [{
+      family: familyName, ...metrics,
+      variants: [{ model: variantName, ...metrics }], variantsTruncated: false,
+    }],
+  } satisfies UsageTrendsResult);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  clients.push(client);
+  const view = render(createElement(QueryClientProvider, { client }, createElement(TrafficUsageTrends, { accounts: [] })));
+  const details = view.container.querySelector('details');
+  expect(details).not.toBeNull();
+  if (!details) {
+    throw new Error('Usage trends disclosure is absent');
+  }
+  details.open = true;
+  fireEvent(details, new Event('toggle'));
+
+  const family = await screen.findByRole('button', { name: familyName });
+  expect(family.getAttribute('aria-expanded')).toBe('false');
+  expect(screen.queryByRole('rowheader', { name: variantName })).toBeNull();
+  fireEvent.click(family);
+  expect(family.getAttribute('aria-expanded')).toBe('true');
+  expect(screen.getByRole('rowheader', { name: variantName })).toBeTruthy();
+  fireEvent.click(family);
+  expect(screen.queryByRole('rowheader', { name: variantName })).toBeNull();
+});
 
 it('renders all thirty activity days and exposes the selected count to the date slider', () => {
   const days = Array.from({ length: 30 }, (_, index) => ({

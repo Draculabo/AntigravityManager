@@ -149,8 +149,13 @@ describe('selected audit owner', () => {
       coverage: 'retained-local-records',
       totals: metrics,
       buckets: [],
-      models: [],
-      modelsTruncated: false,
+      modelFamilies: [{
+        family: 'claude-sonnet-4-6',
+        ...metrics,
+        variants: [{ model: 'claude-sonnet-4-6-thinking', ...metrics }],
+        variantsTruncated: false,
+      }],
+      modelFamiliesTruncated: false,
       activity: Array.from({ length: 30 }, (_, index) => ({
         date: `1970-01-${String(index + 1).padStart(2, '0')}`,
         requests: index === 0 ? 1 : 0,

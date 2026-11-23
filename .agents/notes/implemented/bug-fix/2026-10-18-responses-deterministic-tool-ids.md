@@ -36,6 +36,12 @@ No global identity cache is introduced.
 The input-item codec is separate from request mapping and identity normalization. It keeps
 the same accepted shapes without a circular dependency or compatibility re-export.
 
+The request mapper projects plain Responses assistant commentary between a call and a known
+pending result into the preceding call turn. The retained history and associations keep their
+original shape. A separate provider assistant turn would interrupt the call-result sequence,
+while dropping the commentary would remove client text. The rule applies only to the explicit
+commentary phase and leaves messages containing media on their ordinary path.
+
 ## Alternatives considered
 
 - Timestamp or random IDs: rejected because history replay changes identity.

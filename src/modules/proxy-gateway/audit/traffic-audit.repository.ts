@@ -191,7 +191,7 @@ export class TrafficAuditRepository {
       case 'usageRange':
         return readUsageRange(this.raw, command.payload);
       case 'usageTrends':
-        return readUsageTrends(this.raw, command.payload);
+        return readUsageTrends(this.raw, this.orm, command.payload);
       case 'detail':
         return this.queries.detail(command.payload.id);
       case 'bodyPage':

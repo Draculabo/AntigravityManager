@@ -3,7 +3,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import { getAgentDir } from '@/shared/platform/paths';
 
-export const CORE_OWNER_COMPATIBILITY = 17;
+export const CORE_OWNER_COMPATIBILITY = 18;
 export const CORE_OWNER_EPOCH_HEADER = 'x-agm-core-owner-epoch';
 export const CoreHandshakeSchema = z.strictObject({
   version: z.literal(1),

@@ -18,6 +18,13 @@ upstream compatibility transformations rather than a complete JSON Schema valida
 references, named anchors, dynamic references and nested resource scope changes are unsupported.
 The converter fetches no reference resources.
 
+When all alternatives in a tool declaration's `anyOf` or `oneOf` describe objects, the
+outbound declaration includes the properties from each alternative. A branch property is required
+only when every alternative requires it. The enclosing declaration keeps its own constraints and
+property definitions. Compatible discriminator values and object-array items are combined.
+When property types conflict, the first shape supplies a concrete upstream type. The projection describes arguments
+to the model, while the original client tool still owns validation of its argument values.
+
 For tool declarations, an explicit object or an untyped schema with `properties` can recover
 named parameters misplaced under `items`. Recovery requires a nonempty map of declarations
 that each have a type or a reference. Existing `properties` win on duplicate names, and

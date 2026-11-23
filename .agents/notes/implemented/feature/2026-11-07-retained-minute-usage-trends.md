@@ -29,6 +29,12 @@ Worker resolves local day boundaries and counts each matching parent once per da
 This shares the minute query's eligibility and attribution rules. The optional
 fields preserve the minute-only contract and avoid reading 30 days by default.
 
+The Worker groups the requested or actual model with the existing quota-family resolver.
+It deduplicates request IDs within each family and within each exact variant. Family totals
+include variants outside the displayed limit. A shared detail budget keeps worst-case escaped
+model IDs and minute buckets within the standalone RPC response limit. Desktop and standalone Core share owner
+compatibility 18 for the grouped response.
+
 ## Alternatives considered
 
 - Aggregating paginated renderer list data omits records outside loaded pages and
@@ -39,10 +45,12 @@ fields preserve the minute-only contract and avoid reading 30 days by default.
   manufactures evidence. Null counters and model IDs retain the distinction.
 - Sharing trend filters with log-list filters silently changes the table's search
   semantics. Independent local preference ownership keeps each operation explicit.
+- Adding the truncated exact-model rows would undercount family usage and count a
+  request again each time it retries against a sibling variant.
 
 ## Consequences
 
-The new API is additive and read-only; no audit schema or account credential format
+The operation is read-only; no audit schema or account credential format
 changes. Old records remain available. Disabling or removing the trends view does
 not require account-state restoration. Local filters are convenience metadata and
 do not contain authorization, bodies or session content.

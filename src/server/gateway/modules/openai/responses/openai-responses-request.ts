@@ -27,32 +27,6 @@ import {
 } from './responses-tool-call-identity';
 import { resolveOutputTokenLimit } from '@/server/gateway/common/output-token-limit';
 
-export interface ResponsesRequestBody {
-  model?: string;
-  instructions?: string;
-  input?: unknown;
-  metadata?: Record<string, unknown>;
-  previous_response_id?: string;
-  session_id?: string;
-  store?: boolean;
-  tools?: OpenAIChatRequest['tools'];
-  max_output_tokens?: number;
-  max_tokens?: number;
-  max_completion_tokens?: number;
-  maxCompletionTokens?: number;
-  maxTokens?: number;
-  temperature?: number;
-  top_p?: number;
-  presence_penalty?: number;
-  frequency_penalty?: number;
-  seed?: number;
-  reasoning?: OpenAIChatRequest['reasoning'];
-  tool_choice?: string | { type: string; name?: string; function?: { name: string } };
-  stream?: boolean;
-  user?: string;
-  text?: { format?: unknown };
-}
-
 export interface OpenAIResponsesErrorBody {
   error: {
     code: string;
@@ -96,37 +70,39 @@ const ResponsesReasoningSchema = z.object({
   effort: z.string().optional(),
   max_tokens: z.number().optional(),
 });
-const ResponsesRequestBodySchema = z
-  .object({
-    model: z.string().optional(),
-    instructions: z.string().optional(),
-    input: z.unknown().optional(),
-    metadata: JsonRecordSchema.optional(),
-    previous_response_id: z.string().optional(),
-    session_id: z.string().optional(),
-    store: z.boolean().optional(),
-    tools: z.array(OpenAIToolSchema).optional(),
-    max_output_tokens: z.number().optional(),
-    max_tokens: z.number().optional(),
-    max_completion_tokens: z.number().optional(),
-    maxCompletionTokens: z.number().optional(),
-    maxTokens: z.number().optional(),
-    temperature: z.number().optional(),
-    top_p: z.number().optional(),
-    presence_penalty: z.number().optional(),
-    frequency_penalty: z.number().optional(),
-    seed: z.number().optional(),
-    reasoning: ResponsesReasoningSchema.optional(),
-    tool_choice: ResponsesToolChoiceSchema.optional(),
-    stream: z.boolean().optional(),
-    user: z.string().optional(),
-    text: z
-      .object({
-        format: z.unknown().optional(),
-      })
-      .optional(),
-  })
-  .passthrough();
+const ResponsesRequestFields = z.object({
+  model: z.string().optional(),
+  instructions: z.string().optional(),
+  input: z.unknown().optional(),
+  metadata: JsonRecordSchema.optional(),
+  previous_response_id: z.string().optional(),
+  session_id: z.string().optional(),
+  store: z.boolean().optional(),
+  tools: z.array(OpenAIToolSchema).optional(),
+  max_output_tokens: z.number().optional(),
+  max_tokens: z.number().optional(),
+  max_completion_tokens: z.number().optional(),
+  maxCompletionTokens: z.number().optional(),
+  maxTokens: z.number().optional(),
+  temperature: z.number().optional(),
+  top_p: z.number().optional(),
+  presence_penalty: z.number().optional(),
+  frequency_penalty: z.number().optional(),
+  seed: z.number().optional(),
+  reasoning: ResponsesReasoningSchema.optional(),
+  tool_choice: ResponsesToolChoiceSchema.optional(),
+  stream: z.boolean().optional(),
+  user: z.string().optional(),
+  text: z
+    .object({
+      format: z.unknown().optional(),
+    })
+    .optional(),
+});
+const ResponsesRequestBodySchema = ResponsesRequestFields.passthrough();
+
+export type ResponsesRequestBody = z.infer<typeof ResponsesRequestFields>;
+
 const ResponsesCompletedEventSchema = z.object({
   type: z.literal('response.completed'),
   response: z.unknown().optional(),
@@ -303,7 +279,8 @@ export function buildResponsesChatRequest(body: ResponsesRequestBody): OpenAICha
     : null;
 
   if (inputItems) {
-    for (const [index, item] of inputItems.entries()) {
+    for (let index = 0; index < inputItems.length; index += 1) {
+      const item = inputItems[index];
       if (item.type === 'message') {
         const content = normalizeResponsesMessageContent(item.content);
         messages.push({ role: item.role, content });
@@ -344,11 +321,15 @@ export function buildResponsesChatRequest(body: ResponsesRequestBody): OpenAICha
         if (customInput !== undefined) {
           toolCall.custom_input = customInput;
         }
+        const commentary = readPendingToolCommentary(inputItems, index + 1, callIdToToolName);
         messages.push({
           role: 'assistant',
-          content: '',
+          content: commentary?.text ?? '',
           tool_calls: [toolCall],
         });
+        if (commentary) {
+          index = commentary.outputIndex - 1;
+        }
         continue;
       }
 
@@ -409,6 +390,33 @@ export function buildResponsesChatRequest(body: ResponsesRequestBody): OpenAICha
       user_id: body.user,
     },
   };
+}
+
+/** A standalone assistant turn between a pending call and its result can become a prefill. */
+function readPendingToolCommentary(
+  items: ResponsesInputItem[],
+  start: number,
+  pendingCalls: ReadonlyMap<string, string>,
+): { text: string; outputIndex: number } | undefined {
+  const text: string[] = [];
+  for (let index = start; index < items.length; index += 1) {
+    const item = items[index];
+    if (item.type === 'function_call_output' || item.type === 'custom_tool_call_output') {
+      const callId = item.call_id ?? item.id;
+      if (text.length > 0 && callId && pendingCalls.has(callId)) {
+        return { text: text.join('\n'), outputIndex: index };
+      }
+      return;
+    }
+    if (item.type !== 'message' || item.role !== 'assistant' || item.phase !== 'commentary') {
+      return;
+    }
+    const content = normalizeResponsesMessageContent(item.content);
+    if (!isString(content) || isEmpty(content.trim())) {
+      return;
+    }
+    text.push(content);
+  }
 }
 
 const ResponsesImageUrlSchema = z

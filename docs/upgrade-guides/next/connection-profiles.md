@@ -6,8 +6,8 @@ Target version: next
 
 Users who create independent connection profiles use a new version-1 catalog under the selected
 owner's profile directory. Existing individual Claude/Codex/OpenCode configuration is not migrated
-automatically. Users who do not create profiles can upgrade normally. Desktop and standalone Core
-must be upgraded together to owner compatibility 17.
+automatically. Users who do not create profiles can upgrade normally. The catalog uses support
+introduced in owner compatibility 17. Upgrade desktop and standalone Core to the same release.
 
 ## Required action
 

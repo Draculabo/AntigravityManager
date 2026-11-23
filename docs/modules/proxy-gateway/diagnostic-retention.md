@@ -90,12 +90,14 @@ without an explicit usage scope retain the existing legacy generation classifica
 A retained model request without any attempt recorded as of the snapshot has
 unknown usage. The trends query does not read saved bodies.
 
-Requested-model view groups the parent request's model; actual-model view groups
-each physical attempt's model, without inferring it from the requested model.
+Requested-model view groups the parent request's model. Actual-model view groups
+each physical attempt's saved model. The model breakdown uses the existing account quota model
+families. Expand a family to see the exact model IDs that contributed to it.
 An account filter selects recorded physical-attempt account IDs. These are historical
 records, not evidence of the current account incarnation or official billing cycle.
-A request that tries several models can appear in several model rows; row request
-counts must not be summed to obtain the overall distinct request count. All views
+A request counts once per family, even when it retries across variants within that family.
+The same request can appear under several families or variants. The overall request count remains
+distinct across the selected records. All views
 use the same selected attempt-usage basis, rather than mixing logical response
 usage with physical retry usage.
 
@@ -106,9 +108,10 @@ to input plus output. Minutes with no matching retained records are zero within
 this local dataset. Retention, disabled capture and dropped writes mean the chart
 cannot establish that no upstream work occurred or reconstruct full account usage.
 
-The result contains at most 1,441 minute buckets and 50 model rows. A truncation flag
-labels limited model breakdowns; total counters are aggregated independently from
-all matching records. Existing audit admission and response-byte limits still
+The result contains at most 1,441 minute buckets, 50 model families and 50 variants per family.
+The response shares a budget of 256 variant rows across families, ranked within each family first.
+Truncation indicators identify limited breakdowns. Family and overall totals use all matching
+records before any presentation limit. Existing audit admission and response-byte limits still
 apply. No schema migration, pricing table, generated request or provider lookup is
 introduced by reading these trends.
 

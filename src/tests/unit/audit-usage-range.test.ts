@@ -117,6 +117,70 @@ function read(input = range) {
     payload: { range: input, asOf, ...identity },
   });
 }
+
+it('groups usage by model family before limiting variants and counts sibling retries once', () => {
+  const model = (suffix: string) => `gemini-4-argon-${suffix}`;
+  const retried = insert({
+    attempts: [
+      { model: model('low'), accountId: 'account-a' },
+      { model: model('high'), accountId: 'account-a' },
+    ],
+  });
+  raw.prepare('UPDATE request_logs SET model=? WHERE id=?').run('preferred-model', retried);
+  for (let variant = 0; variant < 50; variant += 1) {
+    insert({ model: model(String(variant)) });
+  }
+
+  const trends = (modelView: 'requested' | 'actual') =>
+    UsageTrendsResultSchema.parse(
+      repository.execute({
+        operation: 'usageTrends',
+        payload: { window: '1h', modelView, asOf },
+      }),
+    );
+
+  expect(trends('actual')).toMatchObject({
+    modelFamilies: [
+      {
+        family: 'gemini-4-argon',
+        requests: 51,
+        attempts: 52,
+        totalTokens: 6240,
+        variants: expect.arrayContaining([
+          expect.objectContaining({ model: model('0'), requests: 1, attempts: 1, totalTokens: 120 }),
+        ]),
+        variantsTruncated: true,
+      },
+    ],
+  });
+  expect(trends('requested')).toMatchObject({
+    modelFamilies: expect.arrayContaining([
+      expect.objectContaining({ family: 'preferred-model', requests: 1, attempts: 2 }),
+    ]),
+  });
+});
+
+it('bounds variant details across a 24-hour response while keeping every family total', () => {
+  for (let family = 0; family < 50; family += 1) {
+    for (let variant = 0; variant < 6; variant += 1) {
+      const model = `claude-sonnet-${family}-0-${variant}`.padEnd(256, '\u0001');
+      insert({ timestamp: 86400000, model });
+    }
+  }
+
+  const trends = UsageTrendsResultSchema.parse(repository.execute({
+    operation: 'usageTrends',
+    payload: { window: '24h', modelView: 'actual', asOf: 86400000 },
+  }));
+
+  expect(trends.modelFamilies).toHaveLength(50);
+  expect(trends.modelFamilies.every((family) => family.attempts === 6)).toBe(true);
+  expect(trends.modelFamilies.every((family) => family.variants.length > 0)).toBe(true);
+  expect(trends.modelFamilies.some((family) => family.variantsTruncated)).toBe(true);
+  expect(trends.modelFamilies.flatMap((family) => family.variants)).toHaveLength(256);
+  expect(Buffer.byteLength(JSON.stringify(trends))).toBeLessThan(1024 * 1024);
+});
+
 beforeEach(() => {
   directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agm-cycle-usage-'));
   const file = path.join(directory, 'audit.db');
