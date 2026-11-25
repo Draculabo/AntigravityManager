@@ -465,6 +465,10 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
     this.restoreMemoryQuarantines();
   }
 
+  updateAccountRouting(account: Parameters<AccountLeaseTokenCache['updateAccountRouting']>[0]): void {
+    this.tokenCache.updateAccountRouting(account);
+  }
+
   /** Permanent deletion releases owned state; OAuth quarantine intentionally preserves it. */
   forgetDeletedAccount(accountId: string): void {
     this.evictAccount(accountId);
@@ -935,6 +939,8 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
       for (let attempt = 0; attempt < filteredAccountPool.length; attempt += 1) {
         const selectedTokenEntry = await this.selectionPolicy.selectCandidate({
           allTokens: remainingAccountPool,
+          resolvePriorityModel: (accountId, requestedModel) =>
+            this.modelPolicy.resolveDynamicModelForAccount(accountId, requestedModel, options?.effort, physicalTarget),
           waitBudget,
           signal: options?.signal,
           isCurrentCandidate: (accountId, tokenData) =>

@@ -100,6 +100,8 @@ export interface OpenAIResponsesSessionStoreLike {
   getWithParent(responseId: string): OpenAIResponsesSessionWithParent | null;
   save(responseId: string, session: OpenAIResponsesSession): void;
   saveDelta(responseId: string, delta: SaveOpenAIResponsesSessionDelta): void;
+  saveDeltaWithMedia?(responseId: string, delta: SaveOpenAIResponsesSessionDelta): Promise<void>;
+  getMediaStore?(): OpenAIResponsesMediaStore | undefined;
 }
 
 export interface OpenAIResponsesSessionStoreOptions {

@@ -184,6 +184,12 @@ An eligible capacity promotion takes precedence over thinking reduction. Image
 requests are excluded. A physical model change requires an available target on
 the current account and a request without a model-bound cached resource.
 
+When generation on a Gemini `-xhigh` route returns HTTP 400 with the upstream
+message `Thinking level is unsupported`, the gateway can retry its `-high`
+sibling and set an existing thinking config to `HIGH`. The fallback requires
+the same model eligibility and cache checks as overload recovery. Explicitly
+disabled thinking and the existing output limit are preserved.
+
 Each transformation is allowed once per logical request across account,
 endpoint and protocol fallbacks. The additional send uses the affected account,
 session, endpoint, proxy and headers. Admission checks account eligibility,

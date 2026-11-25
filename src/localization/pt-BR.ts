@@ -2217,6 +2217,10 @@ const ptBR = {
       'cycle-usage-legacy-ambiguity':
         'Requisições antigas sem atribuição podem ser contadas pelo horário de início apenas como ambíguas; seu uso é excluído.',
       'proxy-routing-save-failed': 'Could not save proxy routing settings',
+      'proxy-routing-save': 'Salvar roteamento',
+      'proxy-priority-gemini': 'Gemini',
+      'proxy-priority-claude': 'Claude',
+      'proxy-family-priority-hint': 'Os números menores têm prioridade. Deixe um campo em branco para usar a prioridade global.',
       'proxy-priority': 'Proxy priority (1–100)',
       'proxy-enabled': 'Use this account for proxy requests',
     },

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AccountLeaseAffinity } from '@/server/gateway/modules/account-lease/policies/account-lease-affinity';
 import { createAccount } from './proxy-real-path.harness';
+import type { CloudAccountProxyPriorityOverrides } from '@/modules/cloud-account/services/cloud-account-routing.schema';
 import {
   AccountLeaseSelectionPolicy,
   type AccountLeaseSelectionConfig,
@@ -10,6 +11,7 @@ import {
 interface TestToken {
   email: string;
   proxy_priority?: number;
+  proxy_priority_overrides?: CloudAccountProxyPriorityOverrides;
   proxy_enabled?: boolean;
 }
 
@@ -53,6 +55,26 @@ function createRequest(
 }
 
 describe('AccountLeaseSelectionPolicy', () => {
+  it.each([false, true])('ranks the actual route family and falls back to global priority (parity=%s)', async (parityEnabled) => {
+    const policy = new AccountLeaseSelectionPolicy();
+    const request = createRequest({
+      config: createConfig({ parityEnabled }),
+      allTokens: [
+        ['one', { email: 'one@example.com', proxy_priority: 20, proxy_priority_overrides: { gemini: 40, claude: 1 } }],
+        ['two', { email: 'two@example.com', proxy_priority: 30, proxy_priority_overrides: { gemini: 5 } }],
+      ],
+    });
+
+    expect((await policy.selectCandidate({ ...request, model: 'gemini-3-flash' }))?.[0]).toBe('two');
+    expect((await policy.selectCandidate({ ...request, model: 'claude-sonnet-4-6' }))?.[0]).toBe('one');
+    expect((await policy.selectCandidate({ ...request, model: 'custom-model' }))?.[0]).toBe('one');
+    expect((await policy.selectCandidate({
+      ...request,
+      model: 'custom-model',
+      resolvePriorityModel: () => 'models/gemini-3-flash',
+    }))?.[0]).toBe('two');
+  });
+
   it.each([false, true])(
     'cache-first only waits for a sticky account still in the eligible request pool (excluded=%s)',
     async (excluded) => {

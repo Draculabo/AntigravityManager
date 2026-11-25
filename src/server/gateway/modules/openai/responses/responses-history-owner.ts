@@ -38,9 +38,5 @@ export function getOwnedResponsesHistory(
 export function resolveResponsesMediaStore(
   store: OpenAIResponsesSessionStoreLike,
 ): OpenAIResponsesMediaStore | undefined {
-  return typeof Reflect.get(store, 'getMediaStore') === 'function'
-    ? (Reflect.apply(Reflect.get(store, 'getMediaStore'), store, []) as
-        | OpenAIResponsesMediaStore
-        | undefined)
-    : undefined;
+  return store.getMediaStore?.();
 }

@@ -774,7 +774,9 @@ export class GeminiClient {
         },
         () => {
           beforeSend?.();
-          return upstreamSession ? withUpstreamSessionIdentity(wireBody, upstreamSession) : wireBody;
+          return upstreamSession
+            ? withUpstreamSessionIdentity(wireBody, upstreamSession)
+            : wireBody;
         },
       );
     const retryPrepared = async (
@@ -1307,15 +1309,20 @@ export class GeminiClient {
             retryPolicy.recoverContentAttempt &&
             axios.isAxiosError(error) &&
             error.response &&
-            (error.response.status === 408 || error.response.status >= 500)
+            (error.response.status === 400 ||
+              error.response.status === 408 ||
+              error.response.status >= 500)
           ) {
-            const responseData = error.response.data;
+            const { data: responseData, status } = error.response;
+            const message =
+              status === 400 ? await this.extractAxiosErrorMessage(responseData) : null;
             const recovery = retryPolicy.recoverContentAttempt(
               new UpstreamRequestError({
-                message: error.message,
-                status: error.response.status,
+                message: message ?? error.message,
+                status,
                 body: this.describeAxiosErrorData(responseData),
                 details: extractGoogleErrorDetails(responseData),
+                ...(status === 400 && { upstreamStatus: readUpstreamErrorStatus(responseData) }),
               }),
               contentAttemptBody,
               attemptTransport,

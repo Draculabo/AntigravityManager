@@ -91,6 +91,7 @@ export const CloudAccountViewSchema = CloudAccountSchema.pick({
   is_active_ide: true,
   is_active_agy: true,
   proxy_priority: true,
+  proxy_priority_overrides: true,
   proxy_enabled: true,
 })
   .extend({
@@ -237,6 +238,7 @@ export function projectCloudAccountView(account: CloudAccount): CloudAccountView
     is_active_ide: account.is_active_ide,
     is_active_agy: account.is_active_agy,
     proxy_priority: account.proxy_priority ?? 50,
+    ...(account.proxy_priority_overrides && { proxy_priority_overrides: account.proxy_priority_overrides }),
     proxy_enabled: account.proxy_enabled !== false,
     proxy_configured: Boolean(account.proxy_url),
   });

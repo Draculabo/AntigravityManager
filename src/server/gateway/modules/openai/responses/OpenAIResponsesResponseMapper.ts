@@ -7,14 +7,35 @@ import {
   MALFORMED_FUNCTION_CALL_RECOVERY_TEXT,
 } from '@/modules/proxy-gateway/antigravity/GeminiFinishReason';
 import { toOpenAIResponsesUsage } from '@/modules/proxy-gateway/antigravity/OpenAIUsageMapper';
+import { normalizeStructuredOpenAIChoice } from '../openai-structured-output';
 import { toIncompleteReason, type ResponsesOutputStatus } from './openai-responses-incomplete';
+import type {
+  ResponsesOutputTextPart,
+  ResponsesReasoningOutputItem,
+} from './openai-responses-output';
+import type { ResponsesToolCallOutputItem } from './responses-tool-call-projection';
 
-function toResponsesToolOutputItem(toolCall: OpenAIToolCall): Record<string, unknown> | undefined {
+type ResponsesMessageContentPart = ResponsesOutputTextPart | { refusal: string; type: 'refusal' };
+
+type ResponsesOutputItem =
+  | {
+      content: ResponsesMessageContentPart[];
+      id: string;
+      role: 'assistant';
+      status: ResponsesOutputStatus;
+      type: 'message';
+    }
+  | ResponsesReasoningOutputItem
+  | ResponsesToolCallOutputItem;
+
+function toResponsesToolOutputItem(
+  toolCall: OpenAIToolCall,
+): ResponsesToolCallOutputItem | undefined {
   const common = {
     call_id: toolCall.call_id ?? toolCall.id,
     id: toolCall.id,
     ...(toolCall.namespace ? { namespace: toolCall.namespace } : {}),
-    status: 'completed',
+    status: 'completed' as const,
   };
   if (toolCall.type === 'custom' && toolCall.custom) {
     return { ...common, ...toolCall.custom, type: 'custom_tool_call' };
@@ -32,36 +53,18 @@ function toResponsesToolOutputItem(toolCall: OpenAIToolCall): Record<string, unk
   }
 }
 
-function unwrapStructuredJson(text: string): string {
-  const fenced = /^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```$/iu.exec(text.trim());
-  if (fenced?.[1] === undefined) {
-    return text;
-  }
-  const payload = fenced[1].trim();
-  try {
-    JSON.parse(payload);
-    return payload;
-  } catch {
-    return text;
-  }
-}
-
 export function toOpenAIResponsesResponse(
   response: OpenAIChatResponse,
   responseId = response.id,
   structuredOutput = false,
-): Record<string, unknown> {
+) {
   const choice = response.choices[0];
-  const output: Record<string, unknown>[] = [];
+  const output: ResponsesOutputItem[] = [];
   const rawContent = choice?.message.content;
   const refusal = choice?.message.refusal;
   const answer =
-    structuredOutput &&
-    choice?.finish_reason === 'stop' &&
-    !refusal &&
-    !choice.message.tool_calls?.length &&
-    typeof rawContent === 'string'
-      ? unwrapStructuredJson(rawContent)
+    structuredOutput && choice
+      ? normalizeStructuredOpenAIChoice(choice).message.content
       : rawContent;
   const content = isMalformedFunctionCallFinishReason(choice?.finish_reason)
     ? [typeof rawContent === 'string' ? rawContent : '', MALFORMED_FUNCTION_CALL_RECOVERY_TEXT]
@@ -88,7 +91,7 @@ export function toOpenAIResponsesResponse(
   }
 
   if ((typeof content === 'string' && content.length > 0) || refusal) {
-    const contentParts: Record<string, unknown>[] = [];
+    const contentParts: ResponsesMessageContentPart[] = [];
     if (typeof content === 'string' && content.length > 0) {
       contentParts.push({
         annotations: [],
@@ -126,10 +129,10 @@ export function toOpenAIResponsesResponse(
     id: responseId,
     incomplete_details: incompleteReason ? { reason: incompleteReason } : null,
     model: response.model,
-    object: 'response',
+    object: 'response' as const,
     output,
     status,
-    type: 'response',
+    type: 'response' as const,
     usage: {
       ...usage,
       input_tokens_details: {

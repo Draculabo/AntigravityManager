@@ -37,6 +37,14 @@ export interface ClearOpenCodeConfigInput {
   clearLegacy: boolean;
 }
 
+interface ThinkingVariant {
+  thinkingConfig: { thinkingBudget: number };
+  thinking: { type: 'enabled'; budget_tokens: number; budgetTokens: number };
+}
+
+type ModelEffort = 'low' | 'medium' | 'high';
+type ModelVariant = ThinkingVariant | { effort: ModelEffort } | { disabled: true };
+
 interface OpenCodeModelDefinition {
   name: string;
   limit?: {
@@ -48,7 +56,7 @@ interface OpenCodeModelDefinition {
     output: string[];
   };
   reasoning?: boolean;
-  variants?: Record<string, unknown>;
+  variants?: Partial<Record<ModelEffort | 'max', ModelVariant>>;
 }
 
 const PROVIDER_PATH: JSONPath = ['provider', OPEN_CODE_PROVIDER_ID];
@@ -66,11 +74,8 @@ function toJsoncObject(value: object): Record<string, unknown> {
   return result;
 }
 
-function buildThinkingVariant(
-  budget: number,
-  includeTopLevelBudget = false,
-): Record<string, unknown> {
-  const variant: Record<string, unknown> = {
+function buildThinkingVariant(budget: number): ThinkingVariant {
+  return {
     thinkingConfig: {
       thinkingBudget: budget,
     },
@@ -80,13 +85,9 @@ function buildThinkingVariant(
       budgetTokens: budget,
     },
   };
-  if (includeTopLevelBudget) {
-    variant.budgetTokens = budget;
-  }
-  return variant;
 }
 
-function buildGemini3EffortVariant(tier: 'low' | 'medium' | 'high'): Record<string, unknown> {
+function buildGemini3EffortVariant(tier: ModelEffort) {
   return { effort: tier };
 }
 

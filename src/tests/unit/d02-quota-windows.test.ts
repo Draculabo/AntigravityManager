@@ -173,4 +173,31 @@ describe('independent quota window protection', () => {
     expect(clear).toHaveBeenCalledWith('window-account', [model], true);
     expect(lock).not.toHaveBeenCalled();
   });
+
+  it('waits for the later depleted weekly bucket when both constrain the same model', async () => {
+    const earlier = group(0.8, 0);
+    const later = {
+      bucket_id: '3p-second-week',
+      window: '7d',
+      remaining_fraction: 0,
+      reset_time: '2090-01-05T00:00:00Z',
+    };
+    const previous = quota([{ ...earlier, buckets: [...earlier.buckets, later] }]);
+    const next = quota([{ ...earlier, buckets: [...group(0.8, 0.5).buckets, later] }]);
+    const { policy, clear, lock } = fixture(previous, next);
+
+    expect(buildAccountLeaseQuotaSnapshot(previous).modelResetTimes[model]).toBe(later.reset_time);
+    expect(quotaWindowWaitSeconds(previous, model, Date.parse(long))).toBe(86_400);
+    await expect(
+      policy.refreshRealtimeQuotaAndReconcileLimit(
+        'window-account',
+        RateLimitReason.QuotaExhausted,
+        model,
+      ),
+    ).resolves.toBe('locked');
+    expect(lock).toHaveBeenCalledWith(
+      'window-account', later.reset_time, RateLimitReason.QuotaExhausted, model,
+    );
+    expect(clear).not.toHaveBeenCalled();
+  });
 });

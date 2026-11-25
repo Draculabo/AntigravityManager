@@ -22,6 +22,12 @@ lease. Tier selection applies to explicit as well as automatic requests. The
 physical sibling must be eligible on the account, and model-bound cached content
 prevents a model change.
 
+The same owner handles an upstream unsupported-thinking-level 400 on a physical Gemini
+`-xhigh` route. A model ID is required because client effort aliases already normalize to
+`high`. The eligible `-high` sibling uses its ordinary level transport, with the original
+output limit and thought visibility. The normalized upstream error message identifies this
+case, which keeps a generic validation error on the ordinary failure path.
+
 Keep the original output allowance, stream replay boundary, cancellation and
 deadline. Preserve audit attribution for the actual retried model and leave
 ordinary quota handling in place. See the [current compatibility
@@ -51,4 +57,6 @@ See the implementation and evidence (local artifact `d06-overload-status.md` in 
 for negative controls, focused checks, runtime boundaries and environment limits.
 Controlled HTTP fixtures use production ingress, protocol services and upstream
 HTTP transport with synthetic account leases and a disposable local upstream.
+The extended-tier fixture covers HTTP 400 recovery before publication of unary and
+streaming replies in [the same suite](../../../../src/tests/unit/overload-thinking-http.integration.test.ts).
 Installed-client and real-provider overload acceptance remain pending.

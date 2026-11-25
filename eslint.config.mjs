@@ -61,4 +61,9 @@ export default defineConfig([
       'prefer-const': 'off',
     },
   },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/tests/**', '**/*.{test,spec}.{ts,tsx}', '**/*.gen.ts'],
+    rules: { '@typescript-eslint/no-explicit-any': 'error' },
+  },
 ]);

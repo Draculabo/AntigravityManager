@@ -33,8 +33,64 @@ const capacity = new UpstreamRequestError({
   status: 504,
   message: 'No capacity available for model',
 });
+const unsupportedLevel = new UpstreamRequestError({
+  status: 400,
+  message: 'Thinking level is unsupported: THINKING_LEVEL_XHIGH',
+});
 
 describe('upstream overload thinking recovery', () => {
+  it('clamps the extended Gemini tier once while preserving the wire request limits', () => {
+    const body = request('gemini-3.8-flash-xhigh', { includeThoughts: false, thinkingBudget: -1 });
+    const before = structuredClone(body);
+    const recovery = new OverloadThinkingRecovery();
+
+    expect(recovery.admit(unsupportedLevel, body)?.body).toEqual({
+      ...before,
+      model: 'gemini-3.8-flash-high',
+      request: {
+        ...before.request,
+        generationConfig: {
+          ...before.request.generationConfig,
+          thinkingConfig: { includeThoughts: false, thinkingLevel: 'HIGH' },
+        },
+      },
+    });
+    expect(body).toEqual(before);
+    expect(recovery.admit(unsupportedLevel, body)).toBeUndefined();
+  });
+
+  it('preserves ordinary 400s and refuses an ineligible extended-tier fallback', () => {
+    const recovery = new OverloadThinkingRecovery();
+    const body = request('gemini-3.8-flash-xhigh');
+    const unrelated = new UpstreamRequestError({
+      status: 400,
+      message: 'Invalid prompt value: thinking level is unsupported',
+    });
+    expect(recovery.admit(unrelated, body)).toBeUndefined();
+    expect(
+      recovery.admit(unsupportedLevel, { ...body, model: 'gemini-3.8-flash-high' }),
+    ).toBeUndefined();
+    expect(
+      recovery.admit(unsupportedLevel, body, undefined, undefined, undefined, () => false),
+    ).toBeUndefined();
+    expect(
+      recovery.admit(unsupportedLevel, {
+        ...body,
+        request: { ...body.request, cachedContent: 'cachedContents/synthetic' },
+      }),
+    ).toBeUndefined();
+    expect(
+      recovery.admit(
+        unsupportedLevel,
+        request(body.model, {
+          includeThoughts: false,
+          thinkingBudget: 0,
+        }),
+      ),
+    ).toBeUndefined();
+    expect(recovery.admit(unsupportedLevel, body)).toBeDefined();
+  });
+
   it('downgrades a final Gemini HIGH request on a plain upstream 503', () => {
     const body = request('gemini-3.8-flash-high', { includeThoughts: true, thinkingLevel: 'HIGH' });
     const recovery = new OverloadThinkingRecovery().admit(overload, body);

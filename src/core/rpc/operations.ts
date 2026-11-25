@@ -16,6 +16,7 @@ import type { listCloudAccountSummaries } from '@/modules/cloud-account/services
 import type { CloudAccountViewSchema } from '@/modules/cloud-account/services/cloud-account-view';
 import type { cloudAccountListService } from '@/modules/cloud-account/services/cloud-account-list.service';
 import type { CloudAccountMutationResultSchema } from '@/modules/cloud-account/services/cloud-account-mutation.schema';
+import type { SetCloudAccountRoutingInput } from '@/modules/cloud-account/services/cloud-account-routing.schema';
 import type { CloudAccountProjectIdOperations } from '@/modules/cloud-account/services/cloud-account-project-id.schema';
 import type { CloudAccountSecurityStatus } from '@/modules/cloud-account/services/cloud-account-security-status.schema';
 import type { AccountValidationUrlResultSchema } from '@/modules/cloud-account/services/account-validation-link.schema';
@@ -141,9 +142,7 @@ export interface CoreRpcOperations {
   ): Promise<z.infer<typeof CloudAccountMutationResultSchema>>;
   accountProjectId: CloudAccountProjectIdOperations;
   accountSetRouting?(
-    accountId: string,
-    proxyPriority: number,
-    proxyEnabled: boolean,
+    input: SetCloudAccountRoutingInput,
   ): Promise<z.infer<typeof CloudAccountMutationResultSchema>>;
   accountDelete(accountId: string): Promise<z.infer<typeof CloudAccountMutationResultSchema>>;
   oauthClientList(): ReturnType<typeof listOAuthClients>;

@@ -22,6 +22,7 @@ export interface AccountLeaseTokenData {
   upstream_proxy_url?: string;
   device_profile?: CloudAccount['device_profile'];
   proxy_priority?: number;
+  proxy_priority_overrides?: CloudAccount['proxy_priority_overrides'];
   proxy_enabled?: boolean;
   validation_blocked_until_ms?: number;
   service_disabled?: boolean;
@@ -32,6 +33,11 @@ export interface AccountLeaseTokenData {
   model_reset_times: Record<string, string>;
   model_forwarding_rules: Record<string, string>;
 }
+
+export type AccountLeaseSelectionToken = Pick<
+  AccountLeaseTokenData,
+  'proxy_enabled' | 'proxy_priority' | 'proxy_priority_overrides'
+>;
 
 export function normalizeProjectId(projectId: string | null | undefined): string | undefined {
   if (!isString(projectId)) {

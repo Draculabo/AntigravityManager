@@ -1,7 +1,8 @@
-import type { RateLimitInfo } from './rate-limit-types';
+import { RateLimitReason, type RateLimitInfo } from './rate-limit-types';
 
 interface LockConstraints {
-  quota?: RateLimitInfo;
+  explicitQuota?: RateLimitInfo;
+  inferredQuota?: RateLimitInfo;
   transient?: RateLimitInfo;
 }
 
@@ -15,31 +16,36 @@ export class RateLimitLocks {
 
   get(key: string): RateLimitInfo | undefined {
     const constraints = this.locks.get(key);
-    const quota = constraints?.quota;
-    const transient = constraints?.transient;
-    if (!quota) {
-      return transient;
+    if (!constraints) {
+      return undefined;
     }
-    if (!transient || quota.resetTimeMs >= transient.resetTimeMs) {
-      return quota;
+    const { explicitQuota, inferredQuota, transient } = constraints;
+    const temporary = inferredQuota && (!transient || inferredQuota.resetTimeMs > transient.resetTimeMs)
+      ? inferredQuota
+      : transient;
+    if (!explicitQuota) {
+      return temporary;
+    }
+    if (!temporary || explicitQuota.resetTimeMs >= temporary.resetTimeMs) {
+      return explicitQuota;
     }
     return {
-      ...transient,
-      preservesExplicitQuota: quota.resetTimeMs > Date.now(),
+      ...temporary,
+      preservesExplicitQuota: explicitQuota.resetTimeMs > Date.now(),
     };
   }
 
   store(key: string, info: RateLimitInfo): RateLimitInfo {
     const constraints = this.locks.get(key) ?? {};
-    const channel = info.preservesExplicitQuota ? 'quota' : 'transient';
-    const previous = constraints[channel];
-    if (
-      channel === 'transient' ||
-      !previous ||
-      previous.resetTimeMs <= Date.now() ||
-      info.resetTimeMs >= previous.resetTimeMs
-    ) {
-      constraints[channel] = info;
+    if (info.preservesExplicitQuota) {
+      const previous = constraints.explicitQuota;
+      if (!previous || previous.resetTimeMs <= Date.now() || info.resetTimeMs >= previous.resetTimeMs) {
+        constraints.explicitQuota = info;
+      }
+    } else if (info.reason === RateLimitReason.QuotaExhausted) {
+      constraints.inferredQuota = info;
+    } else {
+      constraints.transient = info;
     }
     this.locks.set(key, constraints);
     return this.get(key) ?? info;
@@ -47,6 +53,27 @@ export class RateLimitLocks {
 
   delete(key: string): boolean {
     return this.locks.delete(key);
+  }
+
+  clearRecoveredQuota(key: string): boolean {
+    const constraints = this.locks.get(key);
+    if (!constraints) {
+      return false;
+    }
+
+    const expiredQuota =
+      constraints.explicitQuota !== undefined && constraints.explicitQuota.resetTimeMs <= Date.now();
+    const inferredQuota = constraints.inferredQuota !== undefined;
+    if (expiredQuota) {
+      delete constraints.explicitQuota;
+    }
+    if (inferredQuota) {
+      delete constraints.inferredQuota;
+    }
+    if (!constraints.explicitQuota && !constraints.transient) {
+      this.locks.delete(key);
+    }
+    return expiredQuota || inferredQuota;
   }
 
   clear(): void {

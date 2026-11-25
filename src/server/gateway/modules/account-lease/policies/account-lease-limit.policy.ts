@@ -81,12 +81,9 @@ export class AccountLeaseLimitPolicy {
     isAccountRecovered: boolean,
   ): void {
     this.rateLimitTracker.clearModelFamilies(accountId, recoveredModels);
-    if (!isAccountRecovered) {
-      return;
+    if (isAccountRecovered) {
+      this.rateLimitTracker.clearAccountQuotaLock(accountId);
     }
-
-    this.accountCooldowns.delete(accountId);
-    this.rateLimitTracker.markSuccess(accountId);
   }
 
   markModelSuccess(accountIdOrEmail: string, model: string): void {
@@ -135,14 +132,16 @@ export class AccountLeaseLimitPolicy {
         accountId,
         reason,
         normalizedModel,
-        ...(params.isCurrent ? [params.isCurrent] : []),
-        params.effort
-          ? {
-              signal: new AbortController().signal,
-              requireCurrentWindows: true,
-              effort: params.effort,
-            }
-          : undefined,
+        params.isCurrent,
+        ...(params.effort
+          ? [
+              {
+                signal: new AbortController().signal,
+                requireCurrentWindows: true as const,
+                effort: params.effort,
+              },
+            ]
+          : []),
       );
       if (params.isCurrent && !params.isCurrent()) {
         return;

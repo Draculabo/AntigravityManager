@@ -3,16 +3,12 @@ import {
   getAccountProxyPriority,
   weeklyQuotaPriorityCandidates,
 } from './account-lease-priority';
+import type { AccountLeaseSelectionToken } from '../interfaces/account-lease-token-types';
 import { AccountLeaseAffinity } from './account-lease-affinity';
 import { AccountLeaseSelectionWait } from './account-lease-selection-wait';
 
 export type AccountLeaseSelectionMode = 'cache-first' | 'balance' | 'performance-first';
-export type AccountLeaseSelectionEntry<T> = [string, T];
-
-type PrioritizedLeaseToken = {
-  proxy_priority?: number;
-  proxy_enabled?: boolean;
-};
+export type AccountLeaseSelectionEntry<T extends AccountLeaseSelectionToken> = [string, T];
 
 export interface AccountLeaseRateLimitReader {
   isRateLimited(accountId: string, model?: string): boolean;
@@ -37,13 +33,19 @@ interface AccountLeaseSelectionLogger {
   error(message: string): void;
 }
 
-export interface AccountLeaseSelectionRequest<T> {
+export interface AccountLeaseSelectionRequest<T extends AccountLeaseSelectionToken> {
   allTokens: Array<AccountLeaseSelectionEntry<T>>;
   isCurrentCandidate?: (accountId: string, token: T) => boolean;
   waitBudget?: AccountLeaseSelectionWait;
   signal?: AbortSignal;
   getModelQuota?: (accountId: string, token: T, model: string) => number | undefined;
-  getWeeklyQuotaResetAt?: (accountId: string, token: T, model: string, now: number) => number | undefined;
+  resolvePriorityModel?: (accountId: string, model: string) => string;
+  getWeeklyQuotaResetAt?: (
+    accountId: string,
+    token: T,
+    model: string,
+    now: number,
+  ) => number | undefined;
   sessionKey?: string;
   model?: string;
   effort?: string;
@@ -114,7 +116,7 @@ export class AccountLeaseSelectionPolicy {
     return config.parityShadowEnabled && !this.isParitySchedulingEnabled(config);
   }
 
-  async selectCandidate<T>(
+  async selectCandidate<T extends AccountLeaseSelectionToken>(
     request: AccountLeaseSelectionRequest<T>,
   ): Promise<AccountLeaseSelectionEntry<T> | null> {
     if (request.signal?.aborted) {
@@ -124,11 +126,12 @@ export class AccountLeaseSelectionPolicy {
     request = {
       ...request,
       allTokens: request.allTokens
-        .filter(([, token]) => this.isProxyEnabled(token))
+        .filter(([, token]) => token.proxy_enabled !== false)
         .filter(([id, token]) => this.isCurrent(request, id, token))
         .sort(([leftId, leftToken], [rightId, rightToken]) => {
           const priorityDifference =
-            getAccountProxyPriority(leftToken) - getAccountProxyPriority(rightToken);
+            getAccountProxyPriority(leftId, leftToken, request) -
+            getAccountProxyPriority(rightId, rightToken, request);
           if (priorityDifference !== 0) {
             return priorityDifference;
           }
@@ -187,7 +190,11 @@ export class AccountLeaseSelectionPolicy {
     this.affinity.bindSession(sessionKey, accountId, expiresAt);
   }
 
-  private isCurrent<T>(request: AccountLeaseSelectionRequest<T>, id: string, token: T): boolean {
+  private isCurrent<T extends AccountLeaseSelectionToken>(
+    request: AccountLeaseSelectionRequest<T>,
+    id: string,
+    token: T,
+  ): boolean {
     if (request.isCurrentCandidate?.(id, token) === false) {
       return false;
     }
@@ -198,7 +205,9 @@ export class AccountLeaseSelectionPolicy {
     return quota === undefined || !Number.isFinite(quota) || quota > 0;
   }
 
-  private stickyWaitMs<T>(request: AccountLeaseSelectionRequest<T>): number {
+  private stickyWaitMs<T extends AccountLeaseSelectionToken>(
+    request: AccountLeaseSelectionRequest<T>,
+  ): number {
     if (
       request.config.accountSelectionStrategy === 'account-first' ||
       !this.isParitySchedulingEnabled(request.config) ||
@@ -214,14 +223,20 @@ export class AccountLeaseSelectionPolicy {
     return sticky ? this.remainingWaitMs(request, sticky[0]) : 0;
   }
 
-  private isEligible<T>(request: AccountLeaseSelectionRequest<T>, id: string): boolean {
+  private isEligible<T extends AccountLeaseSelectionToken>(
+    request: AccountLeaseSelectionRequest<T>,
+    id: string,
+  ): boolean {
     return (
       (request.accountCooldowns.get(id) ?? 0) <= request.now &&
       !request.rateLimitTracker.isRateLimited(id, request.model)
     );
   }
 
-  private remainingWaitMs<T>(request: AccountLeaseSelectionRequest<T>, id: string): number {
+  private remainingWaitMs<T extends AccountLeaseSelectionToken>(
+    request: AccountLeaseSelectionRequest<T>,
+    id: string,
+  ): number {
     return Math.max(
       0,
       (request.accountCooldowns.get(id) ?? 0) - Date.now(),
@@ -229,13 +244,13 @@ export class AccountLeaseSelectionPolicy {
     );
   }
 
-  private selectImmediateCandidate<T>(
+  private selectImmediateCandidate<T extends AccountLeaseSelectionToken>(
     request: AccountLeaseSelectionRequest<T>,
   ): AccountLeaseSelectionEntry<T> | null {
     request = {
       ...request,
       allTokens: request.allTokens
-        .filter(([, token]) => this.isProxyEnabled(token))
+        .filter(([, token]) => token.proxy_enabled !== false)
         .filter(([id, token]) => this.isCurrent(request, id, token)),
     };
     if (request.config.accountSelectionStrategy === 'account-first') {
@@ -246,7 +261,7 @@ export class AccountLeaseSelectionPolicy {
       : this.selectLegacyTokenCandidate(request);
   }
 
-  private selectAccountFirstCandidate<T>(
+  private selectAccountFirstCandidate<T extends AccountLeaseSelectionToken>(
     request: AccountLeaseSelectionRequest<T>,
   ): AccountLeaseSelectionEntry<T> | null {
     const candidates = this.collectEligibleTokens(
@@ -261,12 +276,16 @@ export class AccountLeaseSelectionPolicy {
     const session = this.findStickySessionToken(candidates, request.sessionKey, request.now);
     const retained = candidates.find(([id]) => id === this.affinity.getModelAccount(model));
     return (
-      preferred ?? session ?? weeklyQuotaPriorityCandidates(candidates, request)[0] ?? retained ??
-      accountPriorityCandidates(candidates, request)[0] ?? null
+      preferred ??
+      session ??
+      weeklyQuotaPriorityCandidates(candidates, request)[0] ??
+      retained ??
+      accountPriorityCandidates(candidates, request)[0] ??
+      null
     );
   }
 
-  private collectEligibleTokens<T>(
+  private collectEligibleTokens<T extends AccountLeaseSelectionToken>(
     allTokens: Array<AccountLeaseSelectionEntry<T>>,
     model: string | undefined,
     now: number,
@@ -282,7 +301,7 @@ export class AccountLeaseSelectionPolicy {
     });
   }
 
-  private findStickySessionToken<T>(
+  private findStickySessionToken<T extends AccountLeaseSelectionToken>(
     candidates: Array<AccountLeaseSelectionEntry<T>>,
     sessionKey: string | undefined,
     now: number,
@@ -295,7 +314,7 @@ export class AccountLeaseSelectionPolicy {
     return candidates.find(([accountId]) => accountId === stickyBinding.accountId) ?? null;
   }
 
-  private pickRoundRobinEntry<T>(
+  private pickRoundRobinEntry<T extends AccountLeaseSelectionToken>(
     candidates: Array<AccountLeaseSelectionEntry<T>>,
   ): AccountLeaseSelectionEntry<T> | null {
     if (candidates.length === 0) {
@@ -306,7 +325,7 @@ export class AccountLeaseSelectionPolicy {
     return picked;
   }
 
-  private weightedCandidates<T>(
+  private weightedCandidates<T extends AccountLeaseSelectionToken>(
     candidates: Array<AccountLeaseSelectionEntry<T>>,
     request: AccountLeaseSelectionRequest<T>,
   ): Array<AccountLeaseSelectionEntry<T>> {
@@ -323,7 +342,7 @@ export class AccountLeaseSelectionPolicy {
     });
   }
 
-  private peekRoundRobinCandidateAccountId<T>(
+  private peekRoundRobinCandidateAccountId<T extends AccountLeaseSelectionToken>(
     candidates: Array<AccountLeaseSelectionEntry<T>>,
   ): string | null {
     if (candidates.length === 0) {
@@ -332,7 +351,7 @@ export class AccountLeaseSelectionPolicy {
     return candidates[this.currentIndex % candidates.length][0];
   }
 
-  private selectLegacyTokenCandidate<T>(
+  private selectLegacyTokenCandidate<T extends AccountLeaseSelectionToken>(
     request: AccountLeaseSelectionRequest<T>,
   ): AccountLeaseSelectionEntry<T> | null {
     const availableTokens = request.allTokens.filter(([accountId]) => {
@@ -361,7 +380,7 @@ export class AccountLeaseSelectionPolicy {
     );
   }
 
-  private selectParityTokenCandidate<T>(
+  private selectParityTokenCandidate<T extends AccountLeaseSelectionToken>(
     request: AccountLeaseSelectionRequest<T>,
   ): AccountLeaseSelectionEntry<T> | null {
     const availableTokens = this.collectEligibleTokens(
@@ -397,7 +416,7 @@ export class AccountLeaseSelectionPolicy {
     );
   }
 
-  private predictLegacyAccountCandidateId<T>(
+  private predictLegacyAccountCandidateId<T extends AccountLeaseSelectionToken>(
     request: AccountLeaseSelectionRequest<T>,
   ): string | null {
     const availableTokens = request.allTokens.filter(([accountId]) => {
@@ -425,7 +444,7 @@ export class AccountLeaseSelectionPolicy {
     );
   }
 
-  private predictParityAccountCandidateId<T>(
+  private predictParityAccountCandidateId<T extends AccountLeaseSelectionToken>(
     request: AccountLeaseSelectionRequest<T>,
   ): string | null {
     const availableTokens = this.collectEligibleTokens(
@@ -461,19 +480,16 @@ export class AccountLeaseSelectionPolicy {
     );
   }
 
-  private isProxyEnabled<T>(token: T): boolean {
-    const candidate = token as T & PrioritizedLeaseToken;
-    return candidate.proxy_enabled !== false;
-  }
-
-  private executeShadowComparison<T>(request: AccountLeaseSelectionRequest<T>): void {
+  private executeShadowComparison<T extends AccountLeaseSelectionToken>(
+    request: AccountLeaseSelectionRequest<T>,
+  ): void {
     const legacyAccountId = this.predictLegacyAccountCandidateId(request);
     const parityAccountId = this.predictParityAccountCandidateId(request);
 
     this.updateShadowStats(legacyAccountId, parityAccountId, request);
   }
 
-  private updateShadowStats<T>(
+  private updateShadowStats<T extends AccountLeaseSelectionToken>(
     legacyId: string | null,
     parityId: string | null,
     request: AccountLeaseSelectionRequest<T>,

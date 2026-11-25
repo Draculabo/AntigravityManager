@@ -17,10 +17,13 @@ const GOOGLE_OVERLOAD_DOMAINS = new Set([
 const CAPACITY_REASON = 'MODEL_CAPACITY_EXHAUSTED';
 const LIMIT_REASONS = [CAPACITY_REASON, 'QUOTA_EXHAUSTED', 'RESOURCE_EXHAUSTED'];
 
-type RecoveryKind = 'promote_capacity' | 'degrade_thinking';
+type RecoveryKind = 'promote_capacity' | 'degrade_thinking' | 'clamp_unsupported_thinking_level';
 
 function classify(error: UpstreamRequestError): RecoveryKind | undefined {
   const { status } = error;
+  if (status === 400 && /^thinking level is unsupported\b/iu.test(error.message.trimStart())) {
+    return 'clamp_unsupported_thinking_level';
+  }
   if (status === undefined || (status !== 408 && (status < 500 || status > 599))) {
     return undefined;
   }
@@ -104,7 +107,16 @@ export class OverloadThinkingRecovery {
     const thinkingConfig = originalThinking ? { ...originalThinking } : undefined;
     let model = body.model;
     let thinkingChanged = false;
-    if (kind === 'promote_capacity') {
+    if (kind === 'clamp_unsupported_thinking_level') {
+      if (!/^gemini-.+-xhigh$/iu.test(model) || thinkingConfig?.thinkingBudget === 0) {
+        return undefined;
+      }
+      model = model.replace(/-xhigh$/iu, '-high');
+      if (thinkingConfig) {
+        delete thinkingConfig.thinkingBudget;
+        thinkingConfig.thinkingLevel = 'HIGH';
+      }
+    } else if (kind === 'promote_capacity') {
       if (/^gemini-/iu.test(model)) {
         model = capacityTarget(model);
         if (model !== body.model && thinkingConfig && thinkingConfig.thinkingBudget !== 0) {
@@ -147,7 +159,7 @@ export class OverloadThinkingRecovery {
     this.attempted.add(kind);
     return {
       kind,
-      delayMs: kind === 'promote_capacity' ? 50 : 150,
+      delayMs: kind === 'degrade_thinking' ? 150 : 50,
       body: {
         ...body,
         model,

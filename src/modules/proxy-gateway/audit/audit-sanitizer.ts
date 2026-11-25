@@ -264,7 +264,15 @@ export function sanitizeAuditString(value: string, key?: string, mimeType?: stri
   return redactUrlCredentials(value);
 }
 
-function base64Summary(value: string, mimeType: string, source: string): Record<string, unknown> {
+interface AuditBinarySummary {
+  bytes: number;
+  mime_type: string;
+  redacted: true;
+  sha256: string;
+  source: string;
+}
+
+function base64Summary(value: string, mimeType: string, source: string): AuditBinarySummary {
   const hash = createHash('sha256');
   let carry = '';
   let bytes = 0;
@@ -289,7 +297,7 @@ function base64Summary(value: string, mimeType: string, source: string): Record<
   return { bytes, mime_type: mimeType, redacted: true, sha256: hash.digest('hex'), source };
 }
 
-function binarySummary(bytes: Buffer, mimeType: string, source: string): Record<string, unknown> {
+function binarySummary(bytes: Buffer, mimeType: string, source: string): AuditBinarySummary {
   return {
     bytes: bytes.byteLength,
     mime_type: mimeType,
@@ -305,16 +313,16 @@ function binarySnapshot(bytes: Buffer, mimeType: string, source: string): AuditP
     bytes: bytes.byteLength,
     kind: 'binary',
     oversized: false,
-    sha256: String(summary.sha256),
+    sha256: summary.sha256,
     text: JSON.stringify(summary),
   };
 }
 
-function omittedValue(value: string): Record<string, unknown> {
+function omittedValue(value: string) {
   return {
     bytes: Buffer.byteLength(value, 'utf-8'),
-    omitted: true,
-    reason: 'audit_body_limit',
+    omitted: true as const,
+    reason: 'audit_body_limit' as const,
     sha256: sha256Hex(value),
   };
 }

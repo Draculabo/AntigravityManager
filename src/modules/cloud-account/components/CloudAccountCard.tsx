@@ -1017,6 +1017,7 @@ export function CloudAccountCard({
             accountId={account.id}
             configured={account.proxy_configured}
             proxyPriority={account.proxy_priority ?? 50}
+            proxyPriorityOverrides={account.proxy_priority_overrides}
             proxyEnabled={account.proxy_enabled !== false}
           />
         </div>

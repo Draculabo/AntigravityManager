@@ -170,7 +170,7 @@ export function applyResponsesImageSendWindow(
   config: ImageSchedulerConfig | undefined,
   currentItems: unknown[] = [],
 ): unknown[] {
-  const output = clone(items) as unknown[];
+  const output = items.map(clone);
   if (!isWindowEnabled(config)) {
     return output;
   }

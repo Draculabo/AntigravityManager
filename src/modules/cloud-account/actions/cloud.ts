@@ -1,4 +1,5 @@
 import { ipc } from '@/ipc/manager';
+import type { SetCloudAccountRoutingInput } from '../services/cloud-account-routing.schema';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import type { DeviceProfile } from '@/modules/identity-profile/types';
 import { isValidProxyUrl } from '@/shared/utils/url';
@@ -151,11 +152,7 @@ export function setAccountProxy(input: { accountId: string; proxyUrl: string | n
   return ipc.client.cloud.setAccountProxy(input);
 }
 
-export function setAccountRouting(input: {
-  accountId: string;
-  proxyPriority: number;
-  proxyEnabled: boolean;
-}) {
+export function setAccountRouting(input: SetCloudAccountRoutingInput) {
   return ipc.client.cloud.setAccountRouting(input);
 }
 

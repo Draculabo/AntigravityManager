@@ -12,6 +12,10 @@ import {
   MALFORMED_FUNCTION_CALL_RECOVERY_TEXT,
 } from '@/modules/proxy-gateway/antigravity/GeminiFinishReason';
 import { toIncompleteReason, type ResponsesOutputStatus } from './openai-responses-incomplete';
+import type {
+  ResponsesOutputTextPart,
+  ResponsesReasoningOutputItem,
+} from './openai-responses-output';
 import type { OpenAIResponsesUsage } from '@/modules/proxy-gateway/antigravity/OpenAIUsageMapper';
 import type { OpenAITool } from '../../../common/interfaces/request-interfaces';
 import {
@@ -19,25 +23,12 @@ import {
   type ResponsesToolCallOutputItem,
 } from './responses-tool-call-projection';
 interface ResponsesMessageOutputItem {
-  content: Array<{
-    annotations: [];
-    text: string;
-    type: 'output_text';
-  }>;
+  content: ResponsesOutputTextPart[];
   id: string;
   phase: 'commentary' | 'final_answer';
   role: 'assistant';
   status: ResponsesOutputStatus;
   type: 'message';
-}
-interface ResponsesReasoningOutputItem {
-  id: string;
-  status: ResponsesOutputStatus;
-  summary: Array<{
-    text: string;
-    type: 'summary_text';
-  }>;
-  type: 'reasoning';
 }
 type ResponsesOutputItem =
   | ResponsesMessageOutputItem

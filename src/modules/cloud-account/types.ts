@@ -6,6 +6,10 @@ import {
   type DeviceProfileVersion,
 } from '@/modules/identity-profile/types';
 import { isValidProxyUrl } from '@/shared/utils/url';
+import {
+  CloudAccountProxyPriorityOverridesSchema,
+  type CloudAccountProxyPriorityOverrides,
+} from './services/cloud-account-routing.schema';
 
 export interface CloudTokenData {
   access_token: string;
@@ -177,6 +181,7 @@ export interface CloudAccount {
   proxy_url?: string;
   /** Lower values are preferred for new proxy leases. Historical accounts default to 50. */
   proxy_priority?: number;
+  proxy_priority_overrides?: CloudAccountProxyPriorityOverrides;
   /** Manual proxy participation switch. It is independent from client identity and OAuth health. */
   proxy_enabled?: boolean;
 }
@@ -312,6 +317,7 @@ export const CloudAccountSchema = z.object({
   is_active_agy: z.boolean().optional(),
   proxy_url: z.string().optional(),
   proxy_priority: z.number().int().min(1).max(100).optional(),
+  proxy_priority_overrides: CloudAccountProxyPriorityOverridesSchema.optional(),
   proxy_enabled: z.boolean().optional(),
 });
 

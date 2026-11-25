@@ -181,6 +181,7 @@ function operations(): CoreRpcOperations {
     accountClearServiceDisabled: vi.fn(),
     accountSyncFromIde: vi.fn(async () => accountView),
     accountSetProxy: vi.fn(async () => ({ success: true as const })),
+    accountSetRouting: vi.fn(async () => ({ success: true as const })),
     accountProjectId: {
       getAccountProjectId: vi.fn(async () => ({ projectId: null })),
       setAccountProjectId: vi.fn(async (input) => ({ projectId: input.projectId })),
@@ -623,6 +624,14 @@ describe('core application RPC', () => {
     const proxyUrl = 'http://proxy-user:proxy-password@127.0.0.1:7890';
     expect(await client.setAccountProxy(account.id, proxyUrl)).toBeUndefined();
     expect(await client.setAccountProxy(account.id, null)).toBeUndefined();
+    const routing = {
+      accountId: account.id,
+      proxyEnabled: true,
+      proxyPriority: 50,
+      proxyPriorityOverrides: { gemini: 10, claude: 90 },
+    };
+    expect(await client.setAccountRouting(routing)).toBeUndefined();
+    expect(rpc.accountSetRouting).toHaveBeenCalledWith(routing);
     const project = { accountId: account.id, expectedProjectId: null };
     expect(await client.getAccountProjectId({ accountId: account.id })).toEqual({
       projectId: null,

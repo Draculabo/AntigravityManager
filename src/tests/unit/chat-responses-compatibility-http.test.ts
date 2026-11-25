@@ -249,6 +249,21 @@ it('keeps structured Responses stream deltas byte-for-byte', async () => {
   expect(await response.text()).toContain(JSON.stringify({ delta: fenced }).slice(1, -1));
 });
 
+it('keeps structured Chat stream deltas byte-for-byte', async () => {
+  const fenced = '```json\n{"ok":true}\n```';
+  const { send } = await fixture(undefined, geminiTextResponse(fenced));
+  const response = await send({
+    model: 'gemini-3-flash',
+    messages: [{ role: 'user', content: 'Answer' }],
+    response_format: { type: 'json_object' },
+    stream: true,
+  });
+  expect(response.status).toBe(200);
+  const body = await response.text();
+  expect(body).toContain(JSON.stringify({ content: fenced }).slice(1, -1));
+  expect(body).toContain('data: [DONE]');
+});
+
 it.each([
   [structuredFormat, '```json\n{"ok":true}\n```', '{"ok":true}'],
   [{ type: 'json_object' }, '```\n{"ok":true}\n```', '{"ok":true}'],
@@ -267,6 +282,46 @@ it.each([
     expect(await response.json()).toMatchObject({
       output: [{ type: 'message', content: [{ type: 'output_text', text: expected }] }],
     });
+  },
+);
+
+it.each([
+  [
+    {
+      type: 'json_schema',
+      json_schema: { name: structuredFormat.name, schema: structuredFormat.schema },
+    },
+    '```json\n{"ok":true}\n```',
+    'STOP',
+    '{"ok":true}',
+  ],
+  [{ type: 'json_object' }, '```\n{"ok":true}\n```', 'STOP', '{"ok":true}'],
+  [{ type: 'text' }, '```json\n{"ok":true}\n```', 'STOP', '```json\n{"ok":true}\n```'],
+  [{ type: 'json_object' }, '```json\n{"ok":}\n```', 'STOP', '```json\n{"ok":}\n```'],
+  [{ type: 'json_object' }, '```json\n{"ok":true}\n```', 'MAX_TOKENS', '```json\n{"ok":true}\n```'],
+])(
+  'normalizes buffered Chat JSON for %j with finish reason %s',
+  async (format, text, reason, expected) => {
+    const upstream = geminiTextResponse(text);
+    const { send, origin } = await fixture({
+      ...upstream,
+      candidates: upstream.candidates.map((candidate) => ({ ...candidate, finishReason: reason })),
+    });
+    const response = await send({
+      model: 'gemini-3-flash',
+      messages: [{ role: 'user', content: 'Answer' }],
+      response_format: format,
+      store: true,
+    });
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({ choices: [{ message: { content: expected } }] });
+    const replayed = await fetch(`${origin}/v1/chat/completions/${resultId.parse(body).id}`, {
+      headers: { authorization: `Bearer ${ownerKey}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+    expect(replayed.status).toBe(200);
+    expect(await replayed.json()).toEqual(body);
   },
 );
 

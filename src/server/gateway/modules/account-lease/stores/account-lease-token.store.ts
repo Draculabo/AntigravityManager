@@ -49,6 +49,18 @@ export class AccountLeaseTokenCache {
     tokens.set(account.id, replacement);
   }
 
+  updateAccountRouting(
+    account: Pick<CloudAccount, 'id' | 'proxy_priority' | 'proxy_priority_overrides' | 'proxy_enabled'>,
+  ): void {
+    this.invalidateLoads();
+    const token = this.options.getTokenCache().get(account.id);
+    if (token) {
+      token.proxy_priority = account.proxy_priority ?? 50;
+      token.proxy_priority_overrides = account.proxy_priority_overrides;
+      token.proxy_enabled = account.proxy_enabled !== false;
+    }
+  }
+
   async loadAccounts(beforeRead?: () => Promise<void>): Promise<number> {
     const prepareRead = this.prepareLoad();
     if (beforeRead) {
@@ -97,6 +109,7 @@ export class AccountLeaseTokenCache {
       upstream_proxy_url: account.token.upstream_proxy_url || account.proxy_url || undefined,
       device_profile: account.device_profile,
       proxy_priority: account.proxy_priority ?? 50,
+      proxy_priority_overrides: account.proxy_priority_overrides,
       proxy_enabled: account.proxy_enabled !== false,
       validation_blocked_until_ms: account.health?.validation?.next_probe_at_ms,
       service_disabled:

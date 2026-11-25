@@ -5,6 +5,7 @@ import {
   initTray,
   isTrayReady,
   refreshTrayAccount,
+  setTrayLanguage,
 } from '@/modules/app-shell/ipc/tray/handler';
 import { getTrayTexts } from '@/modules/app-shell/ipc/tray/i18n';
 import { restoreHiddenStartupWindow } from '@/modules/app-shell/utils/windowActivation';
@@ -113,6 +114,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   destroyTray();
+  setTrayLanguage('en');
 });
 
 async function click(label: string) {
@@ -203,6 +205,20 @@ describe('tray selected owner routing', () => {
 });
 
 describe('tray window lifecycle', () => {
+  it('updates the existing tray menu in Japanese and restores the main window', async () => {
+    expect(initTray(new BrowserWindow())).toBe(true);
+    await refreshTrayAccount();
+    expect(labels()).toContain('Show Main Window');
+
+    setTrayLanguage('ja');
+
+    expect(labels()[0]).toBe(`現在の Classic アカウント: ${current.email}`);
+    expect(labels()).toContain('アプリを終了');
+    await click('メインウィンドウを表示');
+    expect(state.window.show).toHaveBeenCalledOnce();
+    expect(state.window.focus).toHaveBeenCalledOnce();
+  });
+
   it('restores a minimized window by double-click or Show Window and still toggles a visible window', async () => {
     initTray(new BrowserWindow());
     const doubleClick = state.registerEvent.mock.calls[0][1];

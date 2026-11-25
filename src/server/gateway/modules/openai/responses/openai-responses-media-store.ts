@@ -45,7 +45,7 @@ export class OpenAIResponsesMediaStore {
   }
 
   public async externalize(items: unknown[]): Promise<unknown[]> {
-    return (await transformResponsesMedia(items, async (value, representation) => {
+    return transformResponsesMediaItems(items, async (value, representation) => {
       if (isMediaReference(value)) {
         throw new Error('Client supplied an internal Responses media reference');
       }
@@ -67,11 +67,11 @@ export class OpenAIResponsesMediaStore {
         return value;
       }
       return this.storeBase64(value);
-    })) as unknown[];
+    });
   }
 
   public async restore(items: unknown[]): Promise<unknown[]> {
-    return (await transformResponsesMedia(items, async (value, representation) => {
+    return transformResponsesMediaItems(items, async (value, representation) => {
       if (!isMediaReference(value)) {
         return value;
       }
@@ -94,7 +94,7 @@ export class OpenAIResponsesMediaStore {
       }
       const encoded = bytes.toString('base64');
       return value.encoding === 'data-url' ? `data:${value.prefix}${encoded}` : encoded;
-    })) as unknown[];
+    });
   }
 
   private async storeBase64(value: string): Promise<ProtocolMediaReference> {
@@ -156,16 +156,23 @@ export function containsResponsesMediaReference(value: unknown): boolean {
   return inspectResponsesMedia(value, isMediaReference);
 }
 
+async function transformResponsesMediaItems(
+  items: unknown[],
+  transformMedia: (mediaValue: unknown, representation: MediaRepresentation) => Promise<unknown>,
+): Promise<unknown[]> {
+  const mapped: unknown[] = [];
+  for (const entry of items) {
+    mapped.push(await transformResponsesMedia(entry, transformMedia));
+  }
+  return mapped;
+}
+
 async function transformResponsesMedia(
   value: unknown,
   transformMedia: (mediaValue: unknown, representation: MediaRepresentation) => Promise<unknown>,
 ): Promise<unknown> {
   if (Array.isArray(value)) {
-    const mapped: unknown[] = [];
-    for (const entry of value) {
-      mapped.push(await transformResponsesMedia(entry, transformMedia));
-    }
-    return mapped;
+    return transformResponsesMediaItems(value, transformMedia);
   }
   if (!isRecord(value)) {
     return value;

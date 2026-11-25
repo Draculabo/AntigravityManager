@@ -18,6 +18,8 @@ export const accounts = sqliteTable('accounts', {
   isActive: integer('is_active').notNull().default(0),
   proxyUrl: text('proxy_url'),
   proxyPriority: integer('proxy_priority').notNull().default(50),
+  proxyGeminiPriority: integer('proxy_gemini_priority'),
+  proxyClaudePriority: integer('proxy_claude_priority'),
   proxyEnabled: integer('proxy_enabled').notNull().default(1),
   lifecycleGeneration: text('lifecycle_generation'),
   googleUsageIdentityJson: text('google_usage_identity_json'),

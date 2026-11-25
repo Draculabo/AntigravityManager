@@ -70,6 +70,28 @@ function createTokenCache(store: AccountLeaseAccountStore) {
 }
 
 describe('AccountLeaseTokenCache', () => {
+  it('applies live routing changes while preserving cached lease state', async () => {
+    const { cache, tokenCache } = createTokenCache(createStore([createAccount()]));
+    await cache.loadAccountsOrThrow();
+    const token = tokenCache.get('acc-1');
+    const previous = { ...token };
+
+    cache.updateAccountRouting({
+      id: 'acc-1',
+      proxy_priority: 40,
+      proxy_priority_overrides: { gemini: 12 },
+      proxy_enabled: false,
+    });
+
+    expect(tokenCache.get('acc-1')).toBe(token);
+    expect(token).toEqual({
+      ...previous,
+      proxy_priority: 40,
+      proxy_priority_overrides: { gemini: 12 },
+      proxy_enabled: false,
+    });
+  });
+
   it('loads cloud accounts into normalized account lease token state', async () => {
     const store = createStore([createAccount()]);
     const { applyQuotaSnapshot, cache, tokenCache } = createTokenCache(store);

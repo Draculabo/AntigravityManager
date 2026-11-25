@@ -19,8 +19,13 @@ This applies to profiles using a standalone Core owner. Desktop-only profiles ca
    owner compatibility `15` to accept complete callback input through that field.
 6. Open **Traffic Monitor > Usage trends** and expand a model family. The grouped response
    requires owner compatibility `18`. It reads existing audit records with their original model IDs.
+7. Open an account's **Network proxy** dialog to review its optional Gemini and Claude priorities.
+   Desktop and Core require owner compatibility `19` for the family overrides.
 
 ## Data and recovery
+
+Startup adds two nullable account priority columns. Existing accounts inherit their global priority.
+Stop both processes before restoring a profile backup so neither owner can publish a stale account.
 
 Project ID uses the existing account field, and the CLI import source reads the existing sign-in
 file. Both use the current data format. Manager rejects an incompatible owner before account
@@ -34,13 +39,16 @@ again rather than replay an old callback.
 
 ## Downgrade
 
-Stop both processes and restore a matching desktop and Core pair. Account data keeps its current
-format. Before returning to a build without automatic routing, replace each `auto:*` target with
+Older builds use the global priority. Preserve a profile backup to retain the override values when
+moving between releases.
+
+Stop both processes and restore a matching desktop and Core pair. Before returning to a build
+without automatic routing, replace each `auto:*` target with
 a supported physical model. Older builds may ignore alias visibility and publish hidden aliases;
 retain a copy of the service configuration before downgrading. A mixed-version desktop/Core pair
 is unsupported. Check any other upgrade guides for the releases involved.
 Older releases accept only a raw authorization code in the manual field; complete callback
-addresses and encoded input need this release. Existing saved accounts retain their format.
+addresses and encoded input need this release.
 
 ## Verification
 

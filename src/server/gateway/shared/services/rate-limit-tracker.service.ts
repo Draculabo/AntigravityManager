@@ -231,7 +231,7 @@ export class RateLimitTrackerService {
 
   /**
    * Quota responses use canonical model ids while request failures can be keyed by a routed alias.
-   * Compare known routing families so a recovered canonical model also releases its alias lock.
+   * Clear only quota constraints for the recovered families, including their aliases.
    */
   clearModelFamilies(accountId: string, models: Iterable<string>): number {
     const recoveredFamilies = new Set(Array.from(models, (model) => getQuotaModelFamilyId(model)));
@@ -247,14 +247,17 @@ export class RateLimitTrackerService {
 
       if (
         recoveredFamilies.has(getQuotaModelFamilyId(info.model)) &&
-        !(info.preservesExplicitQuota && info.resetTimeMs > Date.now())
+        this.lockoutByKey.clearRecoveredQuota(key)
       ) {
-        this.lockoutByKey.delete(key);
         deleted += 1;
       }
     }
 
     return deleted;
+  }
+
+  clearAccountQuotaLock(accountId: string): void {
+    this.lockoutByKey.clearRecoveredQuota(accountId);
   }
 
   clearAll(): number {

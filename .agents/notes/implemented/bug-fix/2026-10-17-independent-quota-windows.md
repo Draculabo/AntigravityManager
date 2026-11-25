@@ -31,6 +31,11 @@ route waiting includes current group-window constraints, and stored eligibility
 detects newly observed depleted windows before a stale completion can recover them.
 Existing D01 ownership/ordering guards, retry budgets and hard-quota policies remain.
 
+The lock store removes quota constraints independently from other outcomes. Fresh quota
+can release inferred exhaustion for matching families and, after complete coverage,
+for the account. Explicit quota deadlines, ordinary 429 backoff and forbidden cooldowns
+have separate evidence and continue to apply.
+
 The current summary contract has display labels and bucket IDs but no authoritative
 model-membership IDs. Window identity keeps the exact bucket ID while normalizing
 case/whitespace and weekly/7d aliases in its window label. Empty identities cannot

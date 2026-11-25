@@ -50,6 +50,7 @@ import { toCloudAccountSwitchStatusError } from '@/modules/cloud-account/service
 import { localAccountImportCoordinator } from '@/modules/cloud-account/local-import/local-account-import-coordinator.service';
 import { createLocalAccountImportRouter } from '@/modules/cloud-account/local-import/transport.router';
 import { accountOwnerEvents } from '@/modules/cloud-account/services/account-owner-events.service';
+import { setCloudAccountRouting } from '@/modules/cloud-account/services/cloud-account-routing.service';
 import {
   AccountOwnerEventReadInputSchema,
   AccountOwnerEventBatchSchema,
@@ -331,10 +332,11 @@ export function createCoreRpcOperations(
       setAccountProjectId: (input) => runAccountMutation(() => cloudAccountProjectId.setAccountProjectId(input)),
       fetchAccountProjectId: (input) => runAccountMutation(() => cloudAccountProjectId.fetchAccountProjectId(input)),
     },
-    accountSetRouting: async (accountId, proxyPriority, proxyEnabled) => {
-      CloudAccountRepo.setAccountRouting(accountId, proxyPriority, proxyEnabled);
-      return { success: true };
-    },
+    accountSetRouting: (input) =>
+      runAccountMutation(async () => {
+        await setCloudAccountRouting(input);
+        return { success: true };
+      }),
     accountDelete: (accountId) =>
       runAccountMutation(async () => {
         await deleteCloudAccount(accountId);
@@ -540,11 +542,7 @@ export function createCoreRpcRouter(operations: CoreRpcOperations) {
         if (!operations.accountSetRouting) {
           throw new Error('Cloud account routing settings are unavailable');
         }
-        return operations.accountSetRouting(
-          input.accountId,
-          input.proxyPriority,
-          input.proxyEnabled,
-        );
+        return operations.accountSetRouting(input);
       }),
     accountDelete: os
       .input(DeleteCloudAccountInputSchema)

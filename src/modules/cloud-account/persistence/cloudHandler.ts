@@ -16,7 +16,11 @@ import { isEncryptedPayloadCandidate } from '@/shared/security/crypto';
 import { getCloudDb, type DrizzleExecutor } from './cloud-account-db';
 import { convertEncryptedAccountFields } from './convert-encrypted-account-fields';
 import { CloudAccountSettingsStore } from './cloud-account-settings-store';
-import { CloudAccountProxyPrioritySchema } from '../services/cloud-account-routing.schema';
+import {
+  CloudAccountProxyPrioritySchema,
+  SetCloudAccountRoutingInputSchema,
+  type SetCloudAccountRoutingInput,
+} from '../services/cloud-account-routing.schema';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { assertImportPlanCurrent, cloudAccountRowValues } from './cloud-account-import-guard';
 import {
@@ -84,6 +88,8 @@ function assertPlainAccountFields(row: AccountRow): void {
 
 function parseAccountRow(row: AccountRow): CloudAccount {
   const token = parseCloudToken(row.id, row.tokenJson);
+  const geminiPriority = CloudAccountProxyPrioritySchema.safeParse(row.proxyGeminiPriority).data;
+  const claudePriority = CloudAccountProxyPrioritySchema.safeParse(row.proxyClaudePriority).data;
   return {
     google_usage_subject_hash: readGoogleUsageIdentity(row.googleUsageIdentityJson, token),
     google_usage_grant_hash: googleUsageGrantHash(token) ?? undefined,
@@ -105,6 +111,12 @@ function parseAccountRow(row: AccountRow): CloudAccount {
     is_active: Boolean(row.isActive),
     proxy_url: row.proxyUrl ?? undefined,
     proxy_priority: row.proxyPriority ?? 50,
+    ...(geminiPriority !== undefined || claudePriority !== undefined ? {
+      proxy_priority_overrides: {
+        ...(geminiPriority !== undefined ? { gemini: geminiPriority } : {}),
+        ...(claudePriority !== undefined ? { claude: claudePriority } : {}),
+      },
+    } : {}),
     proxy_enabled: row.proxyEnabled !== 0,
   };
 }
@@ -558,21 +570,30 @@ export class CloudAccountRepo {
     }
   }
 
-  static setAccountRouting(id: string, proxyPriority: number, proxyEnabled: boolean): void {
-    const parsedPriority = CloudAccountProxyPrioritySchema.parse(proxyPriority);
+  static setAccountRouting(input: SetCloudAccountRoutingInput): CloudAccount {
+    const { accountId, proxyPriority, proxyEnabled, proxyPriorityOverrides } =
+      SetCloudAccountRoutingInputSchema.parse(input);
     const { raw, orm } = getCloudDb();
     try {
-      const result = orm
-        .update(accounts)
-        .set({
-          proxyPriority: parsedPriority,
-          proxyEnabled: proxyEnabled ? 1 : 0,
-        })
-        .where(eq(accounts.id, id))
-        .run();
-      if (result.changes === 0) {
-        throw new Error(`Cloud account ${id} was not found`);
-      }
+      return orm.transaction((transaction) => {
+        const updated = transaction
+          .update(accounts)
+          .set({
+            proxyPriority,
+            proxyEnabled: proxyEnabled ? 1 : 0,
+            ...(proxyPriorityOverrides && {
+              proxyGeminiPriority: proxyPriorityOverrides.gemini ?? null,
+              proxyClaudePriority: proxyPriorityOverrides.claude ?? null,
+            }),
+          })
+          .where(eq(accounts.id, accountId))
+          .returning()
+          .get();
+        if (!updated) {
+          throw new Error(`Cloud account ${accountId} was not found`);
+        }
+        return parseAccountRow(updated);
+      });
     } finally {
       raw.close();
     }

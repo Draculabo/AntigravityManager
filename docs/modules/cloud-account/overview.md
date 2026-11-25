@@ -4,6 +4,13 @@ The `cloud-account` module owns the managed Google account pool, quota refresh a
 automatic switching policy, account import, and optional weekly warmup. Its desktop feature
 surfaces live under `src/modules/cloud-account/`.
 
+## Proxy routing priority
+
+Open an account's **Network proxy** dialog to set its default proxy priority or override it for
+Gemini and Claude. Lower numbers take precedence among eligible accounts. Leave a family field
+empty to use the default. **Save routing** applies all three priorities and the proxy participation
+setting together. Model aliases use the resolved upstream family. Other models use the default.
+
 ## Local Antigravity CLI sign-in
 
 On the Accounts page, the **Import / Export** menu opens local account discovery, file import,

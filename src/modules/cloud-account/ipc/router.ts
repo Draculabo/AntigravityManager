@@ -243,11 +243,7 @@ export const cloudRouter = os.router({
       if (!setRouting) {
         throw new Error('Cloud account routing settings are unavailable');
       }
-      await setRouting(
-        input.accountId,
-        input.proxyPriority,
-        input.proxyEnabled,
-      );
+      await setRouting(input);
       return { success: true };
     }),
 

@@ -5,7 +5,7 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { getCloudAccountsDbPath } from '@/shared/platform/paths';
 import { logger } from '@/shared/logging/logger';
 import { TableInfoRowSchema } from '@/shared/persistence/database/types';
-import { parseRows } from '@/shared/persistence/database/sqlite';
+import { parseRowsFromStatement } from '@/shared/persistence/database/sqlite';
 import {
   configureDatabase,
   openDrizzleConnection,
@@ -54,12 +54,18 @@ function ensureDatabaseInitialized(dbPath: string): void {
         is_active INTEGER DEFAULT 0,
         proxy_url TEXT,
         proxy_priority INTEGER NOT NULL DEFAULT 50,
+        proxy_gemini_priority INTEGER,
+        proxy_claude_priority INTEGER,
         proxy_enabled INTEGER NOT NULL DEFAULT 1
       );
     `);
 
-    const tableInfoRaw = db.pragma('table_info(accounts)') as unknown[];
-    const tableInfo = parseRows(TableInfoRowSchema, tableInfoRaw, 'cloud.accounts.tableInfo');
+    const accountColumns = db.prepare("SELECT name FROM pragma_table_info('accounts')");
+    const tableInfo = parseRowsFromStatement(
+      accountColumns,
+      TableInfoRowSchema,
+      'cloud.accounts.tableInfo',
+    );
     const hasIsActive = tableInfo.some((col) => col.name === 'is_active');
     const hasDeviceProfileJson = tableInfo.some((col) => col.name === 'device_profile_json');
     const hasDeviceHistoryJson = tableInfo.some((col) => col.name === 'device_history_json');
@@ -92,6 +98,28 @@ function ensureDatabaseInitialized(dbPath: string): void {
     if (!hasProxyEnabled) {
       db.exec('ALTER TABLE accounts ADD COLUMN proxy_enabled INTEGER NOT NULL DEFAULT 1');
     }
+    if (
+      ['proxy_gemini_priority', 'proxy_claude_priority'].some(
+        (name) => !tableInfo.some((column) => column.name === name),
+      )
+    ) {
+      const connection = db;
+      connection
+        .transaction(() => {
+          const columns = parseRowsFromStatement(
+            accountColumns,
+            TableInfoRowSchema,
+            'cloud.accounts.tableInfo',
+          );
+          if (!columns.some((column) => column.name === 'proxy_gemini_priority')) {
+            connection.exec('ALTER TABLE accounts ADD COLUMN proxy_gemini_priority INTEGER');
+          }
+          if (!columns.some((column) => column.name === 'proxy_claude_priority')) {
+            connection.exec('ALTER TABLE accounts ADD COLUMN proxy_claude_priority INTEGER');
+          }
+        })
+        .immediate();
+    }
     ensureCloudAccountLifecycleSchema(db);
     ensureGoogleUsageIdentitySchema(db, dbPath);
 
@@ -116,10 +144,9 @@ function ensureDatabaseInitialized(dbPath: string): void {
       );
     `);
 
-    const wpTableInfoRaw = db.pragma('table_info(workspace_profiles)') as unknown[];
-    const wpTableInfo = parseRows(
+    const wpTableInfo = parseRowsFromStatement(
+      db.prepare<[]>("SELECT name FROM pragma_table_info('workspace_profiles')"),
       TableInfoRowSchema,
-      wpTableInfoRaw,
       'cloud.workspace_profiles.tableInfo',
     );
     const hasLastLaunchedAt = wpTableInfo.some((col) => col.name === 'last_launched_at');

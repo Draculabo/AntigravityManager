@@ -200,11 +200,7 @@ export function normalizeResponsesInputItems(input: unknown): unknown[] {
   ];
 }
 
-export function extractCompletedResponsesEvent(event: unknown): unknown | null {
-  if (!isString(event)) {
-    return null;
-  }
-
+export function extractCompletedResponsesEvent(event: string): unknown {
   const dataLine = event.split(/\r?\n/).find((line) => line.startsWith('data:'));
   if (!dataLine) {
     return null;

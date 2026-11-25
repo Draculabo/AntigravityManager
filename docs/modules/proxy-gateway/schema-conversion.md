@@ -76,7 +76,7 @@ Schema rejection precedes account leasing, upstream execution and streaming publ
 rejected WebSocket Schema does not replace admitted socket configuration. History repair and
 quota/model policies retain their current owners and behavior.
 
-## Responses structured output
+## OpenAI structured output
 
 For Responses requests with `text.format.type: json_schema`, the Gemini internal
 request sends `responseSchema` and omits optional tool declarations and tool
@@ -84,11 +84,12 @@ configuration. Previous tool calls and results remain in the conversation.
 A required or named tool choice with JSON Schema fails before generation with
 `invalid_tool_choice`. JSON object mode does not use this tool restriction.
 
-After a successful non-streaming Responses answer in JSON Schema or JSON object
-mode, the gateway removes one outer Markdown fence if it encloses the entire
-answer and its payload parses as JSON. Ordinary text, invalid JSON and streaming
-deltas pass through this compatibility rule without modification. The check
-establishes valid JSON syntax. Schema validation remains separate.
+After a successful non-streaming answer in JSON Schema or JSON object mode, the gateway
+removes one outer Markdown fence if it encloses the entire answer and its payload parses
+as JSON. This applies to Responses `text.format` and Chat Completions `response_format`.
+Chat completion replay returns the same text as the create request. Ordinary text, invalid
+JSON, truncated answers, refusals, tool calls and streaming deltas pass through unchanged.
+The check establishes valid JSON syntax. Schema validation remains separate.
 
 ## Bounds and cache
 

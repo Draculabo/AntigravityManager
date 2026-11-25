@@ -42,7 +42,7 @@ import {
 } from '../../../../modules/proxy-gateway/audit/traffic-audit-context';
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { isEmpty, isString, isEqual } from 'lodash-es';
-import { Observable, Subscriber } from 'rxjs';
+import { isObservable, Observable, Subscriber } from 'rxjs';
 import {
   OpenAIChatRequest,
   OpenAIChatResponse,
@@ -52,6 +52,10 @@ import {
 } from '@/server/gateway/common/interfaces/request-interfaces';
 import { modelNotFoundError, readOpenAIModelCatalog } from './openai-model-catalog';
 import { toOpenAIResponsesResponse } from './responses/OpenAIResponsesResponseMapper';
+import {
+  isStructuredOpenAIResponseFormat,
+  normalizeStructuredOpenAIChoice,
+} from './openai-structured-output';
 import {
   IMAGE_GENERATION_SAFETY_SETTINGS,
   normalizeExplicitImageSize,
@@ -71,11 +75,11 @@ import {
 import { OpenAIResponsesSessionService } from '@/server/gateway/modules/openai/responses/openai-responses-session.service';
 import {
   OpenAIResponsesSessionStore,
-  type OpenAIResponsesSessionStoreImpl,
   prepareOpenAIResponsesSessionInput,
   type OpenAIResponsesSession,
   type OpenAIResponsesSessionParent,
   type OpenAIResponsesSessionStoreLike,
+  type SaveOpenAIResponsesSessionDelta,
 } from '@/server/gateway/modules/openai/responses/openai-responses-session.store';
 import { getServerConfig } from '@/server/server-config';
 import { GenerationDeadlineScope } from '../../common/generation-deadline';
@@ -321,14 +325,13 @@ export class OpenAIOperations extends BaseProxyController {
         ),
         deadline.signal,
       );
-      if (body.stream && this.isObservableLike(result)) {
+      if (isObservable(result)) {
         this.writeSseResponse(res, deadline.retainObservable(result), true);
         return;
       }
 
-      const response = result as OpenAIChatResponse;
       setProxyResponseTimingHeaders(res, req);
-      res.status(HttpStatus.OK).send(this.toLegacyTextCompletionsResponse(response));
+      res.status(HttpStatus.OK).send(this.toLegacyTextCompletionsResponse(result));
     } catch (error) {
       this.sendOpenAIErrorResponse(res, '/v1/completions', error);
     } finally {
@@ -380,7 +383,7 @@ export class OpenAIOperations extends BaseProxyController {
         ),
         deadline.signal,
       );
-      if (body.stream && this.isObservableLike(result)) {
+      if (isObservable(result)) {
         this.writeSseResponse(
           res,
           deadline.retainObservable(this.cacheResponsesStream(result, prepared, deadline.signal)),
@@ -389,12 +392,10 @@ export class OpenAIOperations extends BaseProxyController {
         return;
       }
 
-      const response = result as OpenAIChatResponse;
-      const format = prepared.request.response_format?.type;
       const responsesResponse = toOpenAIResponsesResponse(
-        response,
+        result,
         prepared.responseId,
-        !body.stream && (format === 'json_schema' || format === 'json_object'),
+        !body.stream && isStructuredOpenAIResponseFormat(prepared.request.response_format),
       );
       await awaitRequestOperation(
         this.saveResponsesSession(responsesResponse, prepared, deadline.signal),
@@ -687,16 +688,20 @@ export class OpenAIOperations extends BaseProxyController {
         deadline.signal,
       );
 
-      if (body.stream && this.isObservableLike(result)) {
+      if (isObservable(result)) {
         this.writeSseResponse(res, deadline.retainObservable(result), true);
         return;
-      } else {
-        if (body.store === true) {
-          this.storedCompletions.save(result as OpenAIChatResponse);
-        }
-        setProxyResponseTimingHeaders(res, req);
-        res.status(HttpStatus.OK).send(result);
       }
+
+      const completion =
+        !body.stream && isStructuredOpenAIResponseFormat(normalizedRequest.response_format)
+          ? { ...result, choices: result.choices.map(normalizeStructuredOpenAIChoice) }
+          : result;
+      if (body.store === true) {
+        this.storedCompletions.save(completion);
+      }
+      setProxyResponseTimingHeaders(res, req);
+      res.status(HttpStatus.OK).send(completion);
     } catch (error) {
       if (error instanceof FileReferenceError) {
         this.sendFileReferenceError(res, 'openai', error);
@@ -721,14 +726,14 @@ export class OpenAIOperations extends BaseProxyController {
     return prompt;
   }
 
-  private toLegacyTextCompletionsResponse(response: OpenAIChatResponse): Record<string, unknown> {
+  private toLegacyTextCompletionsResponse(response: OpenAIChatResponse) {
     const choice = response.choices?.[0];
     const content = choice?.message?.content;
     const text = isString(content) ? content : '';
 
     return {
       id: response.id,
-      object: 'text_completion',
+      object: 'text_completion' as const,
       created: response.created,
       model: response.model,
       choices: [
@@ -885,11 +890,11 @@ export class OpenAIOperations extends BaseProxyController {
 
   /** Both transports deliver completion after the shared history writer reaches its commit point. */
   public cacheResponsesStream(
-    stream: Observable<unknown>,
+    stream: Observable<string>,
     prepared: PreparedResponsesRequest,
     signal?: AbortSignal,
-  ): Observable<unknown> {
-    const subscribe = (subscriber: Subscriber<unknown>) => {
+  ): Observable<string> {
+    const subscribe = (subscriber: Subscriber<string>) => {
       const flowControlled =
         stream instanceof FlowControlledSseStream ? stream : getObservableFlowControl(stream);
       let sourceSubscription: ReturnType<typeof stream.subscribe> | undefined;
@@ -898,14 +903,17 @@ export class OpenAIOperations extends BaseProxyController {
       let sourceCompleted = false;
       let sourceFailed = false;
       let sourceError: unknown;
-      const pendingEvents: unknown[] = [];
+      const pendingEvents: string[] = [];
 
       const finishAfterPersistence = () => {
         if (persistencePending || subscriber.closed) {
           return;
         }
         while (pendingEvents.length > 0 && !subscriber.closed) {
-          subscriber.next(pendingEvents.shift());
+          const event = pendingEvents.shift();
+          if (event !== undefined) {
+            subscriber.next(event);
+          }
         }
         if (subscriber.closed) {
           return;
@@ -1011,28 +1019,8 @@ export class OpenAIOperations extends BaseProxyController {
     }
     const storedResponse = { ...responseRecord, id: prepared.responseId };
 
-    const mediaPersistence = this.responsesSessions as Partial<
-      Pick<OpenAIResponsesSessionStoreImpl, 'saveDeltaWithMedia'>
-    >;
     try {
-      if (mediaPersistence.saveDeltaWithMedia) {
-        await mediaPersistence.saveDeltaWithMedia.call(mediaPersistence, prepared.responseId, {
-          identity: prepared.session.identity,
-          historyOwner: prepared.session.historyOwner,
-          inputDelta: prepared.session.inputItems,
-          instructions: prepared.session.instructions,
-          model: prepared.session.model,
-          parent: prepared.parent,
-          response: storedResponse,
-          responseOutput: storedResponse.output,
-          routingSessionId: prepared.routingSessionId,
-          store: prepared.session.store,
-          tools: prepared.session.tools,
-          toolCallItems: prepared.session.toolCallItems,
-        });
-        return;
-      }
-      this.responsesSessions.saveDelta(prepared.responseId, {
+      const delta: SaveOpenAIResponsesSessionDelta = {
         identity: prepared.session.identity,
         historyOwner: prepared.session.historyOwner,
         inputDelta: prepared.session.inputItems,
@@ -1045,7 +1033,12 @@ export class OpenAIOperations extends BaseProxyController {
         store: prepared.session.store,
         tools: prepared.session.tools,
         toolCallItems: prepared.session.toolCallItems,
-      });
+      };
+      if (this.responsesSessions.saveDeltaWithMedia) {
+        await this.responsesSessions.saveDeltaWithMedia(prepared.responseId, delta);
+      } else {
+        this.responsesSessions.saveDelta(prepared.responseId, delta);
+      }
     } catch (error) {
       const persistenceError = new Error('Failed to persist Responses session history', {
         cause: error,

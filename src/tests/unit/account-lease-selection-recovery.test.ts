@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AccountLeaseSelectionToken } from '@/server/gateway/modules/account-lease/interfaces/account-lease-token-types';
 import {
   AccountLeaseSelectionPolicy,
   type AccountLeaseSelectionRequest,
@@ -6,13 +7,13 @@ import {
 import { AccountLeaseSelectionWait } from '@/server/gateway/modules/account-lease/policies/account-lease-selection-wait';
 
 function request(
-  overrides: Partial<AccountLeaseSelectionRequest<string>> = {},
-): AccountLeaseSelectionRequest<string> {
+  overrides: Partial<AccountLeaseSelectionRequest<AccountLeaseSelectionToken>> = {},
+): AccountLeaseSelectionRequest<AccountLeaseSelectionToken> {
   return {
     allTokens: [
-      ['b', 'b'],
-      ['a', 'a'],
-      ['c', 'c'],
+      ['b', {}],
+      ['a', {}],
+      ['c', {}],
     ],
     now: Date.now(),
     accountCooldowns: new Map(),

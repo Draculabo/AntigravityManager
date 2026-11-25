@@ -63,10 +63,12 @@ const WireBody = z
         generationConfig: z
           .object({
             maxOutputTokens: z.number(),
-            thinkingConfig: z.object({
-              thinkingBudget: z.number().optional(),
-              thinkingLevel: z.string().optional(),
-            }).passthrough(),
+            thinkingConfig: z
+              .object({
+                thinkingBudget: z.number().optional(),
+                thinkingLevel: z.string().optional(),
+              })
+              .passthrough(),
           })
           .passthrough(),
       })
@@ -91,6 +93,7 @@ async function createSurface(
   options: {
     failureMessage?: string;
     failures?: Array<{ status: number; message: string }>;
+    finalFailure?: { status: number; message: string };
     secondEndpoint?: boolean;
     unavailableRecoveryTier?: boolean;
     revokeOnError?: boolean;
@@ -127,9 +130,11 @@ async function createSurface(
         );
         return;
       }
-      const failure = options.failures?.[seen.length - 1] ??
+      const failure =
+        options.failures?.[seen.length - 1] ??
+        options.finalFailure ??
         ((!options.failures && seen.length === 1) ||
-          (options.alwaysOverloadedOnFirstAccount && authorization === 'Bearer access-overload-a')
+        (options.alwaysOverloadedOnFirstAccount && authorization === 'Bearer access-overload-a')
           ? { status: 503, message: options.failureMessage ?? 'The model is overloaded.' }
           : undefined);
       if (failure) {
@@ -141,7 +146,12 @@ async function createSurface(
           JSON.stringify({
             error: {
               code: failure.status,
-              status: failure.status === 429 ? 'RESOURCE_EXHAUSTED' : 'UNAVAILABLE',
+              status:
+                failure.status === 400
+                  ? 'INVALID_ARGUMENT'
+                  : failure.status === 429
+                    ? 'RESOURCE_EXHAUSTED'
+                    : 'UNAVAILABLE',
               message: failure.message,
             },
           }),
@@ -191,7 +201,9 @@ async function createSurface(
   const origin = `http://127.0.0.1:${address.port}`;
   vi.stubEnv(
     'PROXY_INTERNAL_BASE_URLS',
-    options.secondEndpoint ? `${origin}/v1internal,${origin}/secondary/v1internal` : `${origin}/v1internal`,
+    options.secondEndpoint
+      ? `${origin}/v1internal,${origin}/secondary/v1internal`
+      : `${origin}/v1internal`,
   );
   vi.stubEnv('PROXY_CONTEXT_CACHE_ENABLED', 'false');
   setServerConfig({
@@ -277,6 +289,63 @@ async function send(
 }
 
 describe('Automatic thinking overload recovery over HTTP', () => {
+  it.each([false, true])(
+    'falls back from an unsupported extended Gemini tier with stream=%s',
+    async (stream) => {
+      const { base, seen, lease } = await createSurface({
+        failures: [{ status: 400, message: 'Thinking level is unsupported: THINKING_LEVEL_XHIGH' }],
+        secondEndpoint: true,
+      });
+      const reply = await send(base, 'chat', stream, {
+        model: 'gemini-3.8-flash-xhigh',
+        max_tokens: 16000,
+      });
+
+      expect(reply.status, reply.body).toBe(200);
+      expect(reply.body).toContain('Recovered');
+      expect(seen.map(({ body }) => body.model)).toEqual([
+        'gemini-3.8-flash-xhigh',
+        'gemini-3.8-flash-high',
+      ]);
+      const [first, recovered] = seen;
+      expect(recovered.body.request.generationConfig.thinkingConfig).toMatchObject({
+        thinkingLevel: 'HIGH',
+      });
+      expect(recovered.body.request.generationConfig.maxOutputTokens).toBe(
+        first.body.request.generationConfig.maxOutputTokens,
+      );
+      expect(recovered.body.requestId).not.toBe(first.body.requestId);
+      expect(recovered.body.requestId.split('/')[1]).toBe(first.body.requestId.split('/')[1]);
+      expect(recovered.authorization).toBe(first.authorization);
+      expect(recovered.path).toBe(first.path);
+      expect(lease.getNextToken).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('caps the tier fallback at one send when the HIGH sibling returns 404', async () => {
+    const message = 'Thinking level is unsupported: THINKING_LEVEL_XHIGH';
+    const { base, seen, lease } = await createSurface({
+      failures: [
+        { status: 400, message },
+        { status: 404, message: 'The HIGH tier is unavailable.' },
+      ],
+      finalFailure: { status: 400, message },
+    });
+    const reply = await send(base, 'chat', false, {
+      model: 'gemini-3.8-flash-xhigh',
+      max_tokens: 16000,
+    });
+
+    expect(seen.slice(0, 2).map(({ body }) => body.model)).toEqual([
+      'gemini-3.8-flash-xhigh',
+      'gemini-3.8-flash-high',
+    ]);
+    expect(seen.filter(({ body }) => body.model === 'gemini-3.8-flash-high')).toHaveLength(1);
+    expect(reply.status, reply.body).toBe(400);
+    expect(reply.body).toContain(message);
+    expect(lease.penalties.length).toBeGreaterThan(0);
+  });
+
   it('closes an in-flight recovery when the caller cancels', async () => {
     const started = Promise.withResolvers<void>();
     const closed = Promise.withResolvers<void>();
@@ -440,12 +509,15 @@ describe('Automatic thinking overload recovery over HTTP', () => {
       max_tokens: 16000,
     });
     expect(reply.status, reply.body).toBe(200);
-    expect(seen.map(({body}) => body.model)).toEqual([
-      'gemini-3.8-flash-medium', 'gemini-3.8-flash-high', 'gemini-3.8-flash-medium',
+    expect(seen.map(({ body }) => body.model)).toEqual([
+      'gemini-3.8-flash-medium',
+      'gemini-3.8-flash-high',
+      'gemini-3.8-flash-medium',
     ]);
-    expect(seen.slice(1).map(({body}) => body.request.generationConfig.thinkingConfig.thinkingLevel))
-      .toEqual(['HIGH', 'MEDIUM']);
-    expect(new Set(seen.map(({authorization, path}) => `${authorization}:${path}`)).size).toBe(1);
+    expect(
+      seen.slice(1).map(({ body }) => body.request.generationConfig.thinkingConfig.thinkingLevel),
+    ).toEqual(['HIGH', 'MEDIUM']);
+    expect(new Set(seen.map(({ authorization, path }) => `${authorization}:${path}`)).size).toBe(1);
     expect(lease.getNextToken).toHaveBeenCalledOnce();
   });
 
@@ -459,8 +531,9 @@ describe('Automatic thinking overload recovery over HTTP', () => {
       max_tokens: 16000,
     });
     expect(reply.status, reply.body).toBe(200);
-    expect(seen.map(({body}) => body.model)).toEqual([
-      'gemini-3.8-flash-high', 'gemini-3.8-flash-high',
+    expect(seen.map(({ body }) => body.model)).toEqual([
+      'gemini-3.8-flash-high',
+      'gemini-3.8-flash-high',
     ]);
     expect(seen[1].path).not.toBe(seen[0].path);
   });
@@ -478,8 +551,10 @@ describe('Automatic thinking overload recovery over HTTP', () => {
       max_tokens: 16000,
     });
     expect(reply.status, reply.body).toBe(200);
-    expect(seen.map(({body}) => body.model)).toEqual([
-      'gemini-3.8-flash-high', 'gemini-3.8-flash-medium', 'gemini-3.8-flash-high',
+    expect(seen.map(({ body }) => body.model)).toEqual([
+      'gemini-3.8-flash-high',
+      'gemini-3.8-flash-medium',
+      'gemini-3.8-flash-high',
     ]);
     expect(seen[1].path).toBe(seen[0].path);
     expect(seen[2].path).not.toBe(seen[0].path);

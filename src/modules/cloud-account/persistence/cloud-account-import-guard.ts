@@ -29,6 +29,8 @@ export function cloudAccountRowValues(account: CloudAccount): AccountValues {
     isActive: account.is_active ? 1 : 0,
     proxyUrl: account.proxy_url ?? null,
     proxyPriority: account.proxy_priority ?? 50,
+    proxyGeminiPriority: account.proxy_priority_overrides?.gemini ?? null,
+    proxyClaudePriority: account.proxy_priority_overrides?.claude ?? null,
     proxyEnabled: account.proxy_enabled === false ? 0 : 1,
     googleUsageIdentityJson: null,
   };

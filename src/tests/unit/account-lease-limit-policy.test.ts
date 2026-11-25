@@ -57,6 +57,7 @@ describe('AccountLeaseLimitPolicy', () => {
       'acc-1',
       RateLimitReason.QuotaExhausted,
       'gemini-2.5-flash',
+      undefined,
     );
     expect(setPreciseLockoutFromCachedQuota).not.toHaveBeenCalled();
   });
@@ -78,6 +79,27 @@ describe('AccountLeaseLimitPolicy', () => {
     expect(refreshRealtimeQuotaAndReconcileLimit).not.toHaveBeenCalled();
     expect(policy.isRateLimited('acc-1', 'gemini-2.5-flash')).toBe(true);
     expect(policy.isRateLimited('acc-1', 'gemini-2.5-pro')).toBe(false);
+  });
+
+  it('passes the model effort as recovery options when no freshness guard is supplied', async () => {
+    const { policy, refreshRealtimeQuotaAndReconcileLimit } = createPolicy();
+    refreshRealtimeQuotaAndReconcileLimit.mockResolvedValue('recovered');
+
+    await policy.markFromUpstreamError({
+      accountIdOrEmail: 'acc-1',
+      status: 429,
+      model: 'gemini-2.5-flash',
+      effort: 'high',
+      body: 'quota exhausted',
+    });
+
+    expect(refreshRealtimeQuotaAndReconcileLimit).toHaveBeenCalledWith(
+      'acc-1',
+      RateLimitReason.QuotaExhausted,
+      'gemini-2.5-flash',
+      undefined,
+      { signal: expect.any(AbortSignal), requireCurrentWindows: true, effort: 'high' },
+    );
   });
 
   it('does not run quota refresh for generic RESOURCE_EXHAUSTED responses', async () => {
@@ -180,24 +202,45 @@ describe('AccountLeaseLimitPolicy', () => {
       RateLimitReason.QuotaExhausted,
       'gemini-3.1-flash-lite',
     );
+    tracker.setLockoutUntilIso(
+      'acc-1',
+      resetTime,
+      RateLimitReason.RateLimitExceeded,
+      'gemini-3.1-pro-high',
+    );
 
     policy.clearRecoveredQuotaLocks('acc-1', ['gemini-3.1-pro'], false);
 
     expect(tracker.isRateLimited('acc-1', 'gemini-3.1-pro-low')).toBe(false);
     expect(tracker.isRateLimited('acc-1', 'gemini-3.1-flash-lite')).toBe(true);
+    expect(tracker.isRateLimited('acc-1', 'gemini-3.1-pro-high')).toBe(true);
   });
 
-  it('clears legacy and tracker account locks only after full account recovery', () => {
+  it('clears the account quota lock only after full account recovery and keeps a 403 cooldown', () => {
     const { policy } = createPolicy();
     const resetTime = new Date(Date.now() + 60_000).toISOString();
     const tracker = policy.getRateLimitTracker();
 
-    policy.markAsRateLimited('acc-1');
+    policy.markAsForbidden('acc-1');
     tracker.setLockoutUntilIso('acc-1', resetTime, RateLimitReason.QuotaExhausted);
     policy.clearRecoveredQuotaLocks('acc-1', ['gemini-3.1-pro'], false);
-    expect(policy.isRateLimited('acc-1')).toBe(true);
+    expect(tracker.isRateLimited('acc-1')).toBe(true);
 
     policy.clearRecoveredQuotaLocks('acc-1', ['gemini-3.1-pro'], true);
-    expect(policy.isRateLimited('acc-1')).toBe(false);
+    expect(tracker.isRateLimited('acc-1')).toBe(false);
+    expect(policy.isRateLimited('acc-1')).toBe(true);
+  });
+
+  it('keeps an account-wide 429 backoff after full quota recovery', () => {
+    const { policy } = createPolicy();
+    const resetTime = new Date(Date.now() + 60_000).toISOString();
+    const quotaReset = new Date(Date.now() + 120_000).toISOString();
+    const tracker = policy.getRateLimitTracker();
+    tracker.setLockoutUntilIso('acc-1', resetTime, RateLimitReason.RateLimitExceeded);
+    tracker.setLockoutUntilIso('acc-1', quotaReset, RateLimitReason.QuotaExhausted);
+
+    policy.clearRecoveredQuotaLocks('acc-1', ['gemini-3.1-pro'], true);
+
+    expect(tracker.getRemainingWaitSeconds('acc-1')).toBe(60);
   });
 });

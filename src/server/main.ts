@@ -386,6 +386,12 @@ export function replaceNestServerAccountLeaseToken(
   app?.get(AccountLeaseService).replaceAccountToken(account);
 }
 
+export function updateNestServerAccountRouting(
+  account: Parameters<AccountLeaseService['updateAccountRouting']>[0],
+): void {
+  app?.get(AccountLeaseService).updateAccountRouting(account);
+}
+
 /** The availability store outlives the running gateway and also needs cleanup while stopped. */
 export function forgetDeletedNestServerAccount(accountId: string): void {
   if (app) {

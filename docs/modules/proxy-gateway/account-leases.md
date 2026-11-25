@@ -30,6 +30,12 @@ Desktop and standalone-core deletion use the shared cloud-account deletion owner
 which commits durable deletion before invoking gateway cleanup. Cache eviction alone
 is still distinct from durable deletion and account disablement.
 
+## Account priority
+
+Account priority uses the override for each account's resolved Gemini or Claude route, when set.
+Other models and accounts without an override use the global priority. The usual eligibility,
+weekly quota, preferred-account and session rules still govern selection.
+
 ## Independent quota windows
 
 Lease quota projection preserves fractional precision. Group constraints keep their
@@ -44,6 +50,9 @@ publication. Only matching fresh window evidence can clear previously observed
 protection; another model/group or an incomplete summary cannot recover it.
 Account-wide recovery additionally checks previously known model coverage. D01's
 incarnation, token, completion and quota-observation fences still govern publication.
+Quota recovery releases only eligible quota constraints. Model and account rate-limit
+backoffs, capacity cooldowns and forbidden cooldowns retain their own deadlines, even
+when every model reports fresh quota.
 
 The existing summary supplies labels/bucket IDs but no authoritative model-membership
 IDs. Specific recognized Claude family labels stay separate; explicitly shared
@@ -257,8 +266,7 @@ Candidate account IDs use binary ascending order before selection. Reloading the
 same pool in a different storage order does not change its rotation sequence.
 Balanced selection retains its target-model quota weights and round-robin cursor;
 account-first retains successful affinity. Existing preferred-account and session
-precedence remains intact. Account priority fields remain a separate D18 obligation;
-this does not introduce subscription-tier or health-score ranking.
+precedence remains intact. Account priority comes from the saved routing settings.
 
 An empty eligible pool can wait once for the shortest remaining transient lock or
 account cooldown, when it is at most two seconds and fits the selection budget.

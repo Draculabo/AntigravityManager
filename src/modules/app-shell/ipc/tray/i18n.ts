@@ -1,3 +1,5 @@
+import { normalizeDesktopLanguage, type DesktopLanguage } from '../../desktop-appearance';
+
 export type TrayTexts = {
   current: string;
   quota: string;
@@ -94,24 +96,29 @@ const tr: TrayTexts = {
   forbidden: 'Hesap Yasaklandı',
 };
 
-export function getTrayTexts(lang: string = 'en'): TrayTexts {
-  if (lang.startsWith('zh')) {
-    return zh;
-  }
-  if (lang.startsWith('ru')) {
-    return ru;
-  }
-  if (lang.startsWith('vi')) {
-    return vi;
-  }
-  if (lang.startsWith('fr')) {
-    return fr;
-  }
-  if (lang.startsWith('pt')) {
-    return ptBR;
-  }
-  if (lang.startsWith('tr')) {
-    return tr;
-  }
-  return en;
+const ja: TrayTexts = {
+  current: '現在の Classic アカウント',
+  quota: '残りの利用枠',
+  switch_next: '次のアカウントに切り替え',
+  refresh_current: '現在の利用枠を更新',
+  show_window: 'メインウィンドウを表示',
+  quit: 'アプリを終了',
+  no_account: 'アカウントなし',
+  unknown_quota: '不明',
+  forbidden: 'アカウントは利用できません',
+};
+
+const trayTexts: Record<DesktopLanguage, TrayTexts> = {
+  en,
+  'zh-CN': zh,
+  ru,
+  vi,
+  fr,
+  'pt-BR': ptBR,
+  tr,
+  ja,
+};
+
+export function getTrayTexts(lang = 'en'): TrayTexts {
+  return trayTexts[normalizeDesktopLanguage(lang)];
 }
