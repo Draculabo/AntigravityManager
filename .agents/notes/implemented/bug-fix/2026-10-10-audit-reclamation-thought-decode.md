@@ -108,13 +108,19 @@ Make `writing` the required state for chunk admission and both completion paths.
 and completed states remain terminal, including duplicate SSE completion. Keep each check
 in the synchronous repository/SQLite boundary that owns mutation.
 
-Audit capacity uses globally oldest completed whole-parent requests rather than
+Shared audit capacity uses globally oldest completed whole-parent requests rather than
 traffic-class priority or body-only expiration. The confirmed D15 capacity decision
 retires audit age deletion: new/missing limits are 1024 MiB and 100,000 parents,
 preserving explicit user capacities. Disk pressure targets 70%; row pressure stops
 at its parent cap. Separate admin/drop windows bound non-parent resources without
 pretending the parent cap includes attempts. Existing v4 foreign-key cascades own
 whole-request deletion, so no durable layout conversion or new indexes are needed.
+
+Application operation history now has a separate row window. Frequent small IPC
+records can consume shared parent capacity and evict older model requests. The
+application operation pass uses the same whole-parent protection and bounded
+worker batches, then the shared capacity pass applies its global order.
+See the [retention reference](../../../../docs/modules/proxy-gateway/diagnostic-retention.md#retention-and-disk-reclamation).
 
 Inspect checkpoint results and reclaim existing free pages before further eviction.
 Bound reclamation and disk rounds, defer on contention/backlog and stop when measured

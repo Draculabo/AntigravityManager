@@ -10,6 +10,11 @@ while storage permits. Existing expired content cannot be restored. New or missi
 settings use 1024 MiB and 100,000 parents; existing explicit limits are preserved.
 This applies across platforms; current native validation covers Windows.
 
+Application operation history is pruned in batches of up to 40,000 oldest completed
+operations once it reaches 50,000 rows. An existing database at that threshold is
+eligible on startup. Export any application operation records you need to retain
+before opening the updated application.
+
 New audit writes can be refused at the configured disk budget. Model execution
 continues independently. Capture limits still apply; capacity does not guarantee
 complete capture. Thought Store, internal diagnostic files and credentials keep

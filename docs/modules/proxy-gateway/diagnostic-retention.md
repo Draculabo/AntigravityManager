@@ -499,6 +499,14 @@ is local sensitive configuration, excluded from diagnostic exports. See the
 
 ## Retention and disk reclamation
 
+Application operations have a separate row window. When the worker records the
+50,000th application operation, or maintenance finds that many already stored,
+it removes up to 40,000 of the oldest completed application operations and their
+stored bodies. A full pass beginning at 50,000 leaves 10,000 rows. Captures still
+in progress and records arriving during the pass are protected. The worker
+yields between batches and completes this pass before applying shared row and
+disk limits. Application operations still count toward the shared limits.
+
 Maintenance captures request row-ID and time bounds, including completion time.
 Requests still running at capture, active attempts and writing payloads are protected.
 Non-stream response capture establishes body ownership before marking its parent or

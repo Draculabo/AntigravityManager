@@ -75,6 +75,18 @@ export class TrafficAuditRepository {
     return this.retention.maintenance(config);
   }
 
+  public shouldPruneAfterIpcInsert(): boolean {
+    return this.retention.shouldPruneAfterIpcInsert();
+  }
+
+  public shouldPruneIpc(): boolean {
+    return this.retention.shouldPruneIpc();
+  }
+
+  public pruneIpc() {
+    return this.retention.pruneIpc();
+  }
+
   public execute(
     command: Exclude<TrafficAuditWorkerCommand, MaintenanceCommand>,
     maxDiskBytes = DEFAULT_APP_CONFIG.proxy.traffic_audit.max_disk_mib * 1024 * 1024,

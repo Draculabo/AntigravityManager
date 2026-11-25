@@ -12,6 +12,8 @@ const DELETE_BATCH_SIZE = 32;
 const VACUUM_PAGE_BATCH = 128;
 const ADMIN_EVENT_LIMIT = 1_000;
 const DROP_BUCKET_LIMIT = 128;
+const IPC_ROW_LIMIT = 50_000;
+const IPC_PRUNE_ROWS = 40_000;
 const COMPLETED_REQUEST =
   'r.completed_at<? ' +
   "AND NOT EXISTS (SELECT 1 FROM upstream_attempts a WHERE a.parent_id=r.id AND a.outcome='in_progress' AND a.completed_at IS NULL) " +
@@ -20,18 +22,71 @@ const COMPLETED_REQUEST =
 type ReclaimStatus = 'ready' | 'busy' | 'vacuum_pending';
 
 export class TrafficAuditRetention {
+  private ipcInsertsUntilCheck = 0;
+
   public constructor(
     private readonly databasePath: string,
     private readonly raw: Database.Database,
   ) {}
 
+  public shouldPruneAfterIpcInsert(): boolean {
+    this.ipcInsertsUntilCheck -= 1;
+    return this.ipcInsertsUntilCheck <= 0 && this.shouldPruneIpc();
+  }
+
+  public *pruneIpc(): Generator<void, boolean> {
+    if (!this.shouldPruneIpc()) {
+      return false;
+    }
+    const startedAt = Date.now();
+    const highWater = this.requestHighWater();
+    let remaining = IPC_PRUNE_ROWS;
+    while (remaining > 0) {
+      const removable = this.ipcRowCount() - (IPC_ROW_LIMIT - IPC_PRUNE_ROWS);
+      const limit = Math.min(remaining, removable, DELETE_BATCH_SIZE);
+      if (limit <= 0) {
+        break;
+      }
+      const changes = this.removeOldest(limit, highWater, startedAt, 'ipc');
+      if (changes === 0) {
+        break;
+      }
+      remaining -= changes;
+      yield;
+    }
+    const stillOverLimit = this.shouldPruneIpc();
+    return remaining === 0 && stillOverLimit;
+  }
+
+  private ipcRowCount(): number {
+    return (
+      this.raw
+        .prepare<
+          [],
+          { value: number }
+        >("SELECT COUNT(*) value FROM request_logs WHERE traffic_class='ipc'")
+        .get()?.value ?? 0
+    );
+  }
+
+  public shouldPruneIpc(): boolean {
+    // Deletions between checks can only cause an early recount.
+    this.ipcInsertsUntilCheck = IPC_ROW_LIMIT - this.ipcRowCount();
+    return this.ipcInsertsUntilCheck <= 0;
+  }
+
+  private requestHighWater(): number {
+    return (
+      this.raw
+        .prepare<[], { value: number }>('SELECT COALESCE(MAX(rowid),0) value FROM request_logs')
+        .get()?.value ?? 0
+    );
+  }
+
   public *maintenance(config: RetentionConfig): Generator<void, TrafficAuditMaintenanceResult> {
     const startedAt = Date.now();
     // Both guards are needed: a concurrent clear can reuse row IDs while this pass yields.
-    const highWater =
-      this.raw
-        .prepare<[], { value: number }>('SELECT COALESCE(MAX(rowid),0) value FROM request_logs')
-        .get()?.value ?? 0;
+    const highWater = this.requestHighWater();
     const adminHighWater =
       this.raw
         .prepare<[], { value: number }>('SELECT COALESCE(MAX(id),0) value FROM audit_admin_events')
@@ -68,12 +123,13 @@ export class TrafficAuditRetention {
     return { databaseBytes, moreWorkPending: reclaimStatus === 'vacuum_pending' };
   }
 
-  private removeOldest(limit: number, highWater: number, startedAt: number): number {
+  private removeOldest(limit: number, highWater: number, startedAt: number, scope?: 'ipc'): number {
+    const traffic = scope === 'ipc' ? " AND r.traffic_class='ipc'" : '';
     const rows = this.raw
       .prepare<
         [number, number, number, number],
         { id: string }
-      >('SELECT r.id FROM request_logs r WHERE r.rowid<=? AND r.timestamp<? AND ' + COMPLETED_REQUEST + ' ORDER BY r.timestamp ASC,r.rowid ASC LIMIT ?')
+      >('SELECT r.id FROM request_logs r WHERE r.rowid<=? AND r.timestamp<? AND ' + COMPLETED_REQUEST + traffic + ' ORDER BY r.timestamp ASC,r.rowid ASC LIMIT ?')
       .all(highWater, startedAt, startedAt, limit);
     const remove = this.raw.prepare('DELETE FROM request_logs WHERE id=?');
     return this.raw.transaction(() => {

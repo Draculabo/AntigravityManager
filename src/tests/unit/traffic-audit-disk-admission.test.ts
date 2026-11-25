@@ -6,6 +6,7 @@ import Database from 'better-sqlite3';
 import { TrafficAuditDiskBudget } from '@/modules/proxy-gateway/audit/traffic-audit-disk-budget';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TrafficAuditRepository } from '@/modules/proxy-gateway/audit/traffic-audit.repository';
+import { createTrafficAuditWorkerDispatcher } from '@/modules/proxy-gateway/audit/traffic-audit-worker-dispatcher';
 import type { TrafficAuditWorkerCommand } from '@/modules/proxy-gateway/audit/traffic-audit.worker-protocol';
 
 vi.mock('better-sqlite3', async () => {
@@ -16,6 +17,7 @@ vi.mock('better-sqlite3', async () => {
 let directory: string;
 let databasePath: string;
 let repository: TrafficAuditRepository;
+let shutdownRepository: () => void;
 const generousBudget = 16 * 1024 * 1024;
 function parent(id: string): TrafficAuditWorkerCommand & { operation: 'insertParent' } {
   return {
@@ -60,10 +62,13 @@ beforeEach(() => {
   directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agm-disk-admission-'));
   databasePath = path.join(directory, 'audit.db');
   repository = new TrafficAuditRepository(databasePath);
+  shutdownRepository = () => {
+    repository.execute({ operation: 'shutdown', payload: null });
+  };
 });
 afterEach(() => {
   vi.restoreAllMocks();
-  repository?.execute({ operation: 'shutdown', payload: null });
+  shutdownRepository();
   const resolved = path.resolve(directory);
   if (
     path.dirname(resolved) !== path.resolve(os.tmpdir()) ||
@@ -75,6 +80,92 @@ afterEach(() => {
 });
 
 describe('audit SQLite physical write admission', () => {
+  it('prunes the oldest 40,000 completed application operations when the 50,000th is written', async () => {
+    const seed = new Database(databasePath);
+    try {
+      seed.exec(`WITH RECURSIVE rows(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM rows WHERE n<49998)
+        INSERT INTO request_logs(id,timestamp,completed_at,method,url,protocol,traffic_class,request_headers,outcome)
+        SELECT 'operation-' || n, (n+1)/2, n+1, 'IPC', '/ipc/test', 'ipc', 'ipc', '{}', 'completed' FROM rows;
+        INSERT INTO request_logs(id,timestamp,completed_at,method,url,protocol,traffic_class,request_headers,outcome)
+        VALUES ('active-operation',0,NULL,'IPC','/ipc/active','ipc','ipc','{}','in_progress'),
+               ('old-model',0,1,'POST','/v1/chat/completions','openai','model','{}','completed');
+        INSERT INTO audit_payloads(id,request_id,kind,representation,state,stored_bytes,chunk_count,created_at,completed_at)
+        VALUES ('old-body','operation-1','text','sanitized_text','complete',1,1,1,1);
+        INSERT INTO request_body_refs(request_id,direction,payload_id) VALUES ('operation-1','request','old-body');
+        INSERT INTO audit_payload_chunks(payload_id,seq,payload,byte_length,encoding) VALUES ('old-body',0,x'61',1,'raw');`);
+      const select = seed.prepare("SELECT COUNT(*) n FROM request_logs WHERE traffic_class='ipc'");
+      const rows = () => select.get();
+      const failures: unknown[] = [];
+      const replies: unknown[] = [];
+      const dispatch = createTrafficAuditWorkerDispatcher(
+        repository,
+        (result) => replies.push(result),
+        (error) => failures.push(error),
+      );
+      shutdownRepository = () => {
+        dispatch(5, { operation: 'shutdown', payload: null });
+      };
+      dispatch(1, { operation: 'stats', payload: null });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(rows()).toEqual({ n: 49_999 });
+
+      const command = parent('threshold-operation');
+      dispatch(2, {
+        ...command,
+        payload: { ...command.payload, method: 'IPC', protocol: 'ipc', trafficClass: 'ipc' },
+      });
+      expect(replies.at(-1)).toEqual({ id: 2, result: 1 });
+      expect(rows()).toEqual({ n: 50_000 });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(rows()).toEqual({ n: 49_968 });
+      dispatch(3, { operation: 'stats', payload: null });
+      expect(replies.at(-1)).toMatchObject({ id: 3, result: { rows: 49_969 } });
+      const arrived = parent('arrived-during-prune');
+      dispatch(4, {
+        ...arrived,
+        payload: {
+          ...arrived.payload,
+          method: 'IPC',
+          protocol: 'ipc',
+          trafficClass: 'ipc',
+          timestamp: 1,
+        },
+      });
+      expect(replies.at(-1)).toEqual({ id: 4, result: 1 });
+      seed
+        .prepare(
+          "UPDATE request_logs SET completed_at=2,outcome='completed' WHERE id='arrived-during-prune'",
+        )
+        .run();
+      await vi.waitFor(
+        () => {
+          expect(failures).toEqual([]);
+          expect(rows()).toEqual({ n: 10_001 });
+        },
+        { timeout: 15_000 },
+      );
+      expect(
+        seed
+          .prepare(
+            "SELECT id FROM request_logs WHERE id IN ('active-operation','arrived-during-prune','old-model','threshold-operation','operation-40000','operation-40001') ORDER BY id",
+          )
+          .all(),
+      ).toEqual([
+        { id: 'active-operation' },
+        { id: 'arrived-during-prune' },
+        { id: 'old-model' },
+        { id: 'operation-40001' },
+        { id: 'threshold-operation' },
+      ]);
+      expect(
+        seed.prepare("SELECT id FROM audit_payloads WHERE id='old-body'").get(),
+      ).toBeUndefined();
+      expect(seed.pragma('foreign_key_check')).toEqual([]);
+    } finally {
+      seed.close();
+    }
+  }, 20_000);
+
   it('reports that capture metadata could not persist while preserving the original refusal', () => {
     begin();
     expect(() =>

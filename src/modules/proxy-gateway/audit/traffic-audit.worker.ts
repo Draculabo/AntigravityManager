@@ -23,7 +23,11 @@ const repository = new TrafficAuditRepository(
   initialization.databasePath,
   initialization.ownerStartedAt,
 );
-const dispatch = createTrafficAuditWorkerDispatcher(repository, (reply) => port.postMessage(reply));
+const dispatch = createTrafficAuditWorkerDispatcher(
+  repository,
+  (reply) => port.postMessage(reply),
+  (error) => console.warn('Application operation retention failed', error),
+);
 
 port.on('message', (value: unknown) => {
   const envelope = TrafficAuditWorkerMessageSchema.safeParse(value);
