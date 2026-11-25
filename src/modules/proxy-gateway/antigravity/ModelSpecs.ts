@@ -23,7 +23,7 @@ const SPECS = modelSpecsJson as SpecsConfig;
 
 export function resolveModelAlias(modelId: string): string {
   const normalized = modelId.trim();
-  return SPECS.aliases[normalized] ?? normalized;
+  return Object.hasOwn(SPECS.aliases, normalized) ? SPECS.aliases[normalized] : normalized;
 }
 
 export function getMaxOutputTokens(modelId: string): number {
@@ -41,12 +41,15 @@ export function getMaxOutputTokens(modelId: string): number {
  * family width so a newer Gemini or Claude generation is not under-reported as a small model.
  */
 export function getContextWindow(modelId: string): number {
-  const resolved = resolveModelAlias(modelId);
-  const fromSpec = SPECS.models[resolved]?.context_window;
+  return getDeclaredContextWindow(modelId) ?? getFamilyContextWindow(resolveModelAlias(modelId));
+}
+
+export function getDeclaredContextWindow(modelId: string): number | undefined {
+  const fromSpec = SPECS.models[resolveModelAlias(modelId)]?.context_window;
   if (isNumber(fromSpec) && Number.isFinite(fromSpec) && fromSpec > 0) {
     return Math.floor(fromSpec);
   }
-  return getFamilyContextWindow(resolved);
+  return undefined;
 }
 
 function getFamilyContextWindow(modelId: string): number {

@@ -103,6 +103,7 @@ function observed(index = 0) {
   expect(timing.uploadFinishedMs).toEqual(expect.any(Number));
   expect(timing.responseHeadersMs).toEqual(expect.any(Number));
   expect(timing.firstByteMs).toEqual(expect.any(Number));
+  expect(timing.uploadedBodyBytes).toBeGreaterThan(0);
   return timing;
 }
 
@@ -115,7 +116,9 @@ it('records real upload, headers and first byte for unary output without inventi
     async (client) => {
       expect(await client.generateInternal(request, 'synthetic-token')).toEqual(answer.response);
       expect(audit.completeAttempt).toHaveBeenCalledTimes(1);
-      expect(observed().firstUsableOutputMs).toBeNull();
+      const timing = observed();
+      expect(timing.firstUsableOutputMs).toBeNull();
+      expect(timing.downloadedBodyBytes).toBe(Buffer.byteLength(JSON.stringify(answer)));
     },
   );
 });
@@ -141,6 +144,7 @@ it.each([true, false])(
         await consume(await client.streamGenerateInternal(request, 'synthetic-token'));
         expect(audit.completeAttempt).toHaveBeenCalledTimes(1);
         const timing = observed();
+        expect(timing.downloadedBodyBytes).toBe(Buffer.byteLength(body));
         if (usable) {
           expect(timing.firstUsableOutputMs).toEqual(expect.any(Number));
           expect(timing.firstUsableOutputMs).toBeGreaterThanOrEqual(timing.firstByteMs!);
@@ -207,7 +211,9 @@ it('retains observed output timing when a stream consumer closes early', async (
         outcome: 'client_disconnected',
         partial: true,
       });
-      expect(observed().firstUsableOutputMs).toEqual(expect.any(Number));
+      const timing = observed();
+      expect(timing.firstUsableOutputMs).toEqual(expect.any(Number));
+      expect(timing.downloadedBodyBytes).toBeGreaterThan(0);
     },
   );
 });
@@ -232,6 +238,7 @@ it('records unavailable header and body stages when cancellation stops an admitt
       expect(UpstreamAttemptTimingSchema.parse(input?.timing)).toEqual({
         version: 1,
         uploadFinishedMs: expect.any(Number),
+        uploadedBodyBytes: expect.any(Number),
         responseHeadersMs: null,
         firstByteMs: null,
         firstUsableOutputMs: null,

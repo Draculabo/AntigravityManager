@@ -11,9 +11,14 @@ export class GeminiUpstreamStageTiming {
   private responseHeadersMs: number | null = null;
   private firstByteMs: number | null = null;
   private firstUsableOutputMs: number | null = null;
+  private uploadedBodyBytes: number | undefined;
+  private downloadedBodyBytes: number | undefined;
   private currentRequest: ClientRequest | undefined;
 
-  constructor(private readonly attempt: CurrentUpstreamAttemptHandle) {}
+  constructor(
+    private readonly attempt: CurrentUpstreamAttemptHandle,
+    private readonly serializedBodyBytes?: number,
+  ) {}
 
   observeRequest = (request: ClientRequest): void => {
     // Axios can follow redirects for small bodies. Report stages for the final native exchange.
@@ -22,9 +27,19 @@ export class GeminiUpstreamStageTiming {
     this.responseHeadersMs = null;
     this.firstByteMs = null;
     this.firstUsableOutputMs = null;
+    this.uploadedBodyBytes = undefined;
+    this.downloadedBodyBytes = undefined;
     request.once('finish', () => {
       if (this.currentRequest === request) {
         this.uploadFinishedMs = this.elapsed();
+        this.uploadedBodyBytes = this.serializedBodyBytes;
+        const length = request.getHeader('content-length');
+        if (typeof length === 'number' || (typeof length === 'string' && /^\d+$/u.test(length))) {
+          const bytes = Number(length);
+          if (Number.isSafeInteger(bytes) && bytes >= 0) {
+            this.uploadedBodyBytes = bytes;
+          }
+        }
       }
     });
     request.once('response', () => {
@@ -42,6 +57,12 @@ export class GeminiUpstreamStageTiming {
     this.firstByteMs ??= this.elapsed();
   }
 
+  observeDownloadedBodyBytes(bytes: number): void {
+    if (Number.isSafeInteger(bytes) && bytes >= 0) {
+      this.downloadedBodyBytes = Math.max(bytes, this.downloadedBodyBytes ?? 0);
+    }
+  }
+
   snapshot(): UpstreamAttemptTiming {
     return {
       version: 1,
@@ -49,6 +70,12 @@ export class GeminiUpstreamStageTiming {
       responseHeadersMs: this.responseHeadersMs,
       firstByteMs: this.firstByteMs,
       firstUsableOutputMs: this.firstUsableOutputMs,
+      ...(this.uploadedBodyBytes === undefined
+        ? {}
+        : { uploadedBodyBytes: this.uploadedBodyBytes }),
+      ...(this.downloadedBodyBytes === undefined
+        ? {}
+        : { downloadedBodyBytes: this.downloadedBodyBytes }),
     };
   }
 

@@ -61,7 +61,11 @@ import {
   UsageTrendsInputSchema,
   UsageTrendsResultSchema,
   type UsageTrendsInput,
+  UsageActivityDaysSchema,
+  type UsageActivityInput,
 } from './usage-trends.schema';
+import { UsageOverviewInputSchema, UsageOverviewResultSchema, type UsageOverviewInput } from './usage-overview.schema';
+import { AuditSessionOptionsResultSchema, type AuditSessionOptionsInput } from './audit-session-options.schema';
 import {
   UsageRangeInputSchema,
   UsageRangeResultSchema,
@@ -412,6 +416,27 @@ export class TrafficAuditService {
   public async filterOptions() {
     const result = await this.request('filterOptions', null);
     return TrafficAuditFilterOptionsSchema.parse(result);
+  }
+
+  public async usageOverview(input: UsageOverviewInput) {
+    return UsageOverviewResultSchema.parse(
+      await this.request('usageOverview', {
+        ...UsageOverviewInputSchema.parse(input),
+        asOf: Date.now(),
+      }),
+    );
+  }
+
+  public async sessionOptions(input: AuditSessionOptionsInput) {
+    return AuditSessionOptionsResultSchema.parse(
+      await this.request('sessionOptions', { ...input, asOf: Date.now() }),
+    );
+  }
+
+  public async usageActivity(input: UsageActivityInput) {
+    return UsageActivityDaysSchema.parse(
+      await this.request('usageActivity', { ...input, asOf: Date.now() }),
+    );
   }
 
   public async usageTrends(input: UsageTrendsInput) {

@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { and, count, desc, eq, gte, isNull, like, lt, lte, or, sql, type SQL } from 'drizzle-orm';
+import { count, desc, eq, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { omit } from 'lodash-es';
 
@@ -12,6 +12,7 @@ import {
 import type { TrafficAuditWorkerCommand } from './traffic-audit.worker-protocol';
 import { auditCaptureOutcome } from './traffic-audit-recovery';
 import { decodeUpstreamAttemptTiming } from './upstream-attempt-timing';
+import { auditRequestListPredicate } from './audit-request-list-predicate';
 
 type TrafficAuditDatabase = BetterSQLite3Database<typeof trafficAuditSchema>;
 
@@ -67,88 +68,7 @@ export class TrafficAuditQueries {
     if (payload.trafficClass === 'system') {
       return this.listSystem(payload);
     }
-    const conditions: SQL[] = [];
-    if (payload.from !== undefined) {
-      conditions.push(gte(requestLogs.timestamp, payload.from));
-    }
-    if (payload.to !== undefined) {
-      conditions.push(lte(requestLogs.timestamp, payload.to));
-    }
-    if (payload.protocol) {
-      conditions.push(eq(requestLogs.protocol, payload.protocol));
-    }
-    if (payload.sessionId) {
-      conditions.push(eq(requestLogs.sessionId, payload.sessionId));
-    }
-    if (payload.accountId) {
-      conditions.push(eq(requestLogs.attributedAccountId, payload.accountId));
-    }
-    if (payload.modelFamily) {
-      conditions.push(eq(requestLogs.physicalModelFamily, payload.modelFamily));
-    }
-    if (payload.modality === 'text') {
-      conditions.push(eq(requestLogs.hasTextOutput, true));
-    } else if (payload.modality === 'image') {
-      conditions.push(eq(requestLogs.hasImageOutput, true));
-    } else if (payload.modality === 'none') {
-      conditions.push(
-        and(eq(requestLogs.hasTextOutput, false), eq(requestLogs.hasImageOutput, false))!,
-      );
-    } else if (payload.modality === 'unknown') {
-      conditions.push(and(isNull(requestLogs.hasTextOutput), isNull(requestLogs.hasImageOutput))!);
-    }
-    if (payload.model) {
-      const pattern = `%${payload.model}%`;
-      const modelCondition = or(
-        like(requestLogs.model, pattern),
-        like(requestLogs.mappedModel, pattern),
-      );
-      if (modelCondition) {
-        conditions.push(modelCondition);
-      }
-    }
-    if (payload.statusMode === 'unfinished') {
-      conditions.push(
-        and(eq(requestLogs.outcome, 'in_progress'), isNull(requestLogs.completedAt))!,
-      );
-    } else if (payload.statusMode === 'no-status') {
-      conditions.push(isNull(requestLogs.status));
-    } else if (payload.statusMode === 'exact' && payload.status === undefined) {
-      conditions.push(sql`1=0`);
-    } else if (payload.statusMode && /^[1-5]xx$/u.test(payload.statusMode)) {
-      const lower = Number(payload.statusMode[0]) * 100;
-      conditions.push(and(gte(requestLogs.status, lower), lt(requestLogs.status, lower + 100))!);
-    } else if (
-      payload.status !== undefined &&
-      (payload.statusMode === 'exact' || !payload.statusMode)
-    ) {
-      conditions.push(eq(requestLogs.status, payload.status));
-    }
-    if (payload.trafficClass) {
-      conditions.push(eq(requestLogs.trafficClass, payload.trafficClass));
-    }
-    if (payload.requestId) {
-      conditions.push(like(requestLogs.id, `%${payload.requestId}%`));
-    }
-    if (payload.search) {
-      const pattern = `%${payload.search}%`;
-      const searchCondition = or(
-        like(requestLogs.id, pattern),
-        like(requestLogs.url, pattern),
-        like(requestLogs.method, pattern),
-        like(requestLogs.protocol, pattern),
-        like(requestLogs.operation, pattern),
-        like(requestLogs.model, pattern),
-        like(requestLogs.mappedModel, pattern),
-        like(requestLogs.sessionId, pattern),
-        like(requestLogs.username, pattern),
-        sql`CAST(${requestLogs.status} AS TEXT) LIKE ${pattern}`,
-      );
-      if (searchCondition) {
-        conditions.push(searchCondition);
-      }
-    }
-    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const where = auditRequestListPredicate(payload);
     const totalQuery = this.orm.select({ value: count() }).from(requestLogs);
     const itemsQuery = this.orm
       .select({
@@ -180,7 +100,7 @@ export class TrafficAuditQueries {
       .from(requestLogs);
     const total = where ? totalQuery.where(where).get()?.value : totalQuery.get()?.value;
     const items = (where ? itemsQuery.where(where) : itemsQuery)
-      .orderBy(desc(requestLogs.timestamp))
+      .orderBy(desc(requestLogs.timestamp), desc(requestLogs.id))
       .limit(payload.limit)
       .offset(payload.offset)
       .all();

@@ -268,6 +268,7 @@ export class GeminiClient {
           timeout: 60000, // 60s timeout
           proxy: axiosProxy,
           onDownloadProgress: (progress) => {
+            stages?.observeDownloadedBodyBytes(progress.loaded);
             if (progress.loaded > 0) {
               stages?.observeFirstByte();
             }
@@ -1195,6 +1196,9 @@ export class GeminiClient {
                 : {}),
               ...(serializedBytes >= LARGE_GENERATION_SEND_BYTES && { maxRedirects: 0 }),
               onDownloadProgress: (progress) => {
+                if (config.responseType !== 'stream') {
+                  stages?.observeDownloadedBodyBytes(progress.loaded);
+                }
                 if (progress.loaded > 0) {
                   stages?.observeFirstByte();
                   markProxyUpstreamFirstByte(timing);
@@ -1217,7 +1221,7 @@ export class GeminiClient {
                 requestBody: attemptBody,
               });
               if (isContentRequest) {
-                stages = new GeminiUpstreamStageTiming(attempt);
+                stages = new GeminiUpstreamStageTiming(attempt, serializedBytes);
               }
               if (contentAttemptBody) {
                 recordGenerationRequestAttempt(

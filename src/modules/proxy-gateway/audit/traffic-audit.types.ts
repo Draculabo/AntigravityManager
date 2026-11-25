@@ -3,6 +3,7 @@ import type { AuditUsage } from './audit-usage';
 import { UpstreamAttemptTimingSchema, type UpstreamAttemptTiming } from './upstream-attempt-timing';
 
 import { TrafficClassSchema, type TrafficClass } from './traffic-classifier';
+import { AuditClientSchema } from './audit-client-identity';
 
 export const AuditOutcomeSchema = z.enum([
   'in_progress',
@@ -94,8 +95,12 @@ export interface CompleteUpstreamAttemptInput {
   status?: number;
 }
 
+export const TrafficUsageRequestStateSchema = z.enum(['all', 'retried', 'failed']);
 export const TrafficAuditListInputSchema = z.object({
   accountId: z.string().trim().max(256).optional(),
+  attemptAccountId: z.string().min(1).max(256).optional(),
+  attemptModel: z.string().min(1).max(256).optional(),
+  client: AuditClientSchema.optional(),
   from: z.number().int().nonnegative().optional(),
   limit: z.number().int().min(1).max(200).default(50),
   model: z.string().trim().optional(),
@@ -112,6 +117,8 @@ export const TrafficAuditListInputSchema = z.object({
   trafficClass: TrafficClassSchema.optional(),
   search: z.string().trim().max(512).optional(),
   to: z.number().int().nonnegative().optional(),
+  usageAsOf: z.number().int().nonnegative().safe().optional(),
+  usageState: TrafficUsageRequestStateSchema.optional(),
 });
 
 export type TrafficAuditListInput = z.infer<typeof TrafficAuditListInputSchema>;
@@ -307,6 +314,7 @@ export const TrafficAuditListResultSchema = z.object({
   items: z.array(TrafficAuditSummarySchema),
   total: z.number().int().nonnegative(),
 });
+export type TrafficAuditListResult = z.infer<typeof TrafficAuditListResultSchema>;
 
 export const TrafficAuditFilterOptionsSchema = z.object({
   accountIds: z.array(z.string()),

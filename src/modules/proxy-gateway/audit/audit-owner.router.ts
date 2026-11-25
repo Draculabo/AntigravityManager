@@ -5,7 +5,9 @@ import {
   type AuditOperations,
 } from './audit-owner.service';
 import { UsageRangeInputSchema, UsageRangeResultSchema } from './usage-range.schema';
-import { UsageTrendsInputSchema, UsageTrendsResultSchema } from './usage-trends.schema';
+import { UsageActivityDaysSchema, UsageActivityInputSchema, UsageTrendsInputSchema, UsageTrendsResultSchema } from './usage-trends.schema';
+import { UsageOverviewInputSchema, UsageOverviewResultSchema } from './usage-overview.schema';
+import { AuditSessionOptionsInputSchema, AuditSessionOptionsResultSchema } from './audit-session-options.schema';
 import {
   AuditIdInputSchema,
   AuditMutationResultSchema,
@@ -43,10 +45,22 @@ export function createAuditOwnerRouter(owner: AuditOperations) {
     filterOptions: procedure
       .output(TrafficAuditFilterOptionsSchema)
       .handler(() => owner.filterOptions()),
+    usageActivity: procedure
+      .input(UsageActivityInputSchema)
+      .output(UsageActivityDaysSchema)
+      .handler(({ input }) => owner.usageActivity(input)),
     usageTrends: procedure
       .input(UsageTrendsInputSchema)
       .output(UsageTrendsResultSchema)
       .handler(({ input }) => owner.usageTrends(input)),
+    usageOverview: procedure
+      .input(UsageOverviewInputSchema)
+      .output(UsageOverviewResultSchema)
+      .handler(({ input }) => owner.usageOverview(input)),
+    sessionOptions: procedure
+      .input(AuditSessionOptionsInputSchema)
+      .output(AuditSessionOptionsResultSchema)
+      .handler(({ input }) => owner.sessionOptions(input)),
     usageRange: procedure
       .input(UsageRangeInputSchema)
       .output(UsageRangeResultSchema)

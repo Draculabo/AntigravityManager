@@ -63,6 +63,9 @@ const source = {
   filterOptions: vi.fn(async () => ({ accountIds: ['account-one'], modelFamilies: ['gemini'] })),
   usageRange: vi.fn(async () => usageResult),
   usageTrends: vi.fn<TrafficAuditService['usageTrends']>(),
+  usageActivity: vi.fn<TrafficAuditService['usageActivity']>(),
+  usageOverview: vi.fn<TrafficAuditService['usageOverview']>(),
+  sessionOptions: vi.fn<TrafficAuditService['sessionOptions']>(),
   detail: vi.fn(async () => null),
   bodyPage: vi.fn<TrafficAuditService['bodyPage']>(async () => null),
   bodySearch: vi.fn(async () => ({ matches: [], truncated: false })),
@@ -124,6 +127,50 @@ async function remote() {
 }
 
 describe('selected audit owner', () => {
+  it('returns bounded session titles and the next cursor through the standalone owner', async () => {
+    const input = { kind: 'search' as const, from: 1, text: 'Desktop' };
+    const result = {
+      rows: [{ sessionId: 'stored-session', title: 'Desktop layout', lastSeen: 1500 }],
+      next: { sessionId: 'last-session', lastSeen: 1200, through: 1600 },
+    };
+    source.sessionOptions.mockResolvedValue(result);
+    expect(await owner.sessionOptions(input)).toEqual(result);
+    await remote();
+    expect(await getAuditAdapter().sessionOptions(input)).toEqual(result);
+    expect(source.sessionOptions.mock.calls).toEqual([[input], [input]]);
+  });
+
+  it('returns overview data and keeps exact drill-down filters through the standalone owner', async () => {
+    const input = {
+      from: 1,
+      to: 3600000,
+      accountId: 'account-one',
+      prices: [{ model: 'physical-model', inputPerMillion: 2, outputPerMillion: 3 }],
+    };
+    const totals = {
+      requests: 1, attempts: 2, retriedRequests: 1, failedRequests: 0, incompleteRequests: 1,
+      inputTokens: 20, peakInputTokens: 20, outputTokens: 10, cacheReadTokens: 0, cacheInputTokens: 0,
+      cacheMeasuredAttempts: 0, reasoningTokens: 0, reasoningMeasuredAttempts: 0,
+      estimatedCostUsd: 0.00007, pricedAttempts: 1,
+    };
+    const emptyGroup = { rows: [], truncated: false };
+    const result = {
+      from: input.from, to: input.to, bucketMs: 3600000 as const, totals, buckets: [],
+      accounts: emptyGroup, models: emptyGroup, sessions: emptyGroup,
+    };
+    source.usageOverview.mockResolvedValue(result);
+    expect(await owner.usageOverview(input)).toEqual(result);
+    await remote();
+    expect(await getAuditAdapter().usageOverview(input)).toEqual(result);
+    expect(source.usageOverview.mock.calls).toEqual([[input], [input]]);
+    const drilldown = {
+      limit: 20, offset: 0, attemptAccountId: 'account-one', attemptModel: 'physical-model',
+      usageAsOf: input.to, usageState: 'retried' as const,
+    };
+    expect(await getAuditAdapter().list(drilldown)).toEqual({ items: [], total: 0 });
+    expect(source.list).toHaveBeenLastCalledWith(drilldown);
+  });
+
   it('returns the requested activity window through embedded and standalone owners', async () => {
     const input: UsageTrendsInput = {
       window: '1h',
@@ -156,9 +203,14 @@ describe('selected audit owner', () => {
         variantsTruncated: false,
       }],
       modelFamiliesTruncated: false,
-      activity: Array.from({ length: 30 }, (_, index) => ({
-        date: `1970-01-${String(index + 1).padStart(2, '0')}`,
+      activity: Array.from({ length: 365 }, (_, index) => ({
+        date: new Date(Date.UTC(2025, 0, 6 + index)).toISOString().slice(0, 10),
         requests: index === 0 ? 1 : 0,
+        attempts: index === 0 ? 1 : 0,
+        observedTokens: index === 0 ? 120 : null,
+        incompleteRequests: 0,
+        estimatedCostUsd: index === 0 ? 0.001 : null,
+        pricedAttempts: index === 0 ? 1 : 0,
       })),
     };
     source.usageTrends.mockResolvedValue(result);
@@ -166,6 +218,11 @@ describe('selected audit owner', () => {
     await remote();
     expect(await getAuditAdapter().usageTrends(input)).toEqual(result);
     expect(source.usageTrends.mock.calls).toEqual([[input], [input]]);
+    const activityInput = { filters: { accountId: 'account-one', search: 'synthetic' } };
+    source.usageActivity.mockResolvedValue(result.activity ?? []);
+    expect(await owner.usageActivity(activityInput)).toEqual(result.activity);
+    expect(await getAuditAdapter().usageActivity(activityInput)).toEqual(result.activity);
+    expect(source.usageActivity.mock.calls).toEqual([[activityInput], [activityInput]]);
   });
 
   it('carries the entire saved-session filter through embedded and standalone owners', async () => {

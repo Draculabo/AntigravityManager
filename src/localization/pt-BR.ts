@@ -590,6 +590,7 @@ const ptBR = {
     'dual-ttft-diff': '{{winner}} respondeu {{diff}}s antes (TTFT)',
   },
   traffic: {
+    ...en.traffic,
     'export-har': 'Exportar HAR',
     'har-exporting': 'Exportando HAR…',
     'har-export-saved': 'Arquivo HAR salvo.',
@@ -607,9 +608,14 @@ const ptBR = {
     },
     trends: {
       'activity-inspect': 'Inspecionar a atividade diária',
-      'activity-title': 'Atividade dos últimos 30 dias',
-      'activity-help':
-        'Cada célula representa um dia no calendário local. As mais escuras têm mais requisições registradas.',
+      'activity-title': 'Mapa de calor',
+      'activity-metric': 'Métrica do mapa de calor',
+      'activity-price-coverage': '{{priced}} de {{attempts}} tentativas com preço',
+      'activity-incomplete': '{{formatted}} solicitações com contagem de tokens incompleta',
+      'activity-cost-help':
+        'Estimativas em USD com preços públicos da API. Sem contagem de cache, aplica-se o preço de entrada padrão.',
+      'activity-less': 'Menos',
+      'activity-more': 'Mais',
       'activity-empty': 'Nenhum registro retido',
       'activity-count': '{{formatted}} requisições registradas',
       'activity-peak': 'Dia mais movimentado: {{formatted}}',
@@ -849,6 +855,8 @@ const ptBR = {
         'reclaim-failed': 'Audit storage could not be reclaimed.',
         'read-only': 'Audit storage is read-only.',
         'disk-full': 'The storage volume is full.',
+        'queue-capacity': 'A fila de auditoria atingiu sua capacidade.',
+        'worker-unavailable': 'O processo de auditoria estava indisponível.',
         'capture-disabled': 'Capture was disabled before this body finished.',
         'worker-restart': 'Capture was interrupted by an audit worker restart.',
         retention: 'An earlier age-retention policy removed this content. It cannot be restored.',
@@ -897,15 +905,6 @@ const ptBR = {
     'previous-match': 'Previous match',
     'next-match': 'Next match',
     'cancel-search': 'Cancel search',
-    'export-session': 'Export saved session',
-    'session-exporting': 'Exporting session…',
-    'session-export-scope':
-      'All saved model requests, attempts and bodies in this session. Up to 2,000 settled requests and 100 MiB; partial captures stay partial.',
-    'session-export-needs-scope':
-      'Select a scoped saved-session key. Older unscoped records can still be exported per body.',
-    'session-export-saved': 'Saved session export.',
-    'session-export-failed':
-      'Export completion could not be confirmed. Check the destination, wait for requests to settle, refresh and retry. Active, changed, missing or oversized data cannot be exported as a complete session.',
   },
   proxy: {
     workspace: {

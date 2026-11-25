@@ -17,15 +17,22 @@ This applies to profiles using a standalone Core owner. Desktop-only profiles ca
    processes support the optional publication field.
 5. Use the manual Google sign-in field with an active login session. Desktop and Core require
    owner compatibility `15` to accept complete callback input through that field.
-6. Open **Traffic Monitor > Usage trends** and expand a model family. The grouped response
-   requires owner compatibility `18`. It reads existing audit records with their original model IDs.
+6. The grouped minute-trend response requires owner compatibility `18`. It reads existing
+   audit records with their original model IDs.
 7. Open an account's **Network proxy** dialog to review its optional Gemini and Claude priorities.
    Desktop and Core require owner compatibility `19` for the family overrides.
+8. Open **Traffic Monitor > Overview** and select an actual model to inspect its requests.
+   The overview and its attempt filters require owner compatibility `20`.
+9. Open **Traffic Monitor > Requests** and search for a session title in the session filter.
+   The session lookup requires owner compatibility `21`.
+10. Open **Traffic Monitor > Requests** and verify that the daily heatmap updates with the request
+    filters. The filtered 53-week activity query requires owner compatibility `23`.
 
 ## Data and recovery
 
 Startup adds two nullable account priority columns. Existing accounts inherit their global priority.
 Stop both processes before restoring a profile backup so neither owner can publish a stale account.
+The new overview and its drill-down reuse the existing audit database format.
 
 Project ID uses the existing account field, and the CLI import source reads the existing sign-in
 file. Both use the current data format. Manager rejects an incompatible owner before account

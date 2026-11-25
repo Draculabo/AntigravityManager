@@ -1,6 +1,8 @@
 import type { RouterClient } from '@orpc/server';
 import { UsageRangeResultSchema } from './usage-range.schema';
-import { UsageTrendsResultSchema } from './usage-trends.schema';
+import { UsageActivityDaysSchema, UsageTrendsResultSchema } from './usage-trends.schema';
+import { UsageOverviewResultSchema } from './usage-overview.schema';
+import { AuditSessionOptionsResultSchema } from './audit-session-options.schema';
 import type { createAuditOwnerRouter } from './audit-owner.router';
 import type { AuditOperations } from './audit-owner.service';
 import {
@@ -36,8 +38,14 @@ export function createAuditClient(
       run(async () =>
         parseAuditResponse(TrafficAuditFilterOptionsSchema, await rpc.filterOptions()),
       ),
+    usageActivity: (input) =>
+      run(async () => parseAuditResponse(UsageActivityDaysSchema, await rpc.usageActivity(input))),
     usageTrends: (input) =>
       run(async () => parseAuditResponse(UsageTrendsResultSchema, await rpc.usageTrends(input))),
+    usageOverview: (input) =>
+      run(async () => parseAuditResponse(UsageOverviewResultSchema, await rpc.usageOverview(input))),
+    sessionOptions: (input) =>
+      run(async () => parseAuditResponse(AuditSessionOptionsResultSchema, await rpc.sessionOptions(input))),
     usageRange: (input) =>
       run(async () => parseAuditResponse(UsageRangeResultSchema, await rpc.usageRange(input))),
     detail: (input) =>

@@ -24,6 +24,7 @@ import { useCloudAccounts } from '@/modules/cloud-account/hooks/useCloudAccounts
 import { getFallbackDiagnosticsSummary } from './traffic-fallback-diagnostics';
 import { formatTrafficTime } from './format-traffic-time';
 import { isFailedAuditAttempt } from '../audit/audit-attempt-outcome';
+import { TrafficRequestContext } from './components/TrafficRequestContext';
 
 const AuditBodyViewer = lazy(async () => ({
   default: (await import('./AuditBodyViewer')).AuditBodyViewer,
@@ -325,6 +326,16 @@ function MetadataPane({
         ]}
       />
       <AuditUsageSummary request={request} />
+      {request.trafficClass === 'model' && (
+        <TrafficRequestContext
+          body={detail.bodies.find(
+            (body) => body.ownerKind === 'parent' && body.direction === 'request',
+          )}
+          model={request.physicalModel}
+          inputTokens={request.inputTokens}
+          cachedTokens={request.cachedTokens}
+        />
+      )}
       <details className="mt-4 rounded-md border p-3 text-xs">
         <summary className="focus-visible:ring-ring cursor-default rounded-sm font-medium focus-visible:ring-2 focus-visible:outline-none">
           {t('traffic.advanced-diagnostics')}

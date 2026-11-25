@@ -1,24 +1,22 @@
 import type Database from 'better-sqlite3';
 import {
   and,
-  countDistinct,
   eq,
   gte,
   isNotNull,
   isNull,
-  lt,
   lte,
   ne,
   notExists,
   or,
   sql,
-  type SQL,
 } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { alias } from 'drizzle-orm/sqlite-core';
 import { z } from 'zod';
 import { getQuotaModelFamilyId } from '@/modules/cloud-account/utils/quota-model-families';
 import { requestLogs, upstreamAttempts, type trafficAuditSchema } from './traffic-audit.schema';
+import { readActivityDays } from './traffic-audit-activity-days';
 import {
   USAGE_TRENDS_MODEL_LIMIT,
   UsageTrendsResultSchema,
@@ -177,7 +175,7 @@ function readSnapshot(db: TrendsQueryDatabase, input: UsageTrendsWorkerInput): U
     buckets,
     ...groupModelRows(modelRowsSchema.parse(modelRows)),
     ...(input.includeActivity && {
-      activity: readActivity(db, to, attemptJoin, matchingTraffic),
+      activity: readActivityDays(db, to, input.prices, attemptJoin, matchingTraffic, terminalAttempt),
     }),
   });
 }
@@ -215,47 +213,4 @@ function groupModelRows(
       })),
     modelFamiliesTruncated: families.size > USAGE_TRENDS_MODEL_LIMIT,
   };
-}
-
-function readActivity(
-  db: TrendsQueryDatabase,
-  to: number,
-  attemptJoin: SQL | undefined,
-  matchingTraffic: SQL | undefined,
-) {
-  const now = new Date(to);
-  // Build each boundary independently so days spanning a clock change retain their full interval.
-  const days = Array.from({ length: 30 }, (_, index) => {
-    const calendar = new Date(
-      Date.UTC(now.getFullYear(), now.getMonth(), now.getDate() - 29 + index),
-    );
-    const year = calendar.getUTCFullYear();
-    const month = calendar.getUTCMonth();
-    const day = calendar.getUTCDate();
-    return {
-      date: calendar.toISOString().slice(0, 10),
-      start: new Date(year, month, day).getTime(),
-      end: new Date(year, month, day + 1).getTime(),
-    };
-  });
-  const values = sql.join(
-    days.map(({ date, start, end }) => sql`(${date}, ${start}, ${end})`),
-    sql`, `,
-  );
-  const activity = db
-    .select({ requests: countDistinct(requestLogs.id) })
-    .from(requestLogs)
-    .leftJoin(upstreamAttempts, attemptJoin)
-    .where(
-      and(
-        gte(requestLogs.timestamp, sql`days.starts_at`),
-        lt(requestLogs.timestamp, sql`days.ends_at`),
-        matchingTraffic,
-      ),
-    );
-  return db.all(sql`
-    WITH days(date, starts_at, ends_at) AS (VALUES ${values})
-    SELECT days.date, (${activity.getSQL()}) requests
-    FROM days ORDER BY days.date
-  `);
 }

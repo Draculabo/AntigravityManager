@@ -168,6 +168,9 @@ export function captureGeminiStreamResult(
       rawBytes: totalBytes,
       terminalStatus: outcome,
     });
+    if (sourceEnded || totalBytes > 0) {
+      input.stages?.observeDownloadedBodyBytes(totalBytes);
+    }
     completeCurrentUpstreamAttempt(input.attempt, {
       timing: input.stages?.snapshot(),
       error: error ?? toolCallWarning,

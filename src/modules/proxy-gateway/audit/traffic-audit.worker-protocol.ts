@@ -2,7 +2,11 @@ import { z } from 'zod';
 
 import { TrafficClassSchema } from './traffic-classifier';
 import { UsageRangeWorkerInputSchema } from './usage-range.schema';
-import { UsageTrendsWorkerInputSchema } from './usage-trends.schema';
+import { UsageActivityWorkerInputSchema, UsageTrendsWorkerInputSchema } from './usage-trends.schema';
+import { UsageOverviewWorkerInputSchema } from './usage-overview.schema';
+import { AuditSessionOptionsWorkerInputSchema } from './audit-session-options.schema';
+import { TrafficUsageRequestStateSchema } from './traffic-audit.types';
+import { AuditClientSchema } from './audit-client-identity';
 import { AuditScopedSessionIdSchema } from './audit-session-export.schema';
 import { UpstreamAttemptTimingSchema } from './upstream-attempt-timing';
 
@@ -192,6 +196,9 @@ export const TrafficAuditWorkerCommandSchema = z.discriminatedUnion('operation',
     operation: z.literal('list'),
     payload: z.object({
       accountId: z.string().optional(),
+      attemptAccountId: z.string().min(1).max(256).optional(),
+      attemptModel: z.string().min(1).max(256).optional(),
+      client: AuditClientSchema.optional(),
       from: z.number().int().nonnegative().optional(),
       limit: z.number().int().positive(),
       model: z.string().optional(),
@@ -208,6 +215,8 @@ export const TrafficAuditWorkerCommandSchema = z.discriminatedUnion('operation',
       trafficClass: TrafficClassSchema.optional(),
       search: z.string().optional(),
       to: z.number().int().nonnegative().optional(),
+      usageAsOf: z.number().int().nonnegative().safe().optional(),
+      usageState: TrafficUsageRequestStateSchema.optional(),
     }),
   }),
   z.object({ operation: z.literal('filterOptions'), payload: z.null() }),
@@ -217,6 +226,9 @@ export const TrafficAuditWorkerCommandSchema = z.discriminatedUnion('operation',
   }),
   z.strictObject({ operation: z.literal('usageRange'), payload: UsageRangeWorkerInputSchema }),
   z.strictObject({ operation: z.literal('usageTrends'), payload: UsageTrendsWorkerInputSchema }),
+  z.strictObject({ operation: z.literal('usageActivity'), payload: UsageActivityWorkerInputSchema }),
+  z.strictObject({ operation: z.literal('usageOverview'), payload: UsageOverviewWorkerInputSchema }),
+  z.strictObject({ operation: z.literal('sessionOptions'), payload: AuditSessionOptionsWorkerInputSchema }),
   z.object({ operation: z.literal('detail'), payload: z.object({ id: z.string().min(1) }) }),
   z.object({
     operation: z.literal('bodyPage'),

@@ -25,6 +25,102 @@ Earlier zero headers are ambiguous and display unknown. Stages can overlap and a
 never summed into duration. TTFT describes the latest upstream attempt whose first
 byte was observed, not the sum of retries.
 
+## Usage views
+
+Traffic Monitor opens to Overview. Requests presents the existing request list and
+details. Sessions ranks retained gateway session keys with search and pagination.
+The usage views initially select seven calendar days. The empty state offers
+all retained history and a link to the unfiltered request list.
+Sessions omits unattributed requests from its saved-session ranking.
+Context breaks down saved input, cache reads and reasoning. Overview, Sessions,
+and Context share the selected calendar period and upstream account filter.
+All retained history adapts its trend intervals to the saved time span. The hourly
+activity grid covers the latest 31 days inside that span.
+
+Overview ranks accounts and actual models by observed input plus output tokens.
+Cache and reasoning detail is already included in the corresponding input or output
+counter. Observed totals sum known terminal physical attempts. Requests with missing
+input or output remain visible in the incomplete count. A request is counted once in
+the overall total and once per relevant account or model group. Requests with two or
+more generation attempts count as retried.
+
+The selected audit Worker reads one snapshot. Time cohorts use parent request start.
+Hourly buckets start at the selected interval boundary. Daily buckets follow local
+midnights, including changes to the local clock. The owner clock caps the query at
+the time the snapshot was requested. Cache hit rate divides cached input by input
+only for attempts with both counts and a consistent reported pair. The Context view
+reports observed input and cache usage. It compares the largest reported input for
+each actual model with the declared local catalog context window where available.
+Overview and the Requests heatmap estimate USD cost using a bundled public API
+reference catalog for exact actual model IDs and explicitly mapped variants.
+The catalog uses [Google AI Studio pricing](https://aistudio.google.com/docs/pricing),
+[Google Cloud global standard pricing](https://cloud.google.com/model-garden/pricing),
+and [Claude API pricing](https://platform.claude.com/docs/en/about-claude/pricing)
+as checked on November 25, 2026. Published rate changes in the catalog take
+effect at the start of the listed date in UTC. Estimates use the reference rates
+effective at calculation time for all requests in the view.
+
+Overview shows estimated API cost in the summary metrics and reports the number
+of priced upstream attempts. Estimates cover attempts with a known model price
+and complete input and output counts. When the provider omits cache usage, the
+estimate prices all input at the standard input rate. Prices are in USD per million
+input, output, and cached input tokens. The catalog covers
+standard text generation with non-audio input. It excludes image-generation
+models, models with context-tier pricing, cache writes, and other add-on fees.
+The estimate does not alter audit records, provider billing, or subscription quota.
+
+Click a chart interval, account, actual model or saved session to open matching
+requests. Account and model drill-downs match generation attempts, including failed
+attempts before fallback. If both filters are present they must match the same attempt.
+The drill-down carries the original snapshot cutoff, including for requests whose
+generation attempt occurred after the request's chart interval.
+The request list continues to offer final-account filters independently.
+
+Overview groups observed tokens by actual model by default. The selector also offers
+upstream accounts, clients, and protocols.
+Known clients derive from the saved user-agent marker. Requests can contribute to
+more than one group across retries. Clicking a segment filters the request list
+by the time interval and grouping key.
+Current traffic shows sampled active requests and requests started in the last minute.
+Output rate uses output tokens and elapsed time after the first usable output for
+completed attempts with those observations. The payload volume panel counts bytes
+in complete retained representations, with separate request and response coverage.
+The upstream transfer panel counts body bytes independently of payload retention.
+Upload coverage requires the final native upload to finish with a known body
+length. Download coverage uses transport progress for unary replies and the body
+read by the stream parser for streaming replies. Unknown historical
+observations remain absent, and interrupted downloads can report a measured
+prefix. These counters exclude headers and network framing.
+
+Session inspection fixes the selected request-start range and observation cutoff.
+It shows the session trend and paginated requests. An individual request with a
+complete recognized JSON representation up to 128 KiB can show the relative
+JSON bytes of its system instructions, tools, attachments, tool results, and
+conversation. Explicit skills and memory sections appear when provided. Provider
+token counters remain request totals.
+
+The Sessions and Context tables use the first available user text from the session's earliest retained
+gateway requests as the display title. The title is a bounded, redacted excerpt
+from a complete captured JSON request. It can come from before the selected usage
+period. Sessions without eligible text show that no prompt was retained.
+The second line shows the saved session ID and any recognized client. For generated
+IDs it shows the short form. Hover over that line for the full ID. Opening a row
+uses the full ID to select the exact request group. Sessions search matches user
+messages and assistant replies in the selected date and account range before
+ranking and pagination. It reads complete captured JSON bodies and reconstructed
+stream responses up to 1 MiB per body. Search reads existing captures on demand.
+
+The Requests session filter searches saved titles within the selected date range.
+Each choice includes the last request time and identifier to distinguish sessions
+with the same title. Selecting a result applies its exact saved ID and shows its
+title on the filter. Title lookup and search read existing captures on demand.
+Request details offer saved body and HAR downloads.
+
+CSV downloads cover the current request filters across pages. Exports omit URLs
+and bodies, protect spreadsheet cells from formula interpretation, and stop at
+8 MiB. A detected change to matching request IDs or the count while reading
+pages stops the download and asks the user to retry.
+
 ## Physical-attempt usage accounting
 
 Audit schema 5 stores actual upstream input, output, cached and reasoning counters
@@ -115,18 +211,22 @@ records before any presentation limit. Existing audit admission and response-byt
 apply. No schema migration, pricing table, generated request or provider lookup is
 introduced by reading these trends.
 
-### Daily activity
+### Daily usage heatmap
 
-The optional activity heatmap shows the latest 30 local calendar days, including
-today up to the audit owner's snapshot time. Calendar boundaries follow the
-audit Worker's local timezone and account for clock changes. Each day counts
-distinct matching retained model requests by request-start time. The panel
-shares its account, exact model and requested/actual model filters with the
-minute trends. The minute range selector applies to the minute charts only.
+The Requests toolbar includes a 53-week calendar, starting on Monday and ending
+on the selected end date or today in the audit owner's timezone. It uses the
+same date, search, account, client, session, model, output, and status filters
+as the model-request list. The chart summarizes the filtered requests across
+pages. Overview retains its hourly activity chart.
 
-An empty date has no matching retained records. Data may be absent because of
-retention, disabled capture or dropped writes. The heatmap reads only request
-and attempt metadata and loads when expanded.
+Switch between observed tokens, distinct retained model requests, and estimated
+USD cost. Hover a day or move through the grid with the arrow keys to see all
+three metrics. Dates are assigned by request start. Tokens sum observed input
+and output, and the detail shows incomplete request counts. Estimates use the same
+public reference prices as Overview. Days without priced attempts
+show unavailable cost, and the detail reports how many attempts were priced.
+The heatmap reads retained audit metadata. An empty day may reflect retention
+or missing capture.
 
 ## Successful probe noise
 

@@ -9,7 +9,11 @@ import { createAgentToolsRouter } from '../agent-tools/agent-tools.router';
 import type { AgentToolsOperations } from '../agent-tools/agent-tools.service';
 import { getAuditAdapter } from './audit-adapter';
 import { UsageRangeInputSchema, UsageRangeResultSchema } from '../audit/usage-range.schema';
-import { UsageTrendsInputSchema, UsageTrendsResultSchema } from '../audit/usage-trends.schema';
+import {
+  UsageActivityDaysSchema, UsageActivityInputSchema, UsageTrendsInputSchema, UsageTrendsResultSchema,
+} from '../audit/usage-trends.schema';
+import { UsageOverviewInputSchema, UsageOverviewResultSchema } from '../audit/usage-overview.schema';
+import { AuditSessionOptionsInputSchema, AuditSessionOptionsResultSchema } from '../audit/audit-session-options.schema';
 import { AuditIdInputSchema } from '../audit/audit-owner.schema';
 import { createOpenCodeOwnerRouter } from '../opencode-sync/opencode-owner.router';
 import type { OpenCodeOperations } from '../opencode-sync/opencode-owner.service';
@@ -157,10 +161,22 @@ export const gatewayRouter = os.prefix('/gateway').router({
   }),
 
   auditFilterOptions: os.handler(async () => getAuditAdapter().filterOptions()),
+  auditUsageActivity: os
+    .input(UsageActivityInputSchema)
+    .output(UsageActivityDaysSchema)
+    .handler(({ input }) => getAuditAdapter().usageActivity(input)),
   auditUsageTrends: os
     .input(UsageTrendsInputSchema)
     .output(UsageTrendsResultSchema)
     .handler(({ input }) => getAuditAdapter().usageTrends(input)),
+  auditUsageOverview: os
+    .input(UsageOverviewInputSchema)
+    .output(UsageOverviewResultSchema)
+    .handler(({ input }) => getAuditAdapter().usageOverview(input)),
+  auditSessionOptions: os
+    .input(AuditSessionOptionsInputSchema)
+    .output(AuditSessionOptionsResultSchema)
+    .handler(({ input }) => getAuditAdapter().sessionOptions(input)),
   auditUsageRange: os
     .input(UsageRangeInputSchema)
     .output(UsageRangeResultSchema)

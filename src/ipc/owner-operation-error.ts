@@ -84,6 +84,7 @@ function resolveScope(requestPath: string): OwnerScope | null {
       'auditList',
       'auditFilterOptions',
       'auditUsageRange',
+      'auditUsageOverview',
       'auditDetail',
       'auditBodyPage',
       'auditBodySearch',

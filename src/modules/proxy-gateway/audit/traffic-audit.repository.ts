@@ -25,6 +25,9 @@ import type {
 import { initialAuditGenerations, AUDIT_TRAFFIC_CLASSES } from './audit-capture-generations';
 import { readUsageRange } from './traffic-audit-usage-range';
 import { readUsageTrends } from './traffic-audit-usage-trends';
+import { readRequestActivity } from './traffic-audit-activity-days';
+import { readUsageOverview } from './traffic-audit-usage-overview';
+import { readAuditSessionOptions } from './audit-session-options';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { recoverInterruptedAudit } from './traffic-audit-recovery';
 import { auditSessionSnapshot } from './audit-session-snapshot';
@@ -192,6 +195,12 @@ export class TrafficAuditRepository {
         return readUsageRange(this.raw, command.payload);
       case 'usageTrends':
         return readUsageTrends(this.raw, this.orm, command.payload);
+      case 'usageActivity':
+        return readRequestActivity(this.orm, command.payload);
+      case 'usageOverview':
+        return readUsageOverview(this.raw, command.payload);
+      case 'sessionOptions':
+        return readAuditSessionOptions(this.raw, command.payload);
       case 'detail':
         return this.queries.detail(command.payload.id);
       case 'bodyPage':

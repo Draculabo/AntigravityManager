@@ -1993,15 +1993,6 @@ const tr = {
     'previous-match': 'Previous match',
     'next-match': 'Next match',
     'cancel-search': 'Cancel search',
-    'export-session': 'Export saved session',
-    'session-exporting': 'Exporting session…',
-    'session-export-scope':
-      'All saved model requests, attempts and bodies. Up to 2,000 settled requests and 100 MiB; partial captures stay partial.',
-    'session-export-needs-scope':
-      'Select a scoped saved-session key. Older records can be exported per body.',
-    'session-export-saved': 'Saved session export.',
-    'session-export-failed':
-      'Export completion could not be confirmed. Check the destination file. Wait for requests to settle, refresh and retry; active, changed, missing or oversized data is refused.',
   },
 };
 export default tr;

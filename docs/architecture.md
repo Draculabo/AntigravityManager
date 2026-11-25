@@ -20,11 +20,16 @@ and do not supply credentials, provider bodies or arbitrary metadata to reportin
 
 The desktop public envelope preserves validated `loginCode`/`switchCode` and the safe diagnostic.
 Standalone management and RPC carry the coordinator's identity; consumers reject mismatched
-identities. Management response version is `2` and owner compatibility is `19`. The handshake
+identities. Management response version is `2` and owner compatibility is `20`. The handshake
 envelope format and diagnostic schema remain `1`. Compatibility `6` includes the required
 independent Thought Store disk setting and coordinated management contracts.
 An incompatible owner fails startup verification before
 account mutations, with no local owner fallback.
+
+Owner compatibility `20` exposes the usage overview and exact upstream-attempt filters
+through the selected audit owner. The audit Worker reads retained metadata in a bounded
+range without changing the database format. See
+[Traffic Monitor usage views](modules/proxy-gateway/diagnostic-retention.md#usage-views).
 
 Owner compatibility `19` adds optional Gemini and Claude account priority overrides to the selected
 owner's account view and routing mutation. Two nullable account columns preserve the global

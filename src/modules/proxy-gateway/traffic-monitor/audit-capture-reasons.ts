@@ -7,6 +7,8 @@ const REASONS = new Map([
   ['audit_disk_full', 'disk-full'],
   ['capture_disabled', 'capture-disabled'],
   ['worker_restart', 'worker-restart'],
+  ['worker_unavailable', 'worker-unavailable'],
+  ['queue_capacity', 'queue-capacity'],
   ['retention', 'retention'],
   ['disk_pressure', 'disk-pressure'],
   ['body_chunk_queue_or_write_failure', 'write-failure'],

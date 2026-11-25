@@ -47,7 +47,7 @@ export function TrafficTable({
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col px-6 py-4">
+    <div className="flex min-h-0 flex-1 flex-col px-4 pt-1 pb-2 lg:px-6">
       <div className="mb-2 flex items-center justify-end gap-2">
         {unsaved && (
           <span role="status" className="text-muted-foreground text-xs">
@@ -58,10 +58,10 @@ export function TrafficTable({
           {t('traffic.reset-columns')}
         </Button>
       </div>
-      <div className="flex min-h-72 flex-1 flex-col overflow-hidden rounded-lg border">
+      <div className="bg-card flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border">
         <div ref={headerRef} className="shrink-0 overflow-hidden border-b">
           <div
-            className="bg-muted/40 text-muted-foreground grid h-9 items-center gap-3 px-3 text-[11px] font-medium tracking-wide uppercase"
+            className="bg-muted/30 text-muted-foreground grid h-9 items-center gap-3 px-3 text-xs font-medium"
             style={{
               gridTemplateColumns: template,
               width: tableWidth,

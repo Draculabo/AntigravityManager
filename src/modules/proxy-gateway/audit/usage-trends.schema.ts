@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { UsagePricesSchema } from './usage-overview.schema';
+import { TrafficAuditListInputSchema } from './traffic-audit.types';
 
 export const UsageTrendsInputSchema = z.strictObject({
   window: z.enum(['1h', '24h']),
@@ -6,6 +8,7 @@ export const UsageTrendsInputSchema = z.strictObject({
   accountId: z.string().min(1).max(256).optional(),
   model: z.string().min(1).max(256).optional(),
   includeActivity: z.boolean().optional(),
+  prices: UsagePricesSchema.optional(),
 });
 export type UsageTrendsInput = z.infer<typeof UsageTrendsInputSchema>;
 
@@ -15,6 +18,28 @@ export const UsageTrendsWorkerInputSchema = UsageTrendsInputSchema.extend({
 export type UsageTrendsWorkerInput = z.infer<typeof UsageTrendsWorkerInputSchema>;
 
 const count = z.number().int().nonnegative().safe();
+export const USAGE_ACTIVITY_WEEKS = 53;
+const usageActivityDay = z.strictObject({
+  date: z.iso.date(),
+  requests: count,
+  attempts: count,
+  observedTokens: count.nullable(),
+  incompleteRequests: count,
+  estimatedCostUsd: z.number().nonnegative().nullable(),
+  pricedAttempts: count,
+});
+export type UsageActivityDay = z.infer<typeof usageActivityDay>;
+export const UsageActivityDaysSchema = z
+  .array(usageActivityDay)
+  .min((USAGE_ACTIVITY_WEEKS - 1) * 7 + 1)
+  .max(USAGE_ACTIVITY_WEEKS * 7);
+export const UsageActivityInputSchema = z.strictObject({
+  filters: TrafficAuditListInputSchema.omit({ limit: true, offset: true, trafficClass: true }).strict(),
+  prices: UsagePricesSchema.optional(),
+});
+export const UsageActivityWorkerInputSchema = UsageActivityInputSchema.extend({ asOf: count });
+export type UsageActivityInput = z.infer<typeof UsageActivityInputSchema>;
+export type UsageActivityWorkerInput = z.infer<typeof UsageActivityWorkerInputSchema>;
 const metrics = z.strictObject({
   requests: count,
   attempts: count,
@@ -42,9 +67,6 @@ export const UsageTrendsResultSchema = z.strictObject({
   buckets: z.array(metrics.extend({ timestamp: count })).max(1441),
   modelFamilies: z.array(modelFamily).max(USAGE_TRENDS_MODEL_LIMIT),
   modelFamiliesTruncated: z.boolean(),
-  activity: z.array(z.strictObject({
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    requests: count,
-  })).length(30).optional(),
+  activity: UsageActivityDaysSchema.optional(),
 });
 export type UsageTrendsResult = z.infer<typeof UsageTrendsResultSchema>;

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 const ObservedMilliseconds = z.number().finite().int().nonnegative().nullable();
+const ObservedBodyBytes = z.number().int().nonnegative().safe().optional();
 
 /** Monotonic observations from physical send admission; null means unobserved. */
 export const UpstreamAttemptTimingSchema = z.object({
@@ -9,6 +10,8 @@ export const UpstreamAttemptTimingSchema = z.object({
   responseHeadersMs: ObservedMilliseconds,
   firstByteMs: ObservedMilliseconds,
   firstUsableOutputMs: ObservedMilliseconds,
+  uploadedBodyBytes: ObservedBodyBytes,
+  downloadedBodyBytes: ObservedBodyBytes,
 });
 
 export type UpstreamAttemptTiming = z.infer<typeof UpstreamAttemptTimingSchema>;

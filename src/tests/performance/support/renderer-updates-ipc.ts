@@ -360,6 +360,7 @@ export const ipc = {
       },
       thoughtStats: async () => ({ sessions: 0, databaseBytes: 0, integrity: 'ok' }),
       modelAvailability: async () => [],
+      auditUsageActivity: async () => [],
       auditList: async () => {
         trafficReads += 1;
         if (feedbackMode === 'loading') {

@@ -72,6 +72,7 @@ describe('Traffic audit drop counter reset', () => {
         rows: 50,
         databaseBytes: 2048,
         droppedCount: 42,
+        lastDropReason: 'queue_capacity',
       },
     });
     mocks.auditResetDropStats.mockResolvedValue({ affected: 1 });
@@ -87,6 +88,10 @@ describe('Traffic audit drop counter reset', () => {
     const resetButton = await screen.findByRole('button', { name: 'traffic.reset-dropped' });
     expect(resetButton).toBeTruthy();
 
+    const details = screen.getByRole('button', { name: 'traffic.dropped' });
+    fireEvent.click(details);
+    expect(details.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByText('traffic.audit-drops-scope')).toBeTruthy();
     fireEvent.click(resetButton);
 
     await waitFor(() => {
