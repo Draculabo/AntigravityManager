@@ -27,7 +27,7 @@ afterEach(async () => {
   setServerConfig(previous);
 });
 
-async function createSurface(rawModels = ['gemini-2.5-flash']) {
+async function createSurface(rawModels = ['gemini-3-flash', 'gemini-2.5-flash']) {
   const getAllRawQuotaModels = vi.fn(() => new Set(rawModels));
   const getAllCollectedModels = vi.fn(() => new Set(['gemini-3-flash']));
   @Module({
@@ -61,15 +61,15 @@ describe('Gemini model queries HTTP', () => {
     const list = await app.inject({ url: '/v1/models/claude', headers });
     const model = {
       type: 'model',
-      id: 'gemini-2.5-flash',
-      display_name: 'gemini-2.5-flash',
+      id: 'gemini-3-flash',
+      display_name: 'gemini-3-flash',
       created_at: '1970-01-01T00:00:00Z',
     };
     expect({ status: list.statusCode, body: list.json() }).toEqual({
       status: 200,
       body: { data: [model], first_id: model.id, has_more: false, last_id: model.id },
     });
-    const get = await app.inject({ url: '/v1/models/claude/GEMINI-2.5-FLASH', headers });
+    const get = await app.inject({ url: '/v1/models/claude/GEMINI-3-FLASH', headers });
     expect({ status: get.statusCode, body: get.json() }).toEqual({ status: 200, body: model });
   });
 
@@ -90,8 +90,8 @@ describe('Gemini model queries HTTP', () => {
       body: {
         models: [
           {
-            name: 'models/gemini-2.5-flash',
-            displayName: 'gemini-2.5-flash',
+            name: 'models/gemini-3-flash',
+            displayName: 'gemini-3-flash',
             description: '',
             inputTokenLimit: 1048576,
             outputTokenLimit: 65536,
@@ -108,7 +108,7 @@ describe('Gemini model queries HTTP', () => {
     expect(getAllCollectedModels).not.toHaveBeenCalled();
   });
 
-  it.each(['gemini-2.5-flash', 'models%2Fgemini-2.5-flash', 'GEMINI-2.5-FLASH'])(
+  it.each(['gemini-3-flash', 'models%2Fgemini-3-flash', 'GEMINI-3-FLASH'])(
     'returns an existing model projection for %s',
     async (model) => {
       const { app } = await createSurface();
@@ -116,8 +116,8 @@ describe('Gemini model queries HTTP', () => {
       expect({ status: reply.statusCode, body: reply.json() }).toEqual({
         status: 200,
         body: {
-          name: 'models/gemini-2.5-flash',
-          displayName: 'gemini-2.5-flash',
+          name: 'models/gemini-3-flash',
+          displayName: 'gemini-3-flash',
           description: '',
           inputTokenLimit: 1048576,
           outputTokenLimit: 65536,

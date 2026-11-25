@@ -50,7 +50,7 @@ describe('ModelRoutingService', () => {
   it('does not turn another Gemini Pro ID into a retired model', () => {
     const policy = new ModelRoutingService();
 
-    for (const model of ['gemini-3.1-pro-preview', 'gemini-3-pro-high', 'gemini-2.5-pro']) {
+    for (const model of ['gemini-3.1-pro-preview', 'gemini-3-pro-high']) {
       expect(policy.resolveTargetModel(model)).toBe(model);
     }
   });

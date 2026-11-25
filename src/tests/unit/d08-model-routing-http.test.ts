@@ -66,6 +66,7 @@ async function fixture(models = ['gemini-3.1-pro-low']) {
       { alias: 'd08-retired-target', target: 'gemini-3.1-pro-high', enabled: true },
       { alias: 'd08-retired-http', target: 'claude-sonnet-4-6-thinking', enabled: true },
       { alias: 'claude-d08', target: 'claude-sonnet-4-6-thinking', enabled: true },
+      { alias: 'gemini-2.0-flash', target: 'gemini-3.1-pro-low', enabled: true },
     ],
   });
   const wire: Array<{ body: z.infer<typeof WireBody>; beta?: string }> = [];
@@ -218,8 +219,49 @@ it('uses the same alias target limits in OpenAI, Gemini and props discovery', as
   expect(wire).toEqual([]);
 });
 
+it('routes an explicitly configured old request name to its active target', async () => {
+  const { app, wire } = await fixture();
+  const model = 'gemini-2.0-flash';
+  const detail = await app.inject({ url: `/v1/models/${model}`, headers });
+  expect(detail.statusCode).toBe(200);
+  const completion = await app.inject({
+    method: 'POST',
+    url: '/v1/chat/completions',
+    headers,
+    payload: { model, messages: [{ role: 'user', content: 'Reply briefly' }] },
+  });
+  expect(completion.statusCode).toBe(200);
+  expect(wire.at(-1)?.body.model).toBe('gemini-3.1-pro-low');
+});
+
+it('discovers and sends new physical model IDs only when the account advertises them', async () => {
+  const models = ['gemini-4-neon-high', 'gemini-4-carbon-xhigh', 'claude-opus-5-5-medium'];
+  const { app, wire } = await fixture(models);
+  const listed = await app.inject({ url: '/v1/models', headers });
+  expect(listed.statusCode).toBe(200);
+  expect(listed.json().data).not.toContainEqual(expect.objectContaining({ id: 'gemini-4-argon' }));
+  for (const model of models) {
+    expect(listed.json().data).toContainEqual(expect.objectContaining({ id: model }));
+    const completion = await app.inject({
+      method: 'POST',
+      url: '/v1/chat/completions',
+      headers,
+      payload: { model, messages: [{ role: 'user', content: 'Reply briefly' }] },
+    });
+    expect(completion.statusCode).toBe(200);
+  }
+  expect(wire.map(({ body }) => body.model)).toEqual(models);
+});
+
 it('rejects retired models and aliases before leasing despite stale provider catalog data', async () => {
-  const retired = ['gemini-pro-agent', 'gemini-3.1-pro-high'];
+  const retired = [
+    'gemini-pro-agent',
+    'gemini-3.1-pro-high',
+    'gemini-2.5-flash',
+    'claude-3-7-sonnet-20250219',
+    'claude-sonnet-4-5-20250929',
+    'gemini-4-carbon-disabled',
+  ];
   const { app, wire, lease } = await fixture(['gemini-3.1-pro-low', ...retired]);
   const listed = await app.inject({ url: '/v1/models', headers });
   expect(listed.statusCode).toBe(200);

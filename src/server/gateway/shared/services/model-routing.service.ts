@@ -93,18 +93,22 @@ export class ModelRoutingService {
     config = getServerConfig(),
     adaptive?: AdaptiveRoutingContext,
   ): ModelRouteResolution {
-    if (isRetiredModel(model)) {
-      throw new RetiredModelError(model);
-    }
     const route = this.resolveStaticModelRoute(model, config);
-    if (isRetiredModel(route.resolvedModel)) {
+    if (isRetiredModel(model) && route.source !== 'configured') {
       throw new RetiredModelError(model);
     }
-    if (route.source === 'configured' && route.resolvedModel.startsWith('auto:')) {
+    const resolvedModel =
+      route.source === 'configured' && route.resolvedModel.startsWith('auto:')
+        ? resolveAdaptiveModel(route.resolvedModel, route.normalizedModel, adaptive)
+        : route.resolvedModel;
+    if (isRetiredModel(resolvedModel)) {
+      throw new RetiredModelError(model);
+    }
+    if (resolvedModel !== route.resolvedModel) {
       return {
         ...route,
         adaptiveTarget: route.resolvedModel,
-        resolvedModel: resolveAdaptiveModel(route.resolvedModel, route.normalizedModel, adaptive),
+        resolvedModel,
       };
     }
     return route;

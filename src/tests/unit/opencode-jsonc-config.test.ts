@@ -284,7 +284,7 @@ describe('OpenCode JSONC config editing', () => {
     expect(cleared).toMatch(/"google"\s*:\s*\{\s*\}/);
   });
 
-  it('writes Claude thinking variants for base Opus 4.5 and 4.6 ids', () => {
+  it('omits retired Opus 4.5 and keeps thinking variants for Opus 4.6', () => {
     const updated = updateOpenCodeConfigJsonc('{}\n', {
       apiKey: 'dedicated-key',
       baseUrl: 'http://127.0.0.1:8045',
@@ -314,13 +314,7 @@ describe('OpenCode JSONC config editing', () => {
       },
     };
 
-    expect(models['claude-opus-4-5']).toEqual({
-      name: 'Claude Opus 4.5',
-      limit: { context: 200000, output: 64000 },
-      modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
-      reasoning: true,
-      variants,
-    });
+    expect(models).not.toHaveProperty('claude-opus-4-5');
     expect(models['claude-opus-4-6']).toEqual({
       name: 'Claude Opus 4.6',
       limit: { context: 200000, output: 64000 },

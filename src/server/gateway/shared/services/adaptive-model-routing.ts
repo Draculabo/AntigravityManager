@@ -1,4 +1,5 @@
 import { resolveModelVariant } from '../../../../modules/proxy-gateway/antigravity/model-variant-registry';
+import { isRetiredModel } from '../../../../modules/proxy-gateway/antigravity/retired-models';
 import { parseTieredModel } from '../../modules/account-lease/policies/account-bare-model-tier';
 import { parseModelEffort } from '../../common/model-effort';
 
@@ -21,9 +22,9 @@ export function resolveAdaptiveModel(
   requestedModel: string,
   context?: AdaptiveRoutingContext,
 ): string {
-  const candidates = [...(context?.getAvailableModels() ?? [])].sort((left, right) =>
-    right.localeCompare(left, 'en', { numeric: true }),
-  );
+  const candidates = [...(context?.getAvailableModels() ?? [])]
+    .filter((model) => !isRetiredModel(model))
+    .sort((left, right) => right.localeCompare(left, 'en', { numeric: true }));
   const requestedTier =
     resolveModelVariant({ model: requestedModel, effort: context?.effort })?.tier ??
     parseTieredModel(requestedModel)?.tier ??

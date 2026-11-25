@@ -19,10 +19,7 @@ describe('raw quota model listing', () => {
       'gemini-3-pro-image',
     ];
 
-    expect(getAllDynamicModels(customMapping, quotaModels, true)).toEqual([
-      'gemini-2.5-flash',
-      'gemini-3-pro-image',
-    ]);
+    expect(getAllDynamicModels(customMapping, quotaModels, true)).toEqual(['gemini-3-pro-image']);
   });
 
   it('keeps physical image models visible on the OpenAI endpoint', () => {

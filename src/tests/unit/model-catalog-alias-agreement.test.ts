@@ -73,4 +73,27 @@ describe('model catalogs and routing agree about aliases', () => {
       source: 'configured',
     });
   });
+
+  it('lists the account catalog without injecting presets or publishing retired targets', () => {
+    const mapping = {
+      'gemini-2.5-flash': 'gemini-3.8-flash-high',
+      'retired-target': 'claude-sonnet-4-5',
+    };
+    const models = [
+      'gemini-3.8-flash-high',
+      'gemini-4-neon-high',
+      'claude-opus-5-5-medium',
+      'claude-sonnet-4-6',
+      'claude-sonnet-4-5',
+      'gemini-4-carbon-disabled',
+    ];
+    expect(getAllDynamicModels(mapping, models)).toEqual([
+      'claude-opus-5-5-medium',
+      'claude-sonnet-4-6',
+      'gemini-2.5-flash',
+      'gemini-3.8-flash-high',
+      'gemini-4-neon-high',
+    ]);
+    expect(getAllDynamicModels({}, ['gemini-2.5-flash'])).toEqual([]);
+  });
 });

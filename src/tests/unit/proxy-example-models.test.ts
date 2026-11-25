@@ -17,7 +17,7 @@ function quota(displayName?: string): CloudQuotaModelInfo {
 }
 
 describe('proxy example models', () => {
-  it('keeps dynamic quota models first, normalizes prefixes, and deduplicates ids', () => {
+  it('uses available quota model entries, normalizes prefixes, and deduplicates ids', () => {
     const models = buildProxyExampleModels([
       {
         quota: {
@@ -41,7 +41,6 @@ describe('proxy example models', () => {
     expect(models).toEqual([
       { id: 'vendor-preview', name: 'Vendor Preview' },
       { id: 'gemini-3-flash', name: 'gemini-3-flash' },
-      ...FALLBACK_PROXY_EXAMPLE_MODELS.filter((model) => model.id !== 'gemini-3-flash'),
     ]);
   });
 

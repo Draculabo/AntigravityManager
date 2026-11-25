@@ -1,6 +1,7 @@
 import { isNumber } from 'lodash-es';
 import type { ModelThinkingTransport } from '../../../common/model-thinking-transport';
 import { getPublicModelIdForDisplayName } from '../../../../../modules/proxy-gateway/antigravity/ModelMapping';
+import { isRetiredModel } from '../../../../../modules/proxy-gateway/antigravity/retired-models';
 import {
   type AccountLeaseTokenData,
   normalizeModelId,
@@ -79,7 +80,7 @@ export class AccountModelCatalog {
     for (const tokenData of this.options.getTokenCache().values()) {
       for (const evidence of this.getPositiveModelEvidenceFromToken(tokenData)) {
         allModels.add(
-          evidence.source === 'provider-catalog'
+          evidence.source === 'provider-catalog' && !isRetiredModel(evidence.modelId)
             ? (getPublicModelIdForDisplayName(evidence.displayName) ?? evidence.modelId)
             : evidence.modelId,
         );

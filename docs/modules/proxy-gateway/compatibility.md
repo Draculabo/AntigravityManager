@@ -44,6 +44,12 @@ projection. Raw-only mode continues to omit aliases. Hiding a rule does not remo
 advertised physical model with the same ID. If its automatic replacement is unavailable, that
 physical entry retains its own descriptive limits.
 
+When account model data is present, discovery lists models from that data and explicitly
+published aliases. The built-in catalog is used before account model data is available.
+The gateway rejects retired Gemini 1.x and 2.x text models, Claude models earlier than 4.6,
+and disabled upstream placeholders. Image models are evaluated independently. An explicit
+alias can reuse an older request name if its resolved target is still supported.
+
 **API Proxy > Model Mapping** edits aliases, enabled state, publication and routing strategy.
 Changes use the shared service configuration owner and apply to subsequent requests without a
 gateway restart. Existing Sonnet/Opus selectors edit the same alias list and preserve publication.

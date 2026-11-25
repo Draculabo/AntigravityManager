@@ -9,6 +9,7 @@ export interface ProxyExampleModel {
 export const FALLBACK_PROXY_EXAMPLE_MODELS: readonly ProxyExampleModel[] = [
   { id: 'gemini-4-argon', name: 'Gemini 4 Argon' },
   { id: 'gemini-4-argon-high', name: 'Gemini 4 Argon (High)' },
+  { id: 'gemini-3.8-flash-high', name: 'Gemini 3.8 Flash (High)' },
   { id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash' },
   { id: 'gemini-3.7-flash-low', name: 'Gemini 3.7 Flash (Low)' },
   { id: 'gemini-3.7-flash-medium', name: 'Gemini 3.7 Flash (Medium)' },
@@ -18,9 +19,6 @@ export const FALLBACK_PROXY_EXAMPLE_MODELS: readonly ProxyExampleModel[] = [
   { id: 'gemini-3.5-flash-medium', name: 'Gemini 3.5 Flash (Medium)' },
   { id: 'gemini-3.5-flash-high', name: 'Gemini 3.5 Flash (High)' },
   { id: 'gemini-3.1-pro-low', name: 'Gemini 3.1 Pro (Low)' },
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
-  { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite' },
-  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
   { id: 'gemini-3.1-flash-image', name: 'Gemini 3.1 Flash Image' },
   { id: 'gemini-3-pro-image', name: 'Gemini 3 Pro Image' },
   { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
@@ -57,11 +55,16 @@ export function buildProxyExampleModels(
   accounts: readonly ProxyExampleAccount[],
 ): ProxyExampleModel[] {
   const modelsByNormalizedId = new Map<string, ProxyExampleModel>();
+  let hasAccountModels = false;
 
   for (const account of accounts) {
     for (const [rawModelId, info] of Object.entries(account.quota?.models ?? {})) {
       const modelId = rawModelId.replace(/^models\//i, '').trim();
-      if (!modelId || isRetiredModel(modelId)) {
+      if (!modelId) {
+        continue;
+      }
+      hasAccountModels = true;
+      if (isRetiredModel(modelId)) {
         continue;
       }
 
@@ -77,14 +80,9 @@ export function buildProxyExampleModels(
     }
   }
 
-  for (const fallbackModel of FALLBACK_PROXY_EXAMPLE_MODELS) {
-    const normalizedId = fallbackModel.id.toLowerCase();
-    if (!modelsByNormalizedId.has(normalizedId)) {
-      modelsByNormalizedId.set(normalizedId, fallbackModel);
-    }
-  }
-
-  return disambiguateModelList([...modelsByNormalizedId.values()]);
+  return disambiguateModelList(
+    hasAccountModels ? [...modelsByNormalizedId.values()] : FALLBACK_PROXY_EXAMPLE_MODELS,
+  );
 }
 
 export function isImageProxyExampleModel(modelId: string): boolean {
