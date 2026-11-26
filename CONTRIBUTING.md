@@ -10,7 +10,7 @@ Search existing issues and pull requests before opening a new one.
 
 | Contribution                          | Where to start                                                                                                                                                   |
 | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Report a bug                          | [Bug report](https://github.com/Draculabo/AntigravityManager/issues/new?template=bug_report.md): include the app version, platform and reproducible steps.       |
+| Report a bug                          | [Bug report](https://github.com/Draculabo/AntigravityManager/issues/new?template=bug_report.md). Write a short title. Add details if you can.                    |
 | Suggest a feature                     | [Feature request](https://github.com/Draculabo/AntigravityManager/issues/new?template=feature_request.md): explain the problem, use case and current workaround. |
 | Improve documentation                 | Make a focused correction, or use the [documentation index](docs/README.md) to find the owning guide.                                                            |
 | Fix code or improve the UI            | Start with an [existing issue](https://github.com/Draculabo/AntigravityManager/issues), nearby tests and the [module index](docs/modules/README.md).             |

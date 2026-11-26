@@ -220,15 +220,20 @@ function operations(): CoreRpcOperations {
   };
 }
 
-it('transports only a core-sanitized log snapshot over the private pipe within its existing response cap', async () => {
+it('transports shareable and sanitized mixed core logs within the private pipe response cap', async () => {
   const socketPath = await endpoint();
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'agm-log-rpc-'));
   directories.push(dir);
   const until = Date.now();
   const date = new Date(until);
-  const filename = `core-${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}.log`;
+  const day = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   const raw = `[${date.toISOString()}] [ERROR] private@example.invalid {"code":"ECONNRESET","status":502,"prompt":"synthetic-private-prompt"}\n`;
-  await fs.writeFile(path.join(dir, filename), raw.repeat(12000));
+  const diagnostic = 'Proxy could not start on port 8045 (EADDRINUSE)';
+  await fs.writeFile(path.join(dir, `core-${day}.log`), raw.repeat(12000));
+  await fs.writeFile(
+    path.join(dir, `core-diagnostic-${day}.log`),
+    `[${date.toISOString()}] [WARN] ${diagnostic}\n`,
+  );
   const rpc = operations();
   rpc.diagnosticLogs = (time) => readDiagnosticLogs('core', time, dir);
   const server = new ManagementServer({
@@ -249,6 +254,7 @@ it('transports only a core-sanitized log snapshot over the private pipe within i
   expect(result.truncated).toBe(true);
   expect(result.records).toBeGreaterThan(0);
   expect(result.text).not.toMatch(/private@example|synthetic-private-prompt/);
+  expect(result.text).toContain(diagnostic);
   expect(result.text).toContain('{"code":"ECONNRESET","status":502}');
   expect(Buffer.byteLength(result.text)).toBeLessThanOrEqual(LOG_SOURCE_MAX_BYTES);
 });

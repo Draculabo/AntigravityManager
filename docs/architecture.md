@@ -4,10 +4,12 @@ This document is the current architectural map for Antigravity Manager. Read it 
 
 ## Error report attachments
 
-The app-shell module owns optional diagnostic log attachments. Electron main reads its `app`
-logs; standalone mode also reads a sanitized `core` snapshot through the selected owner's
-private RPC. The renderer receives only the preview and a temporary save capability. The main
-process holds that exact snapshot and owns the save dialog and atomic export. No log upload
+The app-shell module owns optional diagnostic log attachments. Each runtime writes shareable
+diagnostic messages to a separate rotating file and masks sensitive values before writing.
+Electron main combines its shareable and mixed `app` logs. Standalone mode also reads a sanitized
+`core` snapshot through the selected owner's private RPC. The renderer receives only the preview
+and a temporary save capability. The main process holds that exact snapshot and owns the save
+dialog and atomic export. No log upload
 service or general filesystem API is exposed. See [the privacy and export policy](modules/app-shell/security.md#error-details-and-report-exports).
 
 ## Correlated account-operation diagnostics

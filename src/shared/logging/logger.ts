@@ -14,6 +14,7 @@ import {
 import { currentOperationIdentity } from '@/shared/observability/operationScope';
 import { SwitchTraceSchema } from '@/shared/observability/switchDiagnostic';
 import { LocalErrorDispatch, type LocalErrorSink } from './local-error-sink';
+import { maskShareableLogText } from './shareable-log-text';
 
 export type LogLevel = 'info' | 'warn' | 'error' | 'debug';
 
@@ -95,7 +96,7 @@ class Logger {
   /**
    * Turns on rotating file output. Must be called explicitly by an application entry
    * point, importing this module must stay free of filesystem side effects. Safe to
-   * call more than once; only the first call adds the file transport.
+   * call more than once; only the first call adds the file transports.
    */
   enableFileLogging(directory: string = getAgentDir(), role: 'app' | 'core' = 'app'): void {
     if (this.fileLoggingEnabled) {
@@ -111,29 +112,29 @@ class Logger {
       }
     }
 
-    const fileFormat = winston.format.combine(
-      winston.format.timestamp(),
-      winston.format.printf(({ timestamp, level, message }) => {
-        return `[${timestamp}] [${level.toUpperCase()}] ${message}`;
-      }),
-    );
-
-    const rotateTransport = new DailyRotateFile({
-      filename: path.join(directory, `${role}-%DATE%.log`),
-      datePattern: 'YYYY-MM-DD',
-      maxSize: LOG_MAX_SIZE,
-      maxFiles: LOG_RETENTION,
-      zippedArchive: false,
-      auditFile: path.join(directory, `.${role}-log-audit.json`),
-      level: 'debug',
-      format: fileFormat,
-    });
-
-    rotateTransport.on('error', (error) => {
-      console.error('DailyRotateFile transport error', error);
-    });
-
-    this.winstonLogger.add(rotateTransport);
+    for (const shareable of [false, true]) {
+      const prefix = shareable ? `${role}-diagnostic` : role;
+      const rotateTransport = new DailyRotateFile({
+        filename: path.join(directory, `${prefix}-%DATE%.log`),
+        datePattern: 'YYYY-MM-DD',
+        maxSize: LOG_MAX_SIZE,
+        maxFiles: LOG_RETENTION,
+        zippedArchive: false,
+        auditFile: path.join(directory, `.${prefix}-log-audit.json`),
+        level: 'debug',
+        format: winston.format.combine(
+          winston.format((entry) => ((entry.shareable === true) === shareable ? entry : false))(),
+          winston.format.timestamp(),
+          winston.format.printf(
+            ({ timestamp, level, message }) => `[${timestamp}] [${level.toUpperCase()}] ${message}`,
+          ),
+        ),
+      });
+      rotateTransport.on('error', (error) => {
+        console.error('DailyRotateFile transport error', error);
+      });
+      this.winstonLogger.add(rotateTransport);
+    }
   }
 
   private pruneLogs(now: number) {
@@ -178,20 +179,29 @@ class Logger {
   }
 
   log(level: LogLevel, message: string, ...args: unknown[]) {
-    this.write(level, message, args, false);
+    this.write(level, message, args, 'standard');
   }
 
-  private write(level: LogLevel, message: string, args: unknown[], isolated: boolean) {
+  private write(
+    level: LogLevel,
+    message: string,
+    args: unknown[],
+    mode: 'standard' | 'isolated' | 'shareable',
+  ) {
     const operation = currentOperationIdentity();
+    const shareable = mode === 'shareable';
     const formattedArgs = this.formatArgs(
       operation &&
+        !shareable &&
         !message.startsWith('Operation diagnostic ') &&
         !message.startsWith('Operation step ') &&
         !message.startsWith('Switch trace ')
         ? [...args, operation]
         : args,
     );
-    const sanitizedMessage = String(sanitizeObject(message));
+    const sanitizedMessage = shareable
+      ? maskShareableLogText(message)
+      : String(sanitizeObject(message));
     const mergedMessage = formattedArgs ? `${sanitizedMessage} ${formattedArgs}` : sanitizedMessage;
     const now = Date.now();
     const formattedMessage = `[${new Date(now).toISOString()}] [${level.toUpperCase()}] ${mergedMessage}`;
@@ -207,6 +217,7 @@ class Logger {
     this.winstonLogger.log({
       level,
       message: mergedMessage,
+      shareable,
     });
 
     if (level === 'error') {
@@ -223,6 +234,7 @@ class Logger {
       shouldReportErrorToSentry(this.extractError(args))
     ) {
       try {
+        const isolated = mode === 'isolated';
         this.sentryReporter({
           level,
           message: mergedMessage,
@@ -241,6 +253,11 @@ class Logger {
     this.log('info', message, ...args);
   }
 
+  /** Report attachments retain this prose. Pass only app-owned text and approved fields. */
+  shareable(level: 'info' | 'warn', message: string): void {
+    this.write(level, message, [], 'shareable');
+  }
+
   warn(message: string, ...args: unknown[]) {
     this.log('warn', message, ...args);
   }
@@ -250,7 +267,7 @@ class Logger {
   }
 
   diagnosticError(message: string): void {
-    this.write('error', message, [], true);
+    this.write('error', message, [], 'isolated');
   }
 
   debug(message: string, ...args: unknown[]) {

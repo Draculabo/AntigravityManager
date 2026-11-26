@@ -446,7 +446,7 @@ function createWindow({ startHidden }: { startHidden: boolean }) {
     return;
   }
 
-  logger.info('createWindow: start');
+  logger.shareable('info', 'Creating the desktop window');
   const preload = path.join(__dirname, 'preload.js');
   const windowIcon =
     inDevelopment && process.platform === 'win32'
@@ -479,7 +479,7 @@ function createWindow({ startHidden }: { startHidden: boolean }) {
   });
   globalMainWindow = mainWindow;
   setTrayMainWindow(mainWindow);
-  logger.info('createWindow: BrowserWindow instance created');
+  logger.shareable('info', 'Desktop window created');
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   if (startHidden) {
     mainWindow.hide();
@@ -553,6 +553,10 @@ function createWindow({ startHidden }: { startHidden: boolean }) {
   });
 
   mainWindow.webContents.on('render-process-gone', (event, details) => {
+    logger.shareable(
+      'warn',
+      `Renderer process exited with code ${details.exitCode} (${details.reason})`,
+    );
     logger.error('Renderer process gone:', details);
   });
 
@@ -561,11 +565,12 @@ function createWindow({ startHidden }: { startHidden: boolean }) {
   });
 
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    logger.shareable('warn', `Desktop page failed to load (error ${errorCode})`);
     logger.error(`Page failed to load: ${errorCode} - ${errorDescription} - URL: ${validatedURL}`);
   });
 
   mainWindow.webContents.on('did-finish-load', () => {
-    logger.info('Page finished loading successfully');
+    logger.shareable('info', 'Desktop page finished loading');
   });
 
   mainWindow.webContents.on('console-message', (details) => {

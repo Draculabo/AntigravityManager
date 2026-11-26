@@ -40,7 +40,7 @@ vi.mock('@/modules/identity-profile/ipc/handler', () => ({
   isIdentityProfileApplyEnabled: vi.fn(() => false),
 }));
 vi.mock('@/shared/logging/logger', () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), shareable: vi.fn() },
 }));
 
 const originalPlatform = process.platform;

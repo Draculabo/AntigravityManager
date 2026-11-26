@@ -109,6 +109,42 @@ describe('sanitized log attachments', () => {
     });
   });
 
+  it('keeps a known failure readable in exported logs and masks identified sensitive fields', async () => {
+    const dir = await directory();
+    const day = new Date(until);
+    const date = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+    const failure = 'Failed to start NestJS server';
+    const original =
+      line(until - 3, failure) +
+      line(
+        until - 2,
+        failure +
+          ' {"code":"EACCES","status":503,"email":"private@example.invalid","authorization":"Bearer synthetic-secret","apiKey":"synthetic-key","response":{"body":"private response"}}',
+      ) +
+      line(until - 1, failure + ' private failure detail\nprivate continuation') +
+      line(until, failure + ': unrelated private text');
+    const filename = path.join(dir, `core-${date}.log`);
+    await writeFile(filename, original);
+
+    expect(await readDiagnosticLogs('core', until, dir)).toEqual({
+      role: 'core',
+      text:
+        line(until - 3, failure) +
+        line(
+          until - 2,
+          failure +
+            ' {"code":"EACCES","status":503,"email":"***","authorization":"***","apiKey":"***"}',
+        ) +
+        line(until - 1, failure + ' ***') +
+        line(until, '[Content removed]'),
+      missing: false,
+      truncated: false,
+      removed: 3,
+      records: 4,
+    });
+    expect(await readFile(filename, 'utf8')).toBe(original);
+  });
+
   it('selects the inclusive ten-minute window and rotating shards; never reads captures, backups or other roles', async () => {
     const dir = await directory();
     // Use a local-date filename to match Winston rotation on every test timezone.

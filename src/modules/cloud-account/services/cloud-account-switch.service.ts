@@ -202,7 +202,7 @@ export async function switchCloudAccountCore(
             }
 
             const context = new CloudAccountSwitchContext(account);
-            logger.info(`Switching to cloud account: ${account.email} (${account.id})`);
+            logger.shareable('info', 'Switching to a cloud account');
             setStage('launch-preflight');
             const launchContext =
               appTarget === 'agy'
@@ -244,13 +244,17 @@ export async function switchCloudAccountCore(
                     !isString(account.token.refresh_token) ||
                     isEmpty(account.token.refresh_token.trim())
                   ) {
-                    logger.warn(
-                      `Token for ${account.email} has no refresh token; switched IDE session may expire without recovery.`,
+                    logger.shareable(
+                      'warn',
+                      'The cloud account has no refresh token. The IDE session may expire.',
                     );
                     return;
                   }
 
-                  logger.info(`Refreshing token for ${account.email} before IDE injection...`);
+                  logger.shareable(
+                    'info',
+                    'Refreshing the cloud account token before IDE injection',
+                  );
                   try {
                     const refreshedToken = await CloudAccountRefreshService.refreshAccessToken(
                       createCloudAccountRefreshRequest(account),
@@ -258,7 +262,7 @@ export async function switchCloudAccountCore(
 
                     const updatedToken = mergeRefreshedToken(account.token, refreshedToken, now);
                     await context.updateToken(updatedToken);
-                    logger.info(`Token refreshed for ${account.email}`);
+                    logger.shareable('info', 'Cloud account token refreshed');
                   } catch (error) {
                     logger.warn('Failed to refresh token before IDE injection', error);
                     if (error instanceof CloudAccountRefreshContextChangedError) {
@@ -337,7 +341,7 @@ export async function switchCloudAccountCore(
                 account.status = 'active';
                 account.status_reason = undefined;
 
-                logger.info(`Successfully switched to cloud account: ${account.email}`);
+                logger.shareable('info', 'Switched to the cloud account');
                 accountOwnerEvents.publish({
                   kind: 'account-switched',
                   accountId: account.id,

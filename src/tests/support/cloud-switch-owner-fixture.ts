@@ -153,7 +153,7 @@ vi.mock('@/shared/platform/paths', async (importOriginal) => ({
   getAntigravityDbPaths: vi.fn(() => []),
 }));
 vi.mock('@/shared/logging/logger', () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), shareable: vi.fn() },
 }));
 
 let server: ManagementServer | null = null;

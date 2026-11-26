@@ -19,8 +19,8 @@ the available error details in their template sections, then opens
 the GitHub bug template without report contents in its URL. The environment endpoint excludes
 hostname, network addresses and account identifiers. The report masks common credential forms,
 email addresses and user-directory names; copying the report does not read account records or log files. Users
-paste the complete report into the issue body, complete the description and reproduction steps,
-and submit it themselves. The diagnostic block retains the operation UUID and, when captured,
+paste the report into the issue body, write a title, and submit it themselves. They can add details
+about what happened. The diagnostic block retains the operation UUID and, when captured,
 the Sentry event ID. Neither an SDK receipt nor opening the template proves remote delivery.
 Clipboard failure prevents opening the form; browser
 failure preserves the copied report and provides the form URL for manual continuation.
@@ -37,21 +37,31 @@ cannot be reconstructed from the renderer's transport stack. Missing exceptions 
 notification text without creating a synthetic stack. Viewing details does not copy or send a report.
 
 The error details dialog offers an optional sanitized log attachment. Generation reads the ten
-minutes ending at its captured start time from rotating `app` logs and, in standalone mode, the
-selected core's rotating `core` logs. Core sanitization runs inside that owner; unavailable core
+minutes ending at its captured start time from the app's rotating logs and, in standalone mode,
+the selected core's rotating logs. Each owner merges its dedicated diagnostic files with its
+mixed logs in timestamp order. Core sanitization runs inside that owner. Unavailable core
 logs never fall back to local core files. The reader excludes audit databases, request captures,
 account backups and symlinks. File selection, read work, retained previews and output are bounded;
 each source contributes at most 448 KiB and the complete UTF-8 attachment remains below 1 MiB.
 Missing sources and truncation appear in both preview and attachment.
 
-Uncertain records lose their entire free-text content, including prompts, tool arguments,
-request/response bodies, stacks, identities, paths and credentials. Only timestamps, levels,
-closed error codes, bounded HTTP statuses/timing/retry fields and specific Boolean diagnostics
-survive. Versioned `Operation diagnostic v1` and `Operation step v1` records also retain their
-validated closed fields and UUID; unknown fields and continuations invalidate the complete record.
-A UUID in an arbitrary message does not authorize its contents. A small set of exact fixed diagnostic messages can survive unchanged. Removed records
-are marked `Content removed`; arbitrary message prefixes, nested objects and string values are
-never preserved. This intentionally favors privacy over completeness.
+The shared logger writes explicitly selected diagnostic messages to
+`app-diagnostic-YYYY-MM-DD.log` or `core-diagnostic-YYYY-MM-DD.log`. Callers compose each message
+from application-owned text and approved values such as a local port number or an error code.
+They exclude request bodies, prompts, tool arguments, and raw errors. The writer masks recognized
+credentials and email addresses with `***` before writing and records each message on one line.
+Export retains the text from these files. A matching prefix in a mixed file follows the mixed-log rules.
+
+For mixed logs, export retains timestamps, levels, reviewed fixed diagnostic messages, closed error codes,
+bounded HTTP statuses, timing and retry fields, and specific Boolean diagnostics. For a reviewed
+message, recognized sensitive fields in a JSON argument appear as `***`. If no exportable fields
+are available, `***` stands in for the additional details. Unknown messages show
+`[Content removed]` alongside any validated diagnostics. Arbitrary text, prompts, tool arguments,
+request and response bodies, stacks, and nested values are withheld.
+
+Versioned `Operation diagnostic v1`, `Operation step v1` and `Switch trace v1` records retain
+their validated fields and operation identifiers. Unknown fields and continuations invalidate
+the structured record. An identifier in an arbitrary message does not authorize its contents.
 
 Only sanitized text crosses IPC. Electron main retains at most four expiring preview snapshots;
 the save endpoint accepts their UUID capabilities, never renderer-provided contents or paths.

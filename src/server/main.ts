@@ -150,7 +150,7 @@ export function createFastifyAdapter(): FastifyAdapter {
 export async function bootstrapNestServer(config: ProxyConfig): Promise<NestServerStartResult> {
   const port = config.port || 8045;
   if (app) {
-    logger.info('NestJS server already running.');
+    logger.shareable('info', 'NestJS server already running.');
     return {
       success: true,
       port: currentPort,
@@ -240,7 +240,7 @@ export async function bootstrapNestServer(config: ProxyConfig): Promise<NestServ
     currentPort = port;
     currentListenAddress = listenAddress;
     startupConfig = structuredClone(config);
-    logger.info(`NestJS Proxy Server running on http://localhost:${port}`);
+    logger.shareable('info', `NestJS Proxy Server running on http://localhost:${port}`);
     return {
       success: true,
       port,
@@ -252,7 +252,7 @@ export async function bootstrapNestServer(config: ProxyConfig): Promise<NestServ
 
     if (isAddressInUseError(error)) {
       const message = `Port ${port} is already in use`;
-      logger.warn(`NestJS Proxy Server could not start: ${message}`, error);
+      logger.shareable('warn', `NestJS Proxy Server could not start: ${message} (EADDRINUSE)`);
       return {
         success: false,
         reason: 'address-in-use',
@@ -299,7 +299,7 @@ export async function stopNestServer(): Promise<boolean> {
       currentPort = 0;
       currentListenAddress = '';
       startupConfig = null;
-      logger.info('NestJS server stopped.');
+      logger.shareable('info', 'NestJS server stopped.');
       return true;
     } catch (e) {
       logger.error('Failed to stop NestJS server', e);

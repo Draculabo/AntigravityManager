@@ -14,6 +14,7 @@ describe('Logger Utilities', () => {
   let logger: {
     info: (message: string, ...args: unknown[]) => void;
     error: (message: string, ...args: unknown[]) => void;
+    shareable: (level: 'info' | 'warn', message: string) => void;
     setErrorReportingEnabled: (enabled: boolean) => void;
     setSentryReporter: (reporter: ((payload: unknown) => void) | null) => void;
     enableFileLogging: (directory?: string) => void;
@@ -104,6 +105,46 @@ describe('Logger Utilities', () => {
     const content = fs.readFileSync(filePath as string, 'utf-8');
     expect(content).toContain('[ERROR]');
     expect(content).toContain(message);
+  });
+
+  it('preserves masked diagnostic prose through the rotating file and report attachment', async () => {
+    const { readDiagnosticLogs } = await import('@/modules/app-shell/diagnostic-logs/read-logs');
+    const time = new Date().toISOString();
+    const legacyDetail = 'untrusted renderer text and private prompt';
+    logger.info(`renderer output\n[${time}] [WARN] Shareable diagnostic v1 ${legacyDetail}`);
+    const legacyFile = await waitForLogContains(legacyDetail);
+    if (!legacyFile) {
+      throw new Error('The renderer message was not written to the mixed log');
+    }
+
+    const querySecret = 'synthetic-query-secret';
+    const signature = 'synthetic-signed-link';
+    const vendorSecret = 'sk-proj-0123456789synthetictoken';
+    const email = 'reporter@example.test';
+    logger.shareable(
+      'warn',
+      `Service check failed for ${email}; API rejected ${vendorSecret} on https://example.test/ping?key=${querySecret}&%73ignature=${signature}&retry=1. Authorization: Bearer synthetic-bearer-value. Checked Basic dXNlcjpwYXNz\nRetry scheduled`,
+    );
+
+    const expected =
+      'Service check failed for ***; API rejected *** on https://example.test/ping?key=***&%73ignature=***&retry=1. Authorization: *** Checked Basic *** Retry scheduled';
+    const secrets =
+      /synthetic-query-secret|synthetic-signed-link|synthetictoken|reporter@example|synthetic-bearer-value|dXNlcjpwYXNz/;
+    const readShareableFiles = () =>
+      fs
+        .readdirSync(testLogDir)
+        .filter((file) => /^app-diagnostic-\d{4}-\d{2}-\d{2}\.log(?:\.\d+)?$/.test(file))
+        .map((file) => fs.readFileSync(path.join(testLogDir, file), 'utf-8'))
+        .join('');
+    await vi.waitFor(() => expect(readShareableFiles()).toContain(`[WARN] ${expected}`));
+    expect(readShareableFiles()).not.toMatch(secrets);
+    expect(fs.readFileSync(legacyFile, 'utf-8')).not.toContain('Service check failed');
+
+    const attachment = await readDiagnosticLogs('app', Date.now(), testLogDir);
+    expect(attachment.text).toContain(`[WARN] ${expected}\n`);
+    expect(attachment.text).toContain('[WARN] [Content removed]');
+    expect(attachment.text).not.toContain(legacyDetail);
+    expect(attachment.text).not.toMatch(secrets);
   });
 
   it('redacts credentials embedded in proxy URLs before writing to the log sink', async () => {

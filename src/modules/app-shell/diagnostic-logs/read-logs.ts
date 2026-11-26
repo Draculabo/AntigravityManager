@@ -30,7 +30,10 @@ export async function readDiagnosticLogs(
     records: 0,
   };
   const dates = new Set([localDate(until), localDate(until - LOG_WINDOW_MS)]);
-  const files: { name: string; date: string; shard: number }[] = [];
+  const files: { name: string; date: string; shard: number; shareable: boolean }[] = [];
+  const filename = new RegExp(
+    `^${role}-(?:(diagnostic)-)?(\\d{4}-\\d{2}-\\d{2})\\.log(?:\\.(\\d+))?$`,
+  );
   try {
     const entries = await opendir(directory);
     let visited = 0;
@@ -39,17 +42,25 @@ export async function readDiagnosticLogs(
         result.truncated = true;
         break;
       }
-      const match = entry.name.match(
-        new RegExp(`^${role}-(\\d{4}-\\d{2}-\\d{2})\\.log(?:\\.(\\d+))?$`),
-      );
-      if (entry.isFile() && match && dates.has(match[1])) {
-        files.push({ name: entry.name, date: match[1], shard: Number(match[2] ?? 0) });
+      const match = entry.name.match(filename);
+      if (entry.isFile() && match && dates.has(match[2])) {
+        files.push({
+          name: entry.name,
+          date: match[2],
+          shard: Number(match[3] ?? 0),
+          shareable: match[1] !== undefined,
+        });
       }
     }
   } catch {
     return { ...result, missing: true };
   }
-  files.sort((a, b) => b.date.localeCompare(a.date) || b.shard - a.shard);
+  files.sort(
+    (a, b) =>
+      Number(b.shareable) - Number(a.shareable) ||
+      b.date.localeCompare(a.date) ||
+      b.shard - a.shard,
+  );
   if (files.length === 0) {
     return { ...result, missing: true };
   }
@@ -94,7 +105,10 @@ export async function readDiagnosticLogs(
         if (!pending || pending.time < until - LOG_WINDOW_MS || pending.time > until) {
           return;
         }
-        const safe = sanitizeLogRecord(pending.oversized ? '' : pending.message);
+        const safe =
+          file.shareable && !pending.oversized && !pending.message.includes('\n')
+            ? { text: pending.message, removed: false }
+            : sanitizeLogRecord(pending.oversized ? '' : pending.message);
         records.push({
           time: pending.time,
           text: `[${new Date(pending.time).toISOString()}] [${pending.level}] ${safe.text}\n`,

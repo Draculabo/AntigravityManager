@@ -42,14 +42,25 @@ const DiagnosticsSchema = z.object({
   hasExplicitProxy: z.boolean().optional(),
   success: z.boolean().optional(),
 });
-const SAFE_MESSAGES = new Set([
+const SAFE_MESSAGES = [
   'Upstream proxy is enabled but URL is not configured',
   'OpenTelemetry shutdown failed',
   'Core RPC request timed out',
   'Core RPC request was cancelled',
-]);
+  'Failed to start NestJS server',
+  'Standalone core service failed to start',
+  'Service settings are unavailable; Core management remains available.',
+  '[GoogleAPIService] Proxy configuration error',
+  'Failed to close OAuth callback listener',
+  'Failed to fetch initial quota',
+  'Failed to refresh token before IDE injection',
+  'Cloud account switch stopped before completion',
+  'AppImageUpdater: verified download failed',
+];
+const PRIVATE_FIELD_NAME =
+  /^(?:e[_-]?mail|account[_-]?id|(?:access|refresh|id|bearer)[_-]?token|token|(?:x[_-](?:goog[_-])?)?api[_-]?key|authorization|cookie|password|private[_-]?key|client[_-]?secret|secret|session[_-]?id|auth[_-]?code)$/i;
 
-/** Unknown prose, nested values and continuations are discarded, not regex-redacted. */
+/** Export fixed diagnostic messages and validated fields from otherwise untrusted log records. */
 export function sanitizeLogRecord(message: string): { text: string; removed: boolean } {
   const switchMarker = 'Switch trace v1 ';
   if (message.startsWith(switchMarker)) {
@@ -90,15 +101,20 @@ export function sanitizeLogRecord(message: string): { text: string; removed: boo
       // A marker alone cannot authorize arbitrary prose, fields or nested data.
     }
   }
-  if (SAFE_MESSAGES.has(message)) {
-    return { text: message, removed: false };
+  const safeMessage = SAFE_MESSAGES.find(
+    (candidate) => message === candidate || message.startsWith(`${candidate} `),
+  );
+  if (message === safeMessage) {
+    return { text: safeMessage, removed: false };
   }
   let fields: z.infer<typeof DiagnosticsSchema> = {};
-  // Winston appends JSON arguments to a message. Never retain that arbitrary prefix.
-  const start = message.indexOf('{');
-  if (start >= 0) {
+  let maskedFields: [string, string][] = [];
+  // Log arguments follow the fixed message. For unknown messages, still project safe numeric and closed fields.
+  const start = safeMessage ? safeMessage.length + 1 : message.indexOf('{');
+  const args = start >= 0 ? message.slice(start) : '';
+  if (args.startsWith('{')) {
     try {
-      const parsed: unknown = JSON.parse(message.slice(start));
+      const parsed: unknown = JSON.parse(args);
       // Validate fields independently: an invalid code must not discard a valid HTTP status.
       if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
         for (const [key, schema] of Object.entries(DiagnosticsSchema.shape)) {
@@ -107,13 +123,20 @@ export function sanitizeLogRecord(message: string): { text: string; removed: boo
             fields = DiagnosticsSchema.parse({ ...fields, [key]: value.data });
           }
         }
+        if (safeMessage) {
+          maskedFields = Object.keys(parsed)
+            .filter((key) => PRIVATE_FIELD_NAME.test(key))
+            .map((key) => [key, '***']);
+        }
       }
     } catch {
       // Malformed or multiline free text has no confirmed-safe structured diagnostics.
     }
   }
+  const projected = { ...fields, ...Object.fromEntries(maskedFields) };
+  const details = Object.keys(projected).length ? ` ${JSON.stringify(projected)}` : '';
   return {
-    text: `[Content removed]${Object.keys(fields).length ? ` ${JSON.stringify(fields)}` : ''}`,
+    text: safeMessage ? `${safeMessage}${details || ' ***'}` : `[Content removed]${details}`,
     removed: true,
   };
 }
