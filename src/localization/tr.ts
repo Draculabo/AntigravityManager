@@ -1024,10 +1024,6 @@ const tr = {
       'Yapılandırma değişti ancak sahiplik kaydı yazılamadı. Devam etmeden önce profili inceleyin.',
   },
   cloud: {
-    'recommendation-target': 'Öneri için istemci',
-    'use-recommended-account': 'Önerilen hesabı kullan',
-    'no-target-recommendation': 'Bu istemci için uygun hesap yok',
-    'recommendation-target-classic': 'Classic',
     'project-id': {
       title: 'Proje kimliği',
       empty: 'Ayarlanmamış',

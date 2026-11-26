@@ -66,7 +66,7 @@ const gridProps: ComponentProps<typeof CloudAccountGrid> = {
     fiveHour: { gemini: true, claude: true },
     weekly: { gemini: true, claude: true },
   },
-  manualRecommendation: null,
+  recommendationsByAccount: new Map(),
   hasActiveTierFilter: false,
   onRefresh: vi.fn(),
   onDelete: vi.fn(),

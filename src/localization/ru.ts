@@ -1034,10 +1034,6 @@ const ru = {
       'Настройки изменены, но запись владения не сохранена. Проверьте профиль перед дальнейшими изменениями.',
   },
   cloud: {
-    'recommendation-target': 'Клиент для рекомендации',
-    'use-recommended-account': 'Использовать рекомендованный аккаунт',
-    'no-target-recommendation': 'Нет подходящих аккаунтов для этого клиента',
-    'recommendation-target-classic': 'Classic',
     'project-id': {
       title: 'ID проекта',
       empty: 'Не задан',

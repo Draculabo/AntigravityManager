@@ -1531,10 +1531,6 @@ const zhCn = {
     'receipt-failed': '配置已变更，但无法保存归属记录。继续操作前请检查档案。',
   },
   cloud: {
-    'recommendation-target': '推荐账号适用的客户端',
-    'use-recommended-account': '使用推荐账号',
-    'no-target-recommendation': '该客户端暂无符合条件的账号',
-    'recommendation-target-classic': 'Classic',
     'project-id': {
       title: '项目 ID',
       empty: '未设置',

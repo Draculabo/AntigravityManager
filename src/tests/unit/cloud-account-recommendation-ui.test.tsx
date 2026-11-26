@@ -1,32 +1,40 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { CloudAccountList } from '@/modules/cloud-account/components/CloudAccountList';
 import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
+import type { AppConfig } from '@/modules/config/types';
 
 const { mutate, queryState } = vi.hoisted(() => {
-  const queryState: { data: CloudAccountView[]; isFetching: boolean; isSwitching: boolean } = {
+  const queryState: {
+    config?: Pick<AppConfig, 'account_sort' | 'model_visibility' | 'grid_layout'>;
+    data: CloudAccountView[];
+  } = {
     data: [],
-    isFetching: false,
-    isSwitching: false,
   };
   return { mutate: vi.fn(), queryState };
 });
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ i18n: { language: 'en' }, t: (key: string) => key }),
-}));
+vi.mock('react-i18next', async () => {
+  const { createInstance } = await import('i18next');
+  const { default: en } = await import('@/localization/en');
+  const i18n = createInstance();
+  await i18n.init({ lng: 'en', resources: { en: { translation: en } } });
+  return { useTranslation: () => ({ i18n, t: i18n.t }) };
+});
 vi.mock('@/modules/cloud-account/hooks/useCloudAccounts', () => ({
   useCloudAccounts: () => queryState,
   useWeeklyWarmupConfig: () => ({}),
   useRefreshQuota: () => ({}),
   useDeleteCloudAccount: () => ({}),
-  useSwitchCloudAccount: () => ({ mutate, isPending: queryState.isSwitching }),
+  useSwitchCloudAccount: () => ({ mutate, isPending: false }),
   useAutoSwitchEnabled: () => ({}),
   useSetAutoSwitchEnabled: () => ({}),
   useForcePollCloudMonitor: () => ({}),
   useSetAccountRouting: () => ({}),
 }));
-vi.mock('@/modules/config/hooks/useAppConfig', () => ({ useAppConfig: () => ({}) }));
+vi.mock('@/modules/config/hooks/useAppConfig', () => ({
+  useAppConfig: () => ({ config: queryState.config }),
+}));
 vi.mock('@/modules/cloud-account/hooks/useAccountModelAvailability', () => ({
   useAccountModelAvailability: () => [],
 }));
@@ -43,11 +51,10 @@ vi.mock('@/modules/identity-profile/components/IdentityProfileDialog', () => ({
 afterEach(() => {
   cleanup();
   mutate.mockClear();
-  queryState.isFetching = false;
-  queryState.isSwitching = false;
+  queryState.config = undefined;
 });
 
-function account(id: string, weeklyBalance: number): CloudAccountView {
+function account(id: string, gemini: number, claude: number): CloudAccountView {
   const resetTime = new Date(Date.now() + 3_600_000).toISOString();
   return {
     id,
@@ -60,78 +67,56 @@ function account(id: string, weeklyBalance: number): CloudAccountView {
     is_active: true,
     is_active_classic: id === 'classic',
     is_active_ide: id === 'ide',
-    is_active_agy: false,
+    is_active_agy: id === 'cli',
     quota: {
-      models: { 'gemini-3-pro': { percentage: 90, resetTime } },
-      quota_groups: [
-        {
-          display_name: 'Gemini Models',
-          buckets: [
-            {
-              bucket_id: 'gemini-weekly',
-              window: 'weekly',
-              remaining_fraction: weeklyBalance,
-              reset_time: resetTime,
-            },
-          ],
-        },
-      ],
+      models: {
+        'gemini-3.1-pro': { percentage: gemini, resetTime },
+        'claude-sonnet-4-6': { percentage: claude, resetTime },
+      },
     },
   };
 }
 
-function chooseTarget(label: string) {
-  fireEvent.keyDown(screen.getByRole('combobox', { name: 'cloud.recommendation-target' }), {
-    key: 'Enter',
-  });
-  fireEvent.keyDown(screen.getByRole('option', { name: label }), { key: 'Enter' });
-}
+it.each(['auto', 'compact'] as const)(
+  'shows family and client recommendations on their cards and switches from Use (%s)',
+  (gridLayout) => {
+    queryState.config = {
+      account_sort: 'quota-flash',
+      model_visibility: { 'gemini-3.1-pro': false },
+      grid_layout: gridLayout,
+    };
+    queryState.data = [account('classic', 95, 10), account('ide', 80, 90), account('cli', 70, 75)];
+    render(<CloudAccountList />);
 
-it('updates the candidate as the client changes and switches the candidate in that client', () => {
-  queryState.data = [account('classic', 0.9), account('ide', 0.8)];
-  const view = render(<CloudAccountList />);
-  const select = () => screen.getByRole('combobox', { name: 'cloud.recommendation-target' });
-  const useRecommended = () =>
-    screen.getByRole('button', { name: 'cloud.use-recommended-account' });
+    const classic = within(screen.getByRole('article', { name: 'classic@example.test' }));
+    const ide = within(screen.getByRole('article', { name: 'ide@example.test' }));
+    const cli = within(screen.getByRole('article', { name: 'cli@example.test' }));
+    expect(classic.getByText('Recommended Next · Gemini 5-hour quota 95% · IDE, CLI')).toBeTruthy();
+    expect(ide.getByText('Recommended Next · Claude 5-hour quota 90% · App, CLI')).toBeTruthy();
+    expect(cli.getByText('Recommended Next · Gemini 5-hour quota 70% · App')).toBeTruthy();
+    expect(cli.getByText('Recommended Next · Claude 5-hour quota 75% · IDE')).toBeTruthy();
+    expect(screen.getAllByText(/Recommended Next ·/)).toHaveLength(4);
+    expect(screen.queryByRole('combobox')).toBeNull();
 
-  expect(select().textContent).toBe('cloud.recommendation-target-classic');
-  expect(screen.getByRole('status').textContent).toBe('ide@example.test');
-  chooseTarget('cloud.card.client-ide');
-  expect(screen.getByRole('status').textContent).toBe('classic@example.test');
-  fireEvent.click(useRecommended());
-  expect(mutate).toHaveBeenLastCalledWith(
-    { accountId: 'classic', appTarget: 'ide' },
-    expect.any(Object),
-  );
+    fireEvent.keyDown(classic.getByRole('button', { name: 'Use' }), { key: 'ArrowDown' });
+    expect(
+      screen
+        .getByRole('menuitem', { name: /Switch to Antigravity Active/ })
+        .hasAttribute('data-disabled'),
+    ).toBe(true);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Switch to Antigravity CLI' }));
+    expect(mutate.mock.calls).toEqual([
+      [{ accountId: 'classic', appTarget: 'agy' }, expect.any(Object)],
+    ]);
+  },
+);
 
-  chooseTarget('cloud.card.client-cli');
-  fireEvent.click(useRecommended());
-  expect(mutate).toHaveBeenLastCalledWith(
-    { accountId: 'classic', appTarget: 'agy' },
-    expect.any(Object),
-  );
-
-  queryState.isSwitching = true;
-  view.rerender(<CloudAccountList />);
-  expect(select()).toHaveProperty('disabled', true);
-  expect(useRecommended()).toHaveProperty('disabled', true);
-
-  queryState.isSwitching = false;
-  queryState.isFetching = true;
-  view.rerender(<CloudAccountList />);
-  expect(useRecommended()).toHaveProperty('disabled', true);
-  expect(select()).toHaveProperty('disabled', false);
-  expect(mutate).toHaveBeenCalledTimes(2);
-});
-
-it('explains an unavailable recommendation and keeps the target selector available', () => {
-  queryState.data = [account('classic', 0.9)];
+it('keeps manual switching available when there is no quota recommendation', () => {
+  queryState.data = [{ ...account('ide', 80, 90), quota: undefined }];
   render(<CloudAccountList />);
 
-  const button = screen.getByRole('button', { name: 'cloud.use-recommended-account' });
-  expect(screen.getByRole('status').textContent).toBe('cloud.no-target-recommendation');
-  expect(button).toHaveProperty('disabled', true);
-  chooseTarget('cloud.card.client-ide');
-  expect(screen.getByRole('status').textContent).toBe('classic@example.test');
-  expect(button).toHaveProperty('disabled', false);
+  expect(screen.queryByText(/Recommended Next/)).toBeNull();
+  fireEvent.keyDown(screen.getByRole('button', { name: 'Use' }), { key: 'ArrowDown' });
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Switch to Antigravity CLI' }));
+  expect(mutate.mock.calls).toEqual([[{ accountId: 'ide', appTarget: 'agy' }, expect.any(Object)]]);
 });

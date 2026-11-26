@@ -1920,10 +1920,6 @@ const ptBR = {
       'A configuração mudou, mas o registro de propriedade não foi salvo. Revise o perfil antes de novas alterações.',
   },
   cloud: {
-    'recommendation-target': 'Cliente da recomendação',
-    'use-recommended-account': 'Usar conta recomendada',
-    'no-target-recommendation': 'Nenhuma conta elegível para este cliente',
-    'recommendation-target-classic': 'Classic',
     'project-id': {
       title: 'ID do projeto',
       empty: 'Não definido',

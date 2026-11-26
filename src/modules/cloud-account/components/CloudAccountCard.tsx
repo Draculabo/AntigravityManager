@@ -76,7 +76,7 @@ import {
   type CompactModelQuotaItem,
 } from '@/modules/cloud-account/components/CompactModelQuotaDisplay';
 import { ManualRecommendationBadge } from '@/modules/cloud-account/components/ManualRecommendationBadge';
-import type { ManualRecommendationContext } from '@/modules/cloud-account/utils/manual-account-recommendation';
+import type { ManualAccountRecommendation } from '@/modules/cloud-account/utils/manual-account-recommendation';
 import { QUOTA_TEXT_COLOR_CLASS_BY_STATUS, QUOTA_BAR_COLOR_CLASS_BY_STATUS } from './quota-colors';
 import { isWeeklyQuotaBucket } from '@/modules/cloud-account/utils/quota-groups';
 import { useOpenAccountValidationLink } from '@/modules/cloud-account/hooks/useOpenAccountValidationLink';
@@ -247,7 +247,7 @@ interface CloudAccountCardProps {
   isRefreshing?: boolean;
   isDeleting?: boolean;
   isSwitching?: boolean;
-  recommendationContext?: ManualRecommendationContext;
+  recommendations?: readonly ManualAccountRecommendation[];
 }
 
 export function CloudAccountCard({
@@ -267,7 +267,7 @@ export function CloudAccountCard({
   isRefreshing,
   isDeleting,
   isSwitching,
-  recommendationContext,
+  recommendations,
 }: CloudAccountCardProps) {
   const { t, i18n } = useTranslation();
   const { toast: defaultToast } = useToast();
@@ -703,7 +703,7 @@ export function CloudAccountCard({
 
       <CardContent className="flex-1 px-5 pt-0 pb-5 [@media(max-width:760px)]:px-4">
         <div className="mb-4 flex items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <Badge
               variant={
                 account.status === 'rate_limited' ||
@@ -721,12 +721,13 @@ export function CloudAccountCard({
               unknownLabel={t('cloud.tierFilter.unknown')}
               className="min-h-6 rounded-sm px-2 py-0 text-xs leading-[22px] font-medium tracking-normal"
             />
-            {recommendationContext ? (
+            {recommendations?.map((recommendation) => (
               <ManualRecommendationBadge
-                context={recommendationContext}
+                key={recommendation.family}
+                recommendation={recommendation}
                 className="min-h-6 rounded-sm px-2 py-0 text-xs leading-[22px] font-medium tracking-normal"
               />
-            ) : null}
+            ))}
 
             {validationBlockedStatusLabel && (
               <span className="text-destructive bg-destructive/10 border-destructive/20 rounded border px-1.5 py-0.5 text-xs font-semibold">
@@ -1042,7 +1043,7 @@ interface CompactCloudAccountCardProps {
   isDeleting?: boolean;
   isSwitching?: boolean;
   switchingTarget?: AntigravityAppTarget;
-  recommendationContext?: ManualRecommendationContext;
+  recommendations?: readonly ManualAccountRecommendation[];
 }
 
 export function CompactCloudAccountCard({
@@ -1060,7 +1061,7 @@ export function CompactCloudAccountCard({
   isRefreshing,
   isDeleting,
   isSwitching,
-  recommendationContext,
+  recommendations,
 }: CompactCloudAccountCardProps) {
   const { t } = useTranslation();
   const { toast: defaultToast } = useToast();
@@ -1173,7 +1174,7 @@ export function CompactCloudAccountCard({
     <div
       role="article"
       aria-label={account.email}
-      className="group bg-card hover:border-primary/40 flex items-center gap-3 rounded-lg border px-3 py-2 transition-all duration-200"
+      className="group bg-card hover:border-primary/40 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border px-3 py-2 transition-all duration-200"
     >
       {account.avatar_url ? (
         <img
@@ -1207,9 +1208,6 @@ export function CompactCloudAccountCard({
             unknownLabel={t('cloud.tierFilter.unknown')}
             className="h-4 max-w-24 px-1 text-xs"
           />
-          {recommendationContext ? (
-            <ManualRecommendationBadge context={recommendationContext} />
-          ) : null}
         </div>
 
         <div className="text-muted-foreground truncate text-xs" title={account.email}>
@@ -1434,6 +1432,16 @@ export function CompactCloudAccountCard({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      {recommendations?.length ? (
+        <div className="flex min-w-0 basis-full flex-wrap gap-1.5">
+          {recommendations.map((recommendation) => (
+            <ManualRecommendationBadge
+              key={recommendation.family}
+              recommendation={recommendation}
+            />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

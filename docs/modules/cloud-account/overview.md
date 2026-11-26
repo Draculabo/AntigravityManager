@@ -45,10 +45,13 @@ its account independently, so multiple accounts can have usage badges. The dropd
 targets already using that account, or all targets while its switch is pending. Quota refresh
 ordering and tier filters do not redefine client usage.
 
-For a manual recommendation, select Classic, IDE, or CLI in the account list. The
-recommendation uses the existing quota requirements and ranking and excludes the
-account already used by the selected client. An account used by a different client
-can still qualify. Applying the recommendation switches the selected client.
+Account cards show Gemini and Claude recommendations with the five-hour quota and
+the clients each recommendation applies to. Each client skips the account already
+in use. Recommendations use the full model quota snapshot and favor Pro and Ultra
+accounts, then higher five-hour balances. A known weekly balance of 5% or less
+disqualifies that model family. When both families favor one account and another
+candidate qualifies, the two families use the highest-scoring distinct pair.
+Select a client from the account card's **Use** menu to switch to that account.
 
 Open **Project ID** from a Google account card to view, save, or clear its ID.
 **Fetch from Google** uses that account's credentials and network route and replaces

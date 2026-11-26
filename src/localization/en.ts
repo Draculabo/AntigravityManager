@@ -1668,10 +1668,6 @@ const en = {
       'The configuration changed, but its ownership record could not be saved. Review the profile before further changes.',
   },
   cloud: {
-    'recommendation-target': 'Recommendation target',
-    'use-recommended-account': 'Use recommended account',
-    'no-target-recommendation': 'No eligible account for this client',
-    'recommendation-target-classic': 'Classic',
     'project-id': {
       title: 'Project ID',
       empty: 'Not set',

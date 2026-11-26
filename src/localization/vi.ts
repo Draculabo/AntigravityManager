@@ -1019,10 +1019,6 @@ const vi = {
       'Cấu hình đã đổi nhưng chưa lưu được bản ghi quyền sở hữu. Kiểm tra hồ sơ trước khi thay đổi tiếp.',
   },
   cloud: {
-    'recommendation-target': 'Ứng dụng nhận đề xuất',
-    'use-recommended-account': 'Dùng tài khoản được đề xuất',
-    'no-target-recommendation': 'Không có tài khoản phù hợp cho ứng dụng này',
-    'recommendation-target-classic': 'Classic',
     'project-id': {
       title: 'ID dự án',
       empty: 'Chưa đặt',

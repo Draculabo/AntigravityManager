@@ -11,7 +11,7 @@ import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarge
 import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
 import type { QuotaWindow } from '@/modules/cloud-account/utils/quota-groups';
 import type { QuotaGroupVisibility } from '@/modules/cloud-account/utils/quota-group-visibility';
-import type { ManualAccountRecommendation } from '@/modules/cloud-account/utils/manual-account-recommendation';
+import type { ManualAccountRecommendations } from '@/modules/cloud-account/utils/manual-account-recommendation';
 
 interface CloudAccountGridProps {
   accounts: CloudAccountView[];
@@ -20,7 +20,7 @@ interface CloudAccountGridProps {
   quotaWindow: QuotaWindow;
   quotaGroupVisibility: QuotaGroupVisibility;
   isMinimalMode?: boolean;
-  manualRecommendation: ManualAccountRecommendation | null;
+  recommendationsByAccount: ManualAccountRecommendations;
   hasActiveTierFilter: boolean;
   refreshingAccountId?: string;
   deletingAccountId?: string;
@@ -40,7 +40,7 @@ export function CloudAccountGrid({
   quotaWindow,
   quotaGroupVisibility,
   isMinimalMode,
-  manualRecommendation,
+  recommendationsByAccount,
   hasActiveTierFilter,
   refreshingAccountId,
   deletingAccountId,
@@ -72,11 +72,7 @@ export function CloudAccountGrid({
             isDeleting={deletingAccountId === account.id}
             isSwitching={switchingAccountId === account.id}
             switchingTarget={switchingAccountId === account.id ? switchingTarget : undefined}
-            recommendationContext={
-              manualRecommendation?.accountId === account.id
-                ? manualRecommendation.context
-                : undefined
-            }
+            recommendations={recommendationsByAccount.get(account.id)}
           />
         ) : (
           <SelectableCloudAccountCard
@@ -92,11 +88,7 @@ export function CloudAccountGrid({
             isRefreshing={refreshingAccountId === account.id}
             isDeleting={deletingAccountId === account.id}
             isSwitching={switchingAccountId === account.id}
-            recommendationContext={
-              manualRecommendation?.accountId === account.id
-                ? manualRecommendation.context
-                : undefined
-            }
+            recommendations={recommendationsByAccount.get(account.id)}
           />
         ),
       )}

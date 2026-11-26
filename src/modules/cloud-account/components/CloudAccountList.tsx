@@ -37,7 +37,6 @@ import {
   CloudAccountLoadError,
   CloudAccountLoadingState,
 } from '@/modules/cloud-account/components/CloudAccountListFallbacks';
-import { CloudAccountRecommendation } from '@/modules/cloud-account/components/CloudAccountRecommendation';
 import { CloudAccountToolbar } from '@/modules/cloud-account/components/CloudAccountToolbar';
 import type { QuotaWindow } from '@/modules/cloud-account/utils/quota-groups';
 import {
@@ -68,7 +67,6 @@ function CloudAccountListContent() {
   const {
     data: accounts,
     isLoading,
-    isFetching,
     isError,
     error,
     errorUpdatedAt,
@@ -116,17 +114,16 @@ function CloudAccountListContent() {
   };
 
   const currentSort: AccountSortKey = (config?.account_sort as AccountSortKey) || 'recently-used';
-  const [recommendationTarget, setRecommendationTarget] = useState<AntigravityAppTarget>('classic');
 
   const {
     sortedAccounts,
-    manualRecommendation,
+    recommendationsByAccount,
     tierOptions,
     effectiveSelectedTierKeys,
     effectiveSelectedTierKeySet,
     hasActiveTierFilter,
     visibleAccountIds,
-  } = useCloudAccountListView(accounts, config, currentSort, recommendationTarget);
+  } = useCloudAccountListView(accounts, config, currentSort);
 
   const { refreshSelectedAccounts, deleteSelectedAccounts } = useCloudAccountBatchActions({
     visibleAccountIds,
@@ -384,20 +381,6 @@ function CloudAccountListContent() {
         onToggleMinimalMode={setIsMinimalMode}
       />
 
-      {Boolean(accounts?.length) && (
-        <CloudAccountRecommendation
-          appTarget={recommendationTarget}
-          recommendation={manualRecommendation}
-          recommendedEmail={
-            sortedAccounts.find((account) => account.id === manualRecommendation?.accountId)?.email
-          }
-          isSwitching={switchMutation.isPending}
-          isRefreshingAccounts={isFetching}
-          onTargetChange={setRecommendationTarget}
-          onSwitch={handleSwitch}
-        />
-      )}
-
       <CloudAccountGrid
         accounts={sortedAccounts}
         sourceAccountCount={accounts?.length ?? 0}
@@ -405,7 +388,7 @@ function CloudAccountListContent() {
         quotaWindow={quotaWindow}
         quotaGroupVisibility={quotaGroupVisibility}
         isMinimalMode={isMinimalMode}
-        manualRecommendation={manualRecommendation}
+        recommendationsByAccount={recommendationsByAccount}
         hasActiveTierFilter={hasActiveTierFilter}
         refreshingAccountId={refreshingAccountId}
         deletingAccountId={deletingAccountId}

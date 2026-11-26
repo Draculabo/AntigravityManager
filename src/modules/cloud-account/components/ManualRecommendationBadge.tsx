@@ -3,44 +3,44 @@ import { useTranslation } from 'react-i18next';
 
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/shared/ui/utils';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import type { ManualRecommendationContext } from '@/modules/cloud-account/utils/manual-account-recommendation';
+import type { ManualAccountRecommendation } from '@/modules/cloud-account/utils/manual-account-recommendation';
+import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 
 interface ManualRecommendationBadgeProps {
-  context: ManualRecommendationContext;
+  recommendation: ManualAccountRecommendation;
   className?: string;
 }
 
-const CONTEXT_I18N_KEYS: Record<ManualRecommendationContext, string> = {
-  overall: 'cloud.recommendation.context.overall',
-  claude: 'cloud.recommendation.context.claude',
-  pro3: 'cloud.recommendation.context.pro3',
-  flash: 'cloud.recommendation.context.flash',
+const CLIENT_LABELS: Record<AntigravityAppTarget, string> = {
+  classic: 'cloud.card.client-app',
+  ide: 'cloud.card.client-ide',
+  agy: 'cloud.card.client-cli',
 };
 
-export function ManualRecommendationBadge({ context, className }: ManualRecommendationBadgeProps) {
+export function ManualRecommendationBadge({
+  recommendation,
+  className,
+}: ManualRecommendationBadgeProps) {
   const { t } = useTranslation();
-  const contextLabel = t(CONTEXT_I18N_KEYS[context]);
+  const quotaLabel =
+    recommendation.family === 'gemini'
+      ? t('cloud.quota-display.five-hours-gemini')
+      : t('cloud.quota-display.five-hours-claude');
+  const clients = recommendation.targets.map((target) => t(CLIENT_LABELS[target])).join(', ');
 
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Badge
-            variant="secondary"
-            className={cn(
-              'border-primary/20 bg-primary/10 text-primary gap-1 px-1.5 py-0.5 text-[9px] font-semibold',
-              className,
-            )}
-          >
-            <Sparkles className="h-3 w-3" />
-            {t('cloud.recommendation.badge')}
-          </Badge>
-        </TooltipTrigger>
-        <TooltipContent className="max-w-64 text-xs">
-          {t('cloud.recommendation.description', { context: contextLabel })}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <Badge
+      variant="secondary"
+      className={cn(
+        'border-primary/20 bg-primary/10 text-primary max-w-full gap-1 px-1.5 py-0.5 text-xs font-semibold',
+        className,
+      )}
+    >
+      <Sparkles aria-hidden="true" className="h-3 w-3 shrink-0" />
+      <span className="min-w-0 wrap-break-word">
+        {t('cloud.recommendation.badge')} · {quotaLabel} {recommendation.fiveHourPercentage}% ·{' '}
+        {clients}
+      </span>
+    </Badge>
   );
 }

@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
 import type { AppConfig } from '@/modules/config/types';
-import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import {
   buildAccountTierOptions,
   filterAndSortCloudAccounts,
@@ -10,9 +9,8 @@ import {
 } from '@/modules/cloud-account/utils/account-tier-filter';
 import type { AccountSortKey } from '@/modules/cloud-account/utils/quota-display';
 import {
-  getManualAccountRecommendation,
-  prioritizeRecommendedAccount,
-  type ManualAccountRecommendation,
+  getManualAccountRecommendations,
+  type ManualAccountRecommendations,
 } from '@/modules/cloud-account/utils/manual-account-recommendation';
 
 const EMPTY_ACCOUNTS: CloudAccountView[] = [];
@@ -21,7 +19,7 @@ const EMPTY_MODEL_VISIBILITY: Record<string, boolean> = {};
 
 export interface CloudAccountListView {
   sortedAccounts: CloudAccountView[];
-  manualRecommendation: ManualAccountRecommendation | null;
+  recommendationsByAccount: ManualAccountRecommendations;
   tierOptions: AccountTierOption[];
   effectiveSelectedTierKeys: string[];
   effectiveSelectedTierKeySet: Set<string>;
@@ -33,7 +31,6 @@ export function useCloudAccountListView(
   accounts: CloudAccountView[] | undefined,
   config: Pick<AppConfig, 'account_tier_filter' | 'model_visibility'> | undefined,
   currentSort: AccountSortKey,
-  appTarget: AntigravityAppTarget,
 ): CloudAccountListView {
   const sourceAccounts = accounts ?? EMPTY_ACCOUNTS;
   const selectedTierKeys = config?.account_tier_filter ?? EMPTY_SELECTED_TIER_KEYS;
@@ -49,7 +46,7 @@ export function useCloudAccountListView(
     [effectiveSelectedTierKeys],
   );
 
-  const baseSortedAccounts = useMemo(() => {
+  const sortedAccounts = useMemo(() => {
     return filterAndSortCloudAccounts(sourceAccounts, {
       selectedTierKeys: effectiveSelectedTierKeys,
       sortKey: currentSort,
@@ -58,19 +55,9 @@ export function useCloudAccountListView(
     });
   }, [currentSort, effectiveSelectedTierKeys, modelVisibility, sourceAccounts, tierOptions]);
 
-  const manualRecommendation = useMemo(
-    () =>
-      getManualAccountRecommendation(baseSortedAccounts, {
-        appTarget,
-        sortKey: currentSort,
-        modelVisibility,
-      }),
-    [appTarget, baseSortedAccounts, currentSort, modelVisibility],
-  );
-
-  const sortedAccounts = useMemo(
-    () => prioritizeRecommendedAccount(baseSortedAccounts, manualRecommendation),
-    [baseSortedAccounts, manualRecommendation],
+  const recommendationsByAccount = useMemo(
+    () => getManualAccountRecommendations(sourceAccounts),
+    [sourceAccounts],
   );
 
   const visibleAccountIds = useMemo(
@@ -80,7 +67,7 @@ export function useCloudAccountListView(
 
   return {
     sortedAccounts,
-    manualRecommendation,
+    recommendationsByAccount,
     tierOptions,
     effectiveSelectedTierKeys,
     effectiveSelectedTierKeySet,

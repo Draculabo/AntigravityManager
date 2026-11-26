@@ -1213,10 +1213,6 @@ const fr = {
       'La configuration a changé mais son reçu de propriété n’a pas été enregistré. Vérifiez le profil avant de poursuivre.',
   },
   cloud: {
-    'recommendation-target': 'Client cible de la recommandation',
-    'use-recommended-account': 'Utiliser le compte recommandé',
-    'no-target-recommendation': 'Aucun compte admissible pour ce client',
-    'recommendation-target-classic': 'Classic',
     'project-id': {
       title: 'ID du projet',
       empty: 'Non défini',

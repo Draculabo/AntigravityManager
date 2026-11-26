@@ -24,8 +24,8 @@ vi.mock('@/modules/cloud-account/hooks/useProviderGrouping', () => ({
 vi.mock('@/modules/cloud-account/hooks/useOpenAccountValidationLink', () => ({
   useOpenAccountValidationLink: () => ({}),
 }));
-vi.mock('@/modules/cloud-account/components/CloudAccountProxyEditor', () => ({
-  CloudAccountProxyEditor: () => null,
+vi.mock('@/modules/cloud-account/components/CloudAccountProxyDialog', () => ({
+  CloudAccountProxyDialog: () => null,
 }));
 
 afterEach(cleanup);
@@ -53,7 +53,7 @@ const gridProps: Omit<ComponentProps<typeof CloudAccountGrid>, 'accounts' | 'gri
     fiveHour: { gemini: true, claude: true },
     weekly: { gemini: true, claude: true },
   },
-  manualRecommendation: null,
+  recommendationsByAccount: new Map(),
   hasActiveTierFilter: false,
   onRefresh: vi.fn(),
   onDelete: vi.fn(),

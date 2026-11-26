@@ -1,250 +1,190 @@
 import { describe, expect, it } from 'vitest';
 
 import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
-import {
-  getManualAccountRecommendation,
-  prioritizeRecommendedAccount,
-} from '@/modules/cloud-account/utils/manual-account-recommendation';
+import { getManualAccountRecommendations } from '@/modules/cloud-account/utils/manual-account-recommendation';
 
-const NOW = Date.parse('2026-09-28T00:00:00Z');
+const RESET = '2026-11-26T06:00:00Z';
+const ALL_CLIENTS = ['classic', 'ide', 'agy'];
 type Quota = NonNullable<CloudAccountView['quota']>;
 
-function createAccount(
-  id: string,
-  options: {
-    active?: boolean;
-    lastUsed?: number;
-    models?: Quota['models'];
-    quotaGroups?: Quota['quota_groups'];
-    status?: CloudAccountView['status'];
-  } = {},
-): CloudAccountView {
-  return {
-    id,
-    provider: 'google',
-    email: `${id}@example.com`,
-    proxy_configured: false,
-    quota:
-      options.models || options.quotaGroups
-        ? {
-            models: options.models ?? {},
-            quota_groups: options.quotaGroups,
-          }
-        : undefined,
-    created_at: 1,
-    last_used: options.lastUsed ?? 1,
-    status: options.status ?? 'active',
-    is_active: options.active,
-  };
-}
-
-function model(percentage: number, resetTime = '2026-09-28T05:00:00Z') {
-  return { percentage, resetTime };
-}
-
-function weeklyGroup(
-  groupName: string,
+function quotaGroup(
+  displayName: string,
+  window: '5h' | 'weekly',
   percentage: number,
-  resetTime: string,
 ): NonNullable<Quota['quota_groups']>[number] {
   return {
-    display_name: groupName,
+    display_name: displayName,
     buckets: [
       {
-        bucket_id: `${groupName.toLowerCase().replaceAll(' ', '-')}-weekly`,
-        window: 'weekly',
+        bucket_id: `${displayName}-${window}`,
+        window,
         remaining_fraction: percentage / 100,
-        reset_time: resetTime,
+        reset_time: RESET,
       },
     ],
   };
 }
 
-describe('manual account recommendation', () => {
-  it('prefers the highest weekly balance inside the earliest 24-hour reset cohort', () => {
-    const accounts = [
-      createAccount('current', {
-        active: true,
-        models: { 'gemini-3-pro': model(100) },
-        quotaGroups: [weeklyGroup('Gemini Pro Models', 100, '2026-09-28T04:00:00Z')],
-      }),
-      createAccount('earlier-low-balance', {
-        models: { 'gemini-3-pro': model(90) },
-        quotaGroups: [weeklyGroup('Gemini Pro Models', 20, '2026-09-28T10:00:00Z')],
-      }),
-      createAccount('same-day-high-balance', {
-        models: { 'gemini-3-pro': model(70) },
-        quotaGroups: [weeklyGroup('Gemini Pro Models', 80, '2026-09-28T20:00:00Z')],
-      }),
-      createAccount('later-cohort', {
-        models: { 'gemini-3-pro': model(95) },
-        quotaGroups: [weeklyGroup('Gemini Pro Models', 100, '2026-09-29T06:00:00Z')],
-      }),
-    ];
-
-    expect(
-      getManualAccountRecommendation(accounts, {
-        appTarget: 'classic',
-        sortKey: 'quota-pro3',
-        modelVisibility: {},
-        now: NOW,
-      }),
-    ).toEqual(
-      expect.objectContaining({
-        accountId: 'same-day-high-balance',
-        appTarget: 'classic',
-        context: 'pro3',
-        fiveHourPercentage: 70,
-        weeklyPercentage: 80,
-      }),
-    );
-  });
-
-  it('excludes only the current account of the requested client', () => {
-    const candidate = (id: string, balance: number) =>
-      createAccount(id, {
-        active: true,
-        models: { 'gemini-3-pro': model(90) },
-        quotaGroups: [weeklyGroup('Gemini Models', balance, '2026-09-28T10:00:00Z')],
-      });
-    const accounts = [
-      { ...candidate('classic-current', 100), is_active_classic: true, is_active_ide: false },
-      { ...candidate('ide-current', 90), is_active_ide: true },
-      { ...candidate('cli-current', 80), is_active_agy: true },
-    ];
-    const options = { sortKey: 'recently-used', modelVisibility: {}, now: NOW } as const;
-
-    expect(
-      (['classic', 'ide', 'agy'] as const).map((appTarget) =>
-        getManualAccountRecommendation(accounts, { ...options, appTarget }),
+function account(
+  id: string,
+  modelPercentages: Record<string, number>,
+  options: {
+    tier?: string;
+    groups?: Quota['quota_groups'];
+    state?: Partial<CloudAccountView>;
+  } = {},
+): CloudAccountView {
+  return {
+    id,
+    provider: 'google',
+    email: `${id}@example.test`,
+    created_at: 1,
+    last_used: 1,
+    proxy_configured: false,
+    status: 'active',
+    quota: {
+      models: Object.fromEntries(
+        Object.entries(modelPercentages).map(([model, percentage]) => [
+          model,
+          { percentage, resetTime: RESET },
+        ]),
       ),
-    ).toEqual([
-      expect.objectContaining({ appTarget: 'classic', accountId: 'ide-current' }),
-      expect.objectContaining({ appTarget: 'ide', accountId: 'classic-current' }),
-      expect.objectContaining({ appTarget: 'agy', accountId: 'classic-current' }),
-    ]);
-    expect(
-      getManualAccountRecommendation(accounts.slice(2), { ...options, appTarget: 'agy' }),
-    ).toBeNull();
-  });
+      subscription_tier: options.tier,
+      quota_groups: options.groups,
+    },
+    ...options.state,
+  };
+}
 
-  it('uses the selected model family and requires more than five percent five-hour quota', () => {
+describe('manual account recommendations', () => {
+  it('selects the highest-scoring distinct Gemini and Claude pair for each client', () => {
     const accounts = [
-      createAccount('gemini-only', {
-        models: { 'gemini-3-pro': model(100), 'claude-sonnet': model(5) },
-        quotaGroups: [weeklyGroup('Claude Models', 100, '2026-09-28T08:00:00Z')],
-      }),
-      createAccount('claude-eligible', {
-        models: { 'claude-sonnet': model(6) },
-        quotaGroups: [weeklyGroup('Claude Models', 30, '2026-09-28T12:00:00Z')],
-      }),
+      account(
+        'a',
+        { 'gemini-3.1-pro': 95, 'claude-sonnet-4-6': 10 },
+        {
+          state: { is_active_classic: true },
+        },
+      ),
+      account(
+        'b',
+        { 'gemini-3.1-pro': 80, 'claude-sonnet-4-6': 90 },
+        {
+          state: { is_active_ide: true },
+        },
+      ),
+      account(
+        'c',
+        { 'gemini-3.1-pro': 70, 'claude-sonnet-4-6': 75 },
+        {
+          state: { is_active_agy: true },
+        },
+      ),
     ];
 
-    expect(
-      getManualAccountRecommendation(accounts, {
-        appTarget: 'classic',
-        sortKey: 'quota-claude',
-        modelVisibility: {},
-        now: NOW,
-      })?.accountId,
-    ).toBe('claude-eligible');
-  });
-
-  it('ignores the dedicated Gemini 4 Argon weekly limit for Gemini Flash recommendations', () => {
-    const resetTime = '2026-09-28T10:00:00Z';
-    const accounts = [
-      createAccount('argon-exhausted', {
-        models: { 'gemini-3.8-flash-high': model(90) },
-        quotaGroups: [
-          weeklyGroup('Gemini Models', 80, resetTime),
-          weeklyGroup('Gemini 4 Argon', 0, resetTime),
+    expect(getManualAccountRecommendations(accounts)).toEqual(
+      new Map([
+        ['a', [{ family: 'gemini', fiveHourPercentage: 95, targets: ['ide', 'agy'] }]],
+        ['b', [{ family: 'claude', fiveHourPercentage: 90, targets: ['classic', 'agy'] }]],
+        [
+          'c',
+          [
+            { family: 'gemini', fiveHourPercentage: 70, targets: ['classic'] },
+            { family: 'claude', fiveHourPercentage: 75, targets: ['ide'] },
+          ],
         ],
-      }),
-      createAccount('argon-full', {
-        models: { 'gemini-3.8-flash-high': model(90) },
-        quotaGroups: [
-          weeklyGroup('Gemini Models', 60, resetTime),
-          weeklyGroup('Gemini 4 Argon', 100, resetTime),
-        ],
-      }),
-    ];
-
-    expect(
-      getManualAccountRecommendation(accounts, {
-        appTarget: 'classic',
-        sortKey: 'quota-flash',
-        modelVisibility: {},
-        now: NOW,
-      }),
-    ).toEqual(
-      expect.objectContaining({
-        accountId: 'argon-exhausted',
-        context: 'flash',
-        weeklyPercentage: 80,
-      }),
+      ]),
     );
   });
 
-  it('does not recommend accounts with stale, missing, or invalid weekly data', () => {
+  it('prioritizes paid accounts and grouped five-hour quota once the weekly guard passes', () => {
     const accounts = [
-      createAccount('missing-weekly', { models: { 'gemini-3-flash': model(80) } }),
-      createAccount('past-weekly', {
-        models: { 'gemini-3-flash': model(80) },
-        quotaGroups: [weeklyGroup('Gemini Flash Models', 80, '2026-09-27T23:00:00Z')],
-      }),
-      createAccount('invalid-weekly', {
-        models: { 'gemini-3-flash': model(80) },
-        quotaGroups: [weeklyGroup('Gemini Flash Models', 80, 'not-a-date')],
-      }),
+      account(
+        'depleted',
+        { 'gemini-3.1-pro': 100 },
+        {
+          tier: 'Ultra',
+          groups: [quotaGroup('Gemini', 'weekly', 5)],
+        },
+      ),
+      account(
+        'free',
+        { 'gemini-3.1-pro': 99 },
+        {
+          groups: [quotaGroup('Claude', '5h', 95)],
+        },
+      ),
+      account(
+        'paid',
+        { 'gemini-3.8-flash': 35 },
+        {
+          tier: 'Pro',
+          groups: [quotaGroup('Gemini', '5h', 20)],
+        },
+      ),
+      account(
+        'blocked',
+        { 'gemini-3.1-pro': 100 },
+        {
+          tier: 'Ultra',
+          state: {
+            health: {
+              validation: {
+                status: 'requires_action',
+                reason: 'VALIDATION_REQUIRED',
+                has_verification_link: false,
+              },
+            },
+          },
+        },
+      ),
     ];
 
-    expect(
-      getManualAccountRecommendation(accounts, {
-        appTarget: 'classic',
-        sortKey: 'quota-flash',
-        modelVisibility: {},
-        now: NOW,
-      }),
-    ).toBeNull();
+    expect(getManualAccountRecommendations(accounts)).toEqual(
+      new Map([['paid', [{ family: 'gemini', fiveHourPercentage: 20, targets: ALL_CLIENTS }]]]),
+    );
   });
 
-  it('places the recommendation immediately after pinned active accounts', () => {
+  it('uses Flash when Pro is absent and preserves an explicit zero Pro balance', () => {
     const accounts = [
-      createAccount('active-a', { active: true }),
-      createAccount('active-b', { active: true }),
-      createAccount('other-a'),
-      createAccount('recommended'),
-      createAccount('other-b'),
+      account('empty-pro', { 'gemini-3.1-pro': 0, 'gemini-3.8-flash': 100 }),
+      account(
+        'flash-only',
+        { 'gemini-3.8-flash': 60 },
+        {
+          groups: [quotaGroup('Gemini 4 Argon', 'weekly', 0)],
+        },
+      ),
     ];
 
-    expect(
-      prioritizeRecommendedAccount(accounts, {
-        accountId: 'recommended',
-        appTarget: 'classic',
-        context: 'overall',
-        fiveHourPercentage: 60,
-        weeklyPercentage: 80,
-        weeklyResetTime: '2026-09-28T10:00:00Z',
-      }).map((account) => account.id),
-    ).toEqual(['active-a', 'active-b', 'recommended', 'other-a', 'other-b']);
+    expect(getManualAccountRecommendations(accounts)).toEqual(
+      new Map([
+        ['flash-only', [{ family: 'gemini', fiveHourPercentage: 60, targets: ALL_CLIENTS }]],
+      ]),
+    );
   });
 
-  it('preserves the order of active accounts when one is recommended for another client', () => {
+  it('allows both model families to recommend the same account when it is the only candidate', () => {
     const accounts = [
-      { ...createAccount('recommended', { active: true }), is_active_ide: true },
-      { ...createAccount('classic-current', { active: true }), is_active_classic: true },
-      createAccount('other'),
+      account(
+        'only',
+        { 'gemini-3.1-pro': 73, 'claude-sonnet-4-6': 42 },
+        {
+          state: { is_active_classic: true },
+        },
+      ),
     ];
 
-    expect(
-      prioritizeRecommendedAccount(accounts, {
-        accountId: 'recommended',
-        appTarget: 'classic',
-        context: 'overall',
-        fiveHourPercentage: 90,
-        weeklyPercentage: 80,
-        weeklyResetTime: '2026-09-28T10:00:00Z',
-      }),
-    ).toEqual(accounts);
+    expect(getManualAccountRecommendations(accounts)).toEqual(
+      new Map([
+        [
+          'only',
+          [
+            { family: 'gemini', fiveHourPercentage: 73, targets: ['ide', 'agy'] },
+            { family: 'claude', fiveHourPercentage: 42, targets: ['ide', 'agy'] },
+          ],
+        ],
+      ]),
+    );
   });
 });
