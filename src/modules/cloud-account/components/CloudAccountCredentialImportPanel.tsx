@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { useToast } from '@/components/ui/use-toast';
 import { importCloudAccountRefreshToken } from '../actions/cloud';
 import { QUERY_KEYS } from '../hooks/useCloudAccounts';
 import { parseCloudAccountCredentialInput } from '../services/cloud-account-credential-input';
@@ -27,12 +28,15 @@ type Batch =
 
 interface CloudAccountCredentialImportPanelProps {
   onBusyChange: (busy: boolean) => void;
+  onComplete: () => void;
 }
 
 export function CloudAccountCredentialImportPanel({
   onBusyChange,
+  onComplete,
 }: CloudAccountCredentialImportPanelProps) {
   const { t } = useTranslation();
+  const { toast } = useToast();
   const queryClient = useQueryClient();
   const [input, setInput] = useState('');
   const [error, setError] = useState<string>();
@@ -65,9 +69,17 @@ export function CloudAccountCredentialImportPanel({
       setBatch({ phase: 'running', processed: index + 1, total: rows.length });
     }
 
-    setBatch({ phase: 'done', counts, failed });
     onBusyChange(false);
     queryClient.invalidateQueries({ queryKey: QUERY_KEYS.cloudAccounts });
+    if (failed.length === 0) {
+      toast({
+        title: t('cloud.add-flow.credentials.result', { ...counts, failed: 0 }),
+        variant: 'success',
+      });
+      onComplete();
+      return;
+    }
+    setBatch({ phase: 'done', counts, failed });
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {

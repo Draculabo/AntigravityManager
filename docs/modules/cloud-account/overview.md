@@ -19,8 +19,9 @@ On the Accounts page, **Add Account** offers three methods:
   for another browser. Manager saves the account after the callback. If automatic delivery fails,
   paste the full callback address into the manual sign-in form.
 - **Token / JSON** accepts one refresh token per line or JSON with a `refresh_token` or
-  `refreshToken` field. It shows import progress and counts. Use **Retry failed** to retry only
-  failed entries. Expand **Import from file** to restore a Manager backup.
+  `refreshToken` field. If every entry imports successfully or is skipped, the dialog closes and
+  Manager shows the result. If any entry fails, the dialog stays open. Use **Retry failed** to
+  retry only those entries. Expand **Import from file** to restore a Manager backup.
 - **This device** scans supported local clients and shows a preview before any account is imported.
 
 The **Import / Export** menu also opens local account discovery, file import, and account export.

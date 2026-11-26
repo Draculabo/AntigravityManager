@@ -162,7 +162,31 @@ describe('account dialog state ownership', () => {
     ).toBe(true);
   });
 
-  it('de-duplicates pasted credentials and retries only failed rows', async () => {
+  it.each(['added', 'skipped'] as const)(
+    'closes the add dialog after a pasted credential is %s',
+    async (status) => {
+      actions.importCloudAccountRefreshToken.mockResolvedValueOnce({
+        status,
+        email: 'test@example.test',
+      });
+      renderDialogs();
+      await openLogin();
+      await userEvent.click(screen.getByRole('tab', { name: 'cloud.add-flow.tabs.credentials' }));
+      fireEvent.change(screen.getByLabelText('cloud.add-flow.credentials.label'), {
+        target: { value: 'synthetic-refresh-token' },
+      });
+      await userEvent.click(
+        screen.getByRole('button', { name: 'cloud.add-flow.credentials.import' }),
+      );
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(actions.toast).toHaveBeenCalledWith({
+        title: 'cloud.add-flow.credentials.result',
+        variant: 'success',
+      });
+    },
+  );
+
+  it('keeps partial results open and closes after retrying only failed rows', async () => {
     actions.importCloudAccountRefreshToken
       .mockResolvedValueOnce({ status: 'added', email: 'first@example.test' })
       .mockResolvedValueOnce({ status: 'failed', reason: 'verification-failed' })
@@ -178,16 +202,11 @@ describe('account dialog state ownership', () => {
     await userEvent.click(
       screen.getByRole('button', { name: 'cloud.add-flow.credentials.import' }),
     );
-    await userEvent.click(
-      await screen.findByRole('button', { name: 'cloud.add-flow.credentials.retry' }),
-    );
-    await waitFor(() =>
-      expect(
-        screen.queryByRole('button', {
-          name: 'cloud.add-flow.credentials.retry',
-        }),
-      ).toBeNull(),
-    );
+    const retry = await screen.findByRole('button', { name: 'cloud.add-flow.credentials.retry' });
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(actions.toast).not.toHaveBeenCalled();
+    await userEvent.click(retry);
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(actions.importCloudAccountRefreshToken.mock.calls).toEqual([
       [first],
       [second],

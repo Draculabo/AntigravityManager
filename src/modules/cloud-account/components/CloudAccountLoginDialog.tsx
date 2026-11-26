@@ -103,7 +103,10 @@ export function CloudAccountLoginDialog() {
             </TabsContent>
             <TabsContent value="credentials" className="mt-4">
               {method === 'credentials' && (
-                <CloudAccountCredentialImportPanel onBusyChange={setImporting} />
+                <CloudAccountCredentialImportPanel
+                  onBusyChange={setImporting}
+                  onComplete={() => setOpen(false)}
+                />
               )}
             </TabsContent>
             <TabsContent value="local" className="mt-4">
