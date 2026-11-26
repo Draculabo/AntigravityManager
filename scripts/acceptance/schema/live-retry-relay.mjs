@@ -31,7 +31,7 @@ export async function createLiveRetryRelay({ forward = fetch } = {}) {
       }
     });
     request.on('end', () => {
-      void (async () => {
+      (async () => {
         const controller = new AbortController();
         pending.add(controller);
         response.once('close', () => {

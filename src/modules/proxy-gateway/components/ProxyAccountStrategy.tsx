@@ -62,7 +62,7 @@ export function ProxyAccountStrategy({
         value={value}
         disabled={saving}
         onValueChange={(next) => {
-          void save(next);
+          save(next);
         }}
       >
         <SelectTrigger id={id}>
@@ -96,7 +96,7 @@ export function ProxyAccountStrategy({
           checked={weeklyQuotaPriorityEnabled}
           disabled={saving}
           onCheckedChange={(next) => {
-            void saveWeeklyPriority(next);
+            saveWeeklyPriority(next);
           }}
         />
       </div>

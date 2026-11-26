@@ -58,7 +58,7 @@ export async function verifyOperationReporting(
       buffers.push(chunk);
     });
     request.on('end', () => {
-      void (async () => {
+      (async () => {
         const body = Buffer.concat(buffers);
         const decoded =
           request.headers['content-encoding'] === 'gzip'

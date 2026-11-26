@@ -37,7 +37,7 @@ export function CloudAccountLoginDialog() {
 
   const accountSaved = useCallback(
     (isCurrent: boolean) => {
-      void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.cloudAccounts });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.cloudAccounts });
       if (isCurrent) {
         setOpen(false);
         toast({ title: t('cloud.toast.addSuccess'), variant: 'success' });

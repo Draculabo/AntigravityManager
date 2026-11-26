@@ -75,7 +75,7 @@ app.on('window-all-closed', () => app.quit());
   assert.equal(termsBlocked.clientScreen.termsRequired, true);
   assert.equal(termsBlocked.clientVerification, 'credentials-and-window-only');
   const initializing = verifyClientIdentity(browser, 'fixture@example.com', async () => true);
-  void initializing.catch(() => {});
+  initializing.catch(() => {});
   assert.equal(
     await Promise.race([initializing.then(() => 'completed'), delay(750).then(() => 'pending')]),
     'pending',
@@ -89,7 +89,7 @@ app.on('window-all-closed', () => app.quit());
     element.textContent = 'Authenticating...';
   });
   const verification = verifyClientIdentity(browser, 'fixture@example.com', async () => false);
-  void verification.catch(() => {});
+  verification.catch(() => {});
   const early = await Promise.race([
     verification.then(() => 'completed'),
     delay(750).then(() => 'pending'),
@@ -110,7 +110,7 @@ app.on('window-all-closed', () => app.quit());
     document.body.innerHTML = '<p>Loading</p>';
   });
   const delayedPanel = verifyClientIdentity(browser, 'fixture@example.com', async () => false);
-  void delayedPanel.catch(() => {});
+  delayedPanel.catch(() => {});
   await delay(750);
   await page.evaluate(() => {
     document.body.innerHTML = '<button>Settings</button>';
@@ -127,7 +127,7 @@ app.on('window-all-closed', () => app.quit());
   const persistence = verifyClientIdentity(browser, 'fixture@example.com', async () => true, {
     readTermsAcceptance: async () => acceptance,
   });
-  void persistence.catch(() => {});
+  persistence.catch(() => {});
   assert.equal(
     await Promise.race([persistence.then(() => 'completed'), delay(750).then(() => 'pending')]),
     'pending',

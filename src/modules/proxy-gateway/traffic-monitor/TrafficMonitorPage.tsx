@@ -550,7 +550,9 @@ export function TrafficMonitorPage({
             variant="outline"
             size="sm"
             disabled={list.isFetching}
-            onClick={() => void list.refetch()}
+            onClick={() => {
+              list.refetch();
+            }}
           >
             {t('action.retry')}
           </Button>
@@ -563,7 +565,13 @@ export function TrafficMonitorPage({
           description={t('traffic.load-failed-description')}
           className="min-h-0 flex-1"
         >
-          <Button variant="outline" disabled={list.isFetching} onClick={() => void list.refetch()}>
+          <Button
+            variant="outline"
+            disabled={list.isFetching}
+            onClick={() => {
+              list.refetch();
+            }}
+          >
             {t('action.retry')}
           </Button>
         </FeedbackState>
@@ -573,7 +581,9 @@ export function TrafficMonitorPage({
           loading={list.isLoading}
           tab={tab}
           onOpen={setSelectedId}
-          onCopyCurl={(id) => void copyCurl(id)}
+          onCopyCurl={(id) => {
+            copyCurl(id);
+          }}
         />
       )}
 
@@ -609,7 +619,9 @@ export function TrafficMonitorPage({
       <TrafficDetailDialog
         id={selectedId}
         onOpenChange={(open) => !open && setSelectedId(null)}
-        onCopyCurl={(id, attemptId) => void copyCurl(id, attemptId)}
+        onCopyCurl={(id, attemptId) => {
+          copyCurl(id, attemptId);
+        }}
         includeCredentials={includeCredentials}
       />
     </div>

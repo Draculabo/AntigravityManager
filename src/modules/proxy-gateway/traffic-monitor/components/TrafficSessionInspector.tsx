@@ -87,8 +87,8 @@ export function TrafficSessionInspector({
             <Button
               variant="outline"
               onClick={() => {
-                void report.refetch();
-                void requests.refetch();
+                report.refetch();
+                requests.refetch();
               }}
             >
               {t('action.retry')}
@@ -162,7 +162,9 @@ export function TrafficSessionInspector({
         <TrafficDetailDialog
           id={selectedRequest}
           includeCredentials={false}
-          onCopyCurl={(id, attemptId) => void copy(id, attemptId)}
+          onCopyCurl={(id, attemptId) => {
+            copy(id, attemptId);
+          }}
           onOpenChange={(open) => {
             if (!open) {
               setSelectedRequest(null);

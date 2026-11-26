@@ -33,7 +33,7 @@ export function registerGeminiQueryCredentialIngress(instance: FastifyInstance):
   instance.addHook('onRequest', (request, reply, done) => {
     const credential = readGeminiQueryCredential(request.url, request.headers);
     if (credential.kind === 'invalid') {
-      void reply.code(400).send({
+      reply.code(400).send({
         error: {
           code: 400,
           message: 'The key query parameter must occur only once.',

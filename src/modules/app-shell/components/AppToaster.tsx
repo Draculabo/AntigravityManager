@@ -73,7 +73,9 @@ export function AppToaster() {
       size="sm"
       disabled={report?.state === 'preparing'}
       aria-busy={report?.id === notification.id && report.state === 'preparing'}
-      onClick={() => void reportIssue(notification)}
+      onClick={() => {
+        reportIssue(notification);
+      }}
     >
       {report?.id === notification.id && report.state === 'preparing' ? (
         <Loader2 className="size-4 animate-spin" aria-hidden="true" />

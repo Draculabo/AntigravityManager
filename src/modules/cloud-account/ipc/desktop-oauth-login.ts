@@ -87,7 +87,7 @@ export class DesktopOAuthLogin {
         this.pending = null;
       }
     };
-    void pending.then(clearPending, clearPending);
+    pending.then(clearPending, clearPending);
     return pending;
   }
 

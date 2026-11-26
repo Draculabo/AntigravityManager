@@ -485,7 +485,7 @@ async function check(): Promise<void> {
     }
   }
 }
-void check().catch((error: unknown) => {
+check().catch((error: unknown) => {
   process.stderr.write(
     `Core bootstrap acceptance failed: ${error instanceof Error ? error.stack : 'unknown error'}\n`,
   );

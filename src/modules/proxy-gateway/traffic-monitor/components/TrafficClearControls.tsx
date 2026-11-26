@@ -44,7 +44,7 @@ export function TrafficClearControls({ tab }: { tab: TrafficClass }) {
       submitting.current = false;
       setPending(false);
       // The owner may have committed even when its acknowledgement was lost.
-      void client.invalidateQueries({ queryKey: ['gateway'] });
+      client.invalidateQueries({ queryKey: ['gateway'] });
     }
   }
   return (
@@ -55,7 +55,9 @@ export function TrafficClearControls({ tab }: { tab: TrafficClass }) {
         variant={confirming ? 'destructive' : 'outline'}
         disabled={pending}
         aria-busy={pending}
-        onClick={() => void clear()}
+        onClick={() => {
+          clear();
+        }}
       >
         <Trash2 className="size-4" aria-hidden="true" />
         {t(

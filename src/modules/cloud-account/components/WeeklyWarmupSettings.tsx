@@ -64,7 +64,7 @@ export function WeeklyWarmupSettings() {
           <Button
             variant="outline"
             onClick={() => {
-              void refetch();
+              refetch();
             }}
           >
             {t('settings.weekly-warmup.retry')}

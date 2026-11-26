@@ -503,7 +503,7 @@ export class AccountLeaseHydrationPolicy {
       this.options.logger.error(`Failed to persist token state for ${accountId}`, error);
     });
     this.persistenceTails.set(accountId, task);
-    void task.finally(() => {
+    task.finally(() => {
       if (this.persistenceTails.get(accountId) === task) {
         this.persistenceTails.delete(accountId);
       }

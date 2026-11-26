@@ -90,7 +90,7 @@ async function runCli() {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  void runCli().catch(() => {
+  runCli().catch(() => {
     console.error('The error-notification demo could not start.');
     process.exitCode = 1;
   });

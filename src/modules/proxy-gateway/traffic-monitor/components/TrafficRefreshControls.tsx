@@ -21,12 +21,12 @@ export function TrafficRefreshControls({ tab, page, selectedId }: TrafficRefresh
         return;
       }
       if (page === 0 && !selectedId) {
-        void queryClient.invalidateQueries({ queryKey: ['gateway', 'traffic-list', tab] });
+        queryClient.invalidateQueries({ queryKey: ['gateway', 'traffic-list', tab] });
       } else {
         setNewCount((current) => current + 1);
       }
       if (selectedId && event.id === selectedId) {
-        void queryClient.invalidateQueries({ queryKey: ['gateway', 'traffic-detail', selectedId] });
+        queryClient.invalidateQueries({ queryKey: ['gateway', 'traffic-detail', selectedId] });
       }
     });
   }, [page, queryClient, selectedId, tab]);
@@ -38,11 +38,23 @@ export function TrafficRefreshControls({ tab, page, selectedId }: TrafficRefresh
   return (
     <>
       {newCount > 0 && (
-        <Button size="sm" variant="secondary" onClick={() => void refresh()}>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => {
+            refresh();
+          }}
+        >
           {t('traffic.new-records', { count: newCount })}
         </Button>
       )}
-      <Button size="sm" variant="outline" onClick={() => void refresh()}>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => {
+          refresh();
+        }}
+      >
         <RefreshCw className="h-4 w-4" /> {t('traffic.refresh')}
       </Button>
     </>

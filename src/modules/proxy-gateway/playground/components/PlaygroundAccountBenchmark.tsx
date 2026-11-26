@@ -462,7 +462,9 @@ export function PlaygroundAccountBenchmark({
               </Button>
             ) : (
               <Button
-                onClick={() => void run()}
+                onClick={() => {
+                  run();
+                }}
                 disabled={!account || !checkedIds.length || !prompt.trim()}
               >
                 <Play size={14} />

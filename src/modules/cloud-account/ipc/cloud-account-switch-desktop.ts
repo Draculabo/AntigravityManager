@@ -17,7 +17,7 @@ export function switchCloudAccountForDesktop(
     onSuccess: !appTarget || appTarget === 'classic' ? notifyTrayUpdate : undefined,
   });
   inFlightSwitches.add(task);
-  void task.then(
+  task.then(
     () => inFlightSwitches.delete(task),
     () => inFlightSwitches.delete(task),
   );

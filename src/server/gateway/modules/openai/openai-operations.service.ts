@@ -946,7 +946,7 @@ export class OpenAIOperations extends BaseProxyController {
             completionSeen = true;
             persistencePending = true;
             flowControlled?.pause();
-            void this.saveResponsesSession(completedResponse, prepared, signal).then(
+            this.saveResponsesSession(completedResponse, prepared, signal).then(
               () => {
                 persistencePending = false;
                 if (subscriber.closed) {

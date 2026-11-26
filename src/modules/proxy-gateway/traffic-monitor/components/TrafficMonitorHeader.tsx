@@ -53,7 +53,9 @@ export function TrafficMonitorHeader({ navigation }: { navigation?: ReactNode })
               <AuditStorageUsage
                 stats={stats.data}
                 failed={stats.isError}
-                retry={() => void stats.refetch()}
+                retry={() => {
+                  stats.refetch();
+                }}
               />
               {(stats.data?.droppedCount ?? 0) > 0 && (
                 <div className="mt-2 space-y-1 border-t pt-2">

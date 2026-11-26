@@ -92,7 +92,13 @@ function ProxyPage() {
         )}
         className="h-full"
       >
-        <Button onClick={() => void retryService()}>{t('settings.service-retry', 'Retry')}</Button>
+        <Button
+          onClick={() => {
+            retryService();
+          }}
+        >
+          {t('settings.service-retry', 'Retry')}
+        </Button>
       </FeedbackState>
     );
   }
@@ -143,7 +149,12 @@ function ProxyPage() {
                     onError={setGatewayError}
                   />
                 ) : (
-                  <Button variant="outline" onClick={() => void runtimeStatus.refetch()}>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      runtimeStatus.refetch();
+                    }}
+                  >
                     {t('agent-tools.retry')}
                   </Button>
                 )}

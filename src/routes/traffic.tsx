@@ -88,7 +88,7 @@ function TrafficRoute() {
       ) {
         return;
       }
-      void navigate({ replace: true, search: { ...filters, view: 'requests' } });
+      navigate({ replace: true, search: { ...filters, view: 'requests' } });
     },
     [
       navigate,
@@ -112,7 +112,7 @@ function TrafficRoute() {
     ],
   );
   const openRequests = (drilldown: UsageDrilldown) => {
-    void navigate({
+    navigate({
       search: { ...drilldown, view: 'requests', page: 0, search: '', tab: 'model' },
     });
   };
@@ -134,7 +134,7 @@ function TrafficRoute() {
                 className="text-muted-foreground aria-pressed:bg-card aria-pressed:text-foreground h-8 min-h-8 px-3 font-medium aria-pressed:shadow-sm md:px-4"
                 onClick={() => {
                   if (view !== value) {
-                    void navigate({ search: { ...search, view: value } });
+                    navigate({ search: { ...search, view: value } });
                   }
                 }}
               >
@@ -147,9 +147,9 @@ function TrafficRoute() {
       <TrafficUsageWorkspace
         view={view}
         openRequests={openRequests}
-        openRequestHistory={() =>
-          void navigate({ search: { view: 'requests', page: 0, search: '', tab: 'model' } })
-        }
+        openRequestHistory={() => {
+          navigate({ search: { view: 'requests', page: 0, search: '', tab: 'model' } });
+        }}
       />
       {view === 'requests' && (
         <TrafficMonitorPage

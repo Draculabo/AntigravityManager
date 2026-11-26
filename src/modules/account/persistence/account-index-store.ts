@@ -136,7 +136,7 @@ export function mutateAccountIndex<T>(
       const draft = cloneBoundaryValue(readValidatedIndex(filePath));
       const result = mutation(draft);
       if (isPromiseLike(result)) {
-        void Promise.resolve(result).catch(() => undefined);
+        Promise.resolve(result).catch(() => undefined);
         throw new AccountIndexAsyncMutationError();
       }
 

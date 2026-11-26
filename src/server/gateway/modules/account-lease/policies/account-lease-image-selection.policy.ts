@@ -143,7 +143,7 @@ export class AccountLeaseImageSelectionPolicy {
       };
       const abort = () => fail(signal.reason);
       signal.addEventListener('abort', abort, { once: true });
-      void selection.then(finish, fail);
+      selection.then(finish, fail);
       if (signal.aborted) {
         abort();
       }

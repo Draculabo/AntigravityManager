@@ -71,7 +71,7 @@ function getUpdater(): NsisUpdater {
     }
     downloadedVersion = null;
     broadcast('downloading');
-    void startNsisDownload();
+    startNsisDownload();
   });
   next.on('download-progress', (progress: ProgressInfo) => {
     if (!Number.isFinite(progress.percent)) {
@@ -155,7 +155,7 @@ export function downloadNsisUpdate(): DownloadResult {
     return { status: 'already-downloading' };
   }
 
-  void startNsisDownload();
+  startNsisDownload();
   return { status: 'started' };
 }
 

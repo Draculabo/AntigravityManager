@@ -67,7 +67,9 @@ export function TrafficRequestCsvAction({
         size="xs"
         aria-busy={state === 'exporting'}
         disabled={disabled || state === 'exporting'}
-        onClick={() => void start()}
+        onClick={() => {
+          start();
+        }}
       >
         <Download />
         {t(state === 'exporting' ? 'traffic.usage-csv-exporting' : 'traffic.usage-csv-export')}

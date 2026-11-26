@@ -64,7 +64,7 @@ export function createLocalAccountOwner(policy: LocalAccountPolicy) {
       );
     }
     active.add(task);
-    void task.then(
+    task.then(
       () => active.delete(task),
       () => active.delete(task),
     );

@@ -96,7 +96,13 @@ function Preview() {
             }
           />
         </label>
-        <Button onClick={() => void apply()}>Show update notice</Button>
+        <Button
+          onClick={() => {
+            apply();
+          }}
+        >
+          Show update notice
+        </Button>
         <Button variant="outline" onClick={() => document.documentElement.classList.toggle('dark')}>
           Toggle theme
         </Button>

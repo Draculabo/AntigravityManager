@@ -79,7 +79,7 @@ export function createAuditFileOwner(source: BodySource = trafficAuditService) {
       () => undefined,
     );
     active.add(work);
-    void work.then(
+    work.then(
       () => active.delete(work),
       () => active.delete(work),
     );

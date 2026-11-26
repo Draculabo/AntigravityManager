@@ -353,7 +353,9 @@ export function TrafficUsageWorkspace({
           aria-label={t('traffic.usage-refresh')}
           title={t('traffic.usage-refresh')}
           disabled={!selected.success || usage.isFetching}
-          onClick={() => void usage.refetch()}
+          onClick={() => {
+            usage.refetch();
+          }}
         >
           <RefreshCw className={usage.isFetching ? 'motion-safe:animate-spin' : undefined} />
         </Button>
@@ -391,7 +393,12 @@ export function TrafficUsageWorkspace({
         <FeedbackState kind="empty" title={t('traffic.usage-invalid-range')} />
       ) : usage.isError ? (
         <FeedbackState kind="error" title={t('traffic.usage-load-failed')}>
-          <Button variant="outline" onClick={() => void usage.refetch()}>
+          <Button
+            variant="outline"
+            onClick={() => {
+              usage.refetch();
+            }}
+          >
             {t('traffic.usage-refresh')}
           </Button>
         </FeedbackState>

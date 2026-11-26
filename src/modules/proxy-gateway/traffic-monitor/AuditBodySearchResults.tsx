@@ -46,7 +46,9 @@ export function AuditBodySearchResults({
           size="sm"
           variant="outline"
           disabled={pending || selection.index <= 0}
-          onClick={() => void jump(selection.index - 1)}
+          onClick={() => {
+            jump(selection.index - 1);
+          }}
         >
           {t('traffic.previous-match')}
         </Button>
@@ -54,7 +56,9 @@ export function AuditBodySearchResults({
           size="sm"
           variant="outline"
           disabled={pending || selection.index + 1 >= result.matches.length}
-          onClick={() => void jump(selection.index + 1)}
+          onClick={() => {
+            jump(selection.index + 1);
+          }}
         >
           {t('traffic.next-match')}
         </Button>
@@ -66,7 +70,9 @@ export function AuditBodySearchResults({
           disabled={pending}
           aria-pressed={selection.index === index}
           className="hover:bg-muted focus-visible:ring-ring block w-full cursor-default truncate rounded px-1 py-0.5 text-left font-mono focus-visible:ring-2"
-          onClick={() => void jump(index)}
+          onClick={() => {
+            jump(index);
+          }}
         >
           @{match.offset}: {match.snippet}
         </button>

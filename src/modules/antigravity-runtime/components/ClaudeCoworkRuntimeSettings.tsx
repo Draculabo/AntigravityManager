@@ -40,7 +40,14 @@ export function ClaudeCoworkRuntimeSettings() {
               disabled={busy}
               onChange={(event) => setCustomPath(event.target.value)}
             />
-            <Button type="button" variant="outline" disabled={busy} onClick={() => void view.scan(customPath)}>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              onClick={() => {
+                view.scan(customPath);
+              }}
+            >
               {view.pending === 'scan' && <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />}
               {t('settings.cowork-runtime.scan')}
             </Button>
@@ -80,13 +87,34 @@ export function ClaudeCoworkRuntimeSettings() {
               </p>
               {interrupted && <p role="alert" className="text-destructive text-sm">{t('settings.cowork-runtime.interrupted-help')}</p>}
               <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="outline" disabled={busy} onClick={() => void view.read('inspect')}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => {
+                    view.read('inspect');
+                  }}
+                >
                   {t('settings.cowork-runtime.inspect')}
                 </Button>
-                <Button type="button" variant="outline" disabled={busy || interrupted} onClick={() => void view.read('apply')}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy || interrupted}
+                  onClick={() => {
+                    view.read('apply');
+                  }}
+                >
                   {t('settings.cowork-runtime.preview')}
                 </Button>
-                <Button type="button" variant="outline" disabled={busy || !eligible} onClick={() => void view.read('restore')}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy || !eligible}
+                  onClick={() => {
+                    view.read('restore');
+                  }}
+                >
                   {t('settings.cowork-runtime.preview-restore')}
                 </Button>
               </div>
@@ -100,7 +128,14 @@ export function ClaudeCoworkRuntimeSettings() {
                     <p role="alert" className="text-destructive text-sm">{t(`settings.cowork-runtime.failures.${view.lifecycle.code}`)}</p>
                   )}
                   <div className="flex flex-wrap gap-2">
-                    <Button type="button" variant="outline" disabled={busy} onClick={() => void view.read('lifecycle')}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => {
+                        view.read('lifecycle');
+                      }}
+                    >
                       {t('settings.cowork-runtime.refresh-process')}
                     </Button>
                     <Button type="button" variant="outline" disabled={busy || view.lifecycle?.state !== 'running' || view.lifecycle.code !== null} onClick={() => view.reviewLifecycle('stop')}>

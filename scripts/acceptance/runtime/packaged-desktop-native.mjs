@@ -118,7 +118,7 @@ async function closeDesktop(desktop) {
   const closed = once(desktop.child, 'exit');
   const session = await desktop.browser.newBrowserCDPSession();
   // Electron's Browser.close invokes Browser::Quit, including the before-quit drain.
-  void session.send('Browser.close').catch(() => undefined);
+  session.send('Browser.close').catch(() => undefined);
   await Promise.race([
     closed,
     wait(40_000, undefined, { ref: false }).then(() => {

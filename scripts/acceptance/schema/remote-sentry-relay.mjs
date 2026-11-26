@@ -93,7 +93,7 @@ export async function createRemoteSentryRelay(originalDsn) {
         }
       })();
       pending.add(forwarding);
-      void forwarding.finally(() => pending.delete(forwarding));
+      forwarding.finally(() => pending.delete(forwarding));
     });
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));

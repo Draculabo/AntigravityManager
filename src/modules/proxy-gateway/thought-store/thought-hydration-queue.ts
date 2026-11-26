@@ -110,7 +110,7 @@ export class ThoughtHydrationQueue {
         continue;
       }
       this.active = true;
-      void this.execute(entry);
+      this.execute(entry);
       return;
     }
   }

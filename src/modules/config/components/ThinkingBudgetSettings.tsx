@@ -285,7 +285,12 @@ export function ThinkingBudgetSettings({
           <p className="text-muted-foreground text-sm">{t('settings.thinkingBudget.clientHint')}</p>
         )}
         <div className="flex items-center gap-3">
-          <Button disabled={!available || busy || hasInvalid} onClick={() => void saveAll()}>
+          <Button
+            disabled={!available || busy || hasInvalid}
+            onClick={() => {
+              saveAll();
+            }}
+          >
             {busy ? t('settings.service-save') + '…' : t('settings.service-save')}
           </Button>
           {hasInvalid ? (

@@ -47,7 +47,7 @@ export async function createMultiClientRelay({
     });
     request.once('error', () => response.destroy());
     request.on('end', () => {
-      void (async () => {
+      (async () => {
         const controller = new AbortController();
         controllers.add(controller);
         response.once('close', () => {

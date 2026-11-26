@@ -113,7 +113,13 @@ export function ErrorDiagnosticBrowser({ role }: { role: ErrorDiagnosticRole }) 
           ) : records.isError ? (
             <div role="alert" className="space-y-3 py-6 text-sm">
               <p>{t('error-diagnostics.load-failed')}</p>
-              <Button variant="outline" size="sm" onClick={() => void records.refetch()}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  records.refetch();
+                }}
+              >
                 {t('error-diagnostics.retry')}
               </Button>
             </div>

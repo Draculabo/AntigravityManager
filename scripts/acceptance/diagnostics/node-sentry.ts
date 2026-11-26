@@ -2,7 +2,7 @@ import { addBreadcrumb, close, flush, setContext, setTag, setUser } from '@sentr
 import { verifyOperationReporting } from './operation-sentry';
 import { initializeCoreErrorReporting } from '../../../src/core/error-reporting';
 
-void verifyOperationReporting(
+verifyOperationReporting(
   async () => initializeCoreErrorReporting(),
   { addBreadcrumb, close, flush, setContext, setTag, setUser },
   'standalone-core',

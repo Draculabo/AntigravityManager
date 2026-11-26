@@ -175,7 +175,13 @@ export function IdentityProfileDialog({ account, open, onOpenChange }: IdentityP
               title={t('cloud.identity.load-failed')}
               description={t('cloud.identity.retry-description')}
             >
-              <Button variant="outline" disabled={refreshing} onClick={() => void refetch()}>
+              <Button
+                variant="outline"
+                disabled={refreshing}
+                onClick={() => {
+                  refetch();
+                }}
+              >
                 {t('action.retry')}
               </Button>
             </FeedbackState>
@@ -196,7 +202,9 @@ export function IdentityProfileDialog({ account, open, onOpenChange }: IdentityP
                     variant="outline"
                     size="sm"
                     disabled={refreshing || actionKey !== null}
-                    onClick={() => void refetch()}
+                    onClick={() => {
+                      refetch();
+                    }}
                   >
                     {t('action.retry')}
                   </Button>

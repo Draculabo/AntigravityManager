@@ -67,7 +67,7 @@ export function CloudAccountCredentialImportPanel({
 
     setBatch({ phase: 'done', counts, failed });
     onBusyChange(false);
-    void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.cloudAccounts });
+    queryClient.invalidateQueries({ queryKey: QUERY_KEYS.cloudAccounts });
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -80,7 +80,7 @@ export function CloudAccountCredentialImportPanel({
       setError(parsed.reason);
       return;
     }
-    void importRows(
+    importRows(
       parsed.credentials.map((credential, index) => ({ credential, index })),
       { added: 0, updated: 0, skipped: parsed.duplicates },
     );
@@ -158,7 +158,9 @@ export function CloudAccountCredentialImportPanel({
                 variant="outline"
                 className="justify-self-start"
                 disabled={fileBusy}
-                onClick={() => void importRows(batch.failed, batch.counts)}
+                onClick={() => {
+                  importRows(batch.failed, batch.counts);
+                }}
               >
                 {t('cloud.add-flow.credentials.retry')}
               </Button>

@@ -36,7 +36,7 @@ export function createOpenCodeOwner(
       () => undefined,
     );
     active.add(task);
-    void task.then(
+    task.then(
       () => active.delete(task),
       () => active.delete(task),
     );

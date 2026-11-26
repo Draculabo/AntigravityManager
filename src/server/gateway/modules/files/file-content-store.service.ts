@@ -60,7 +60,7 @@ export class FileContentStore {
     const sweepIntervalMs = options?.sweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS;
     if (sweepIntervalMs > 0) {
       this.sweepTimer = setInterval(() => {
-        void this.sweep().catch(() => undefined);
+        this.sweep().catch(() => undefined);
       }, sweepIntervalMs);
       this.sweepTimer.unref?.();
     }
@@ -228,7 +228,7 @@ export class FileContentStore {
     }
     if (record.expireTimeMs <= Date.now()) {
       this.records.delete(id);
-      void this.persistIndex().catch(() => undefined);
+      this.persistIndex().catch(() => undefined);
       throw FileStoreError.expired(id);
     }
     return record;

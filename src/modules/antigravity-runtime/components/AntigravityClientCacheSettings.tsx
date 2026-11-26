@@ -157,7 +157,9 @@ export function AntigravityClientCacheSettings() {
                 <Button
                   variant="outline"
                   disabled={isLoadingPaths}
-                  onClick={() => void handleOpenDialog()}
+                  onClick={() => {
+                    handleOpenDialog();
+                  }}
                 >
                   {t('action.retry')}
                 </Button>

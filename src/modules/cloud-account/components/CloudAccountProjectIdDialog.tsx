@@ -108,7 +108,9 @@ function ProjectIdEditor({ accountId }: { accountId: string }) {
         <Button
           type="button"
           variant="outline"
-          onClick={() => void current.refetch()}
+          onClick={() => {
+            current.refetch();
+          }}
           disabled={current.isFetching}
         >
           {t('cloud.project-id.retry')}

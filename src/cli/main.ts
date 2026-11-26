@@ -13,7 +13,7 @@ const launcher = new ServiceLauncher({
   launchCore: () => launchDetachedCore(resolveCoreEntry(process.argv[1])),
 });
 
-void runCli(
+runCli(
   process.argv.slice(2),
   launcher,
   {

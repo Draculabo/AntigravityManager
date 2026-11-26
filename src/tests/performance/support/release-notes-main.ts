@@ -141,7 +141,7 @@ async function openPreview() {
   }
 }
 
-void openPreview().catch((error: unknown) => {
+openPreview().catch((error: unknown) => {
   console.error(error);
   app.exit(1);
 });

@@ -11,4 +11,4 @@ async function openProfilingWindow() {
   await window.loadURL(process.env.AGM_RENDERER_PROFILE_URL);
 }
 
-void openProfilingWindow();
+openProfilingWindow();

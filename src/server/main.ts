@@ -192,7 +192,7 @@ export async function bootstrapNestServer(config: ProxyConfig): Promise<NestServ
           config.network,
         );
         if (!decision.allowed) {
-          void reply.code(403).send({
+          reply.code(403).send({
             error: {
               code: 'ip_address_rejected',
               message: 'Request source is not allowed',

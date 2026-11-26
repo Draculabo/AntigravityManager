@@ -101,7 +101,7 @@ async function runCli() {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  void runCli().catch((error) => {
+  runCli().catch((error) => {
     console.error(error);
     process.exitCode = 1;
   });

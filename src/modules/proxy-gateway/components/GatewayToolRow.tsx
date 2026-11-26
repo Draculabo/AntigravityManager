@@ -184,7 +184,7 @@ export function GatewayToolRow({
             disabled={busy || ((connected ? !couldDisconnect : !couldConnect) && !hasError)}
             onClick={() => {
               if (hasError && !couldDisconnect) {
-                void reload();
+                reload();
               } else if (
                 (action === 'connect' && native.data?.replacement) ||
                 (action === 'disconnect' &&
@@ -192,7 +192,7 @@ export function GatewayToolRow({
               ) {
                 setDialog(action);
               } else {
-                void run(action);
+                run(action);
               }
             }}
           >
@@ -258,7 +258,12 @@ export function GatewayToolRow({
               ) : preview.isError ? (
                 <div>
                   <p role="alert">{t('agent-tools.read-error')}</p>
-                  <Button variant="outline" onClick={() => void preview.refetch()}>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      preview.refetch();
+                    }}
+                  >
                     {t('agent-tools.retry')}
                   </Button>
                 </div>
@@ -286,7 +291,9 @@ export function GatewayToolRow({
                   type="button"
                   variant={dialog === 'connect' ? 'default' : 'destructive'}
                   disabled={busy}
-                  onClick={() => void run(dialog)}
+                  onClick={() => {
+                    run(dialog);
+                  }}
                 >
                   {t('agent-tools.confirm')}
                 </Button>

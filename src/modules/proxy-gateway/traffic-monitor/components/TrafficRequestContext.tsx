@@ -83,7 +83,13 @@ export function TrafficRequestContext({
         {!eligible ? (
           <p className="text-muted-foreground">{t('traffic.usage-context-unavailable')}</p>
         ) : query.isError ? (
-          <Button size="xs" variant="outline" onClick={() => void query.refetch()}>
+          <Button
+            size="xs"
+            variant="outline"
+            onClick={() => {
+              query.refetch();
+            }}
+          >
             {t('action.retry')}
           </Button>
         ) : query.isPending && open ? (

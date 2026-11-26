@@ -59,6 +59,16 @@ export default defineConfig([
       ],
       'no-empty-pattern': 'off',
       'prefer-const': 'off',
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            'UnaryExpression[operator="void"][argument.type="CallExpression"], ' +
+            'UnaryExpression[operator="void"][argument.type="ChainExpression"][argument.expression.type="CallExpression"]',
+          message:
+            'Use a call statement or a block-bodied callback instead of prefixing a call with void.',
+        },
+      ],
     },
   },
   {

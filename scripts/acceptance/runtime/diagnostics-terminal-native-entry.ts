@@ -179,7 +179,7 @@ async function check(): Promise<void> {
   );
 }
 
-void check().catch((error: unknown) => {
+check().catch((error: unknown) => {
   console.error(error);
   process.exitCode = 1;
 });

@@ -20,7 +20,13 @@ export function TrafficRequestActivity({ filters }: { filters: UsageActivityInpu
       {activity.isError ? (
         <div role="alert" className="text-muted-foreground flex items-center gap-2 py-2">
           {t('traffic.trends.activity-unavailable')}
-          <Button size="xs" variant="outline" onClick={() => void activity.refetch()}>
+          <Button
+            size="xs"
+            variant="outline"
+            onClick={() => {
+              activity.refetch();
+            }}
+          >
             {t('action.retry')}
           </Button>
         </div>

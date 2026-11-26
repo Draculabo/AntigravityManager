@@ -851,7 +851,7 @@ export class TrafficAuditService {
           sequence += 1;
           storedBytes += Buffer.byteLength(piece, 'utf8');
           inFlight.add(write);
-          void write.then((accepted) => {
+          write.then((accepted) => {
             dropped ||= !accepted;
             inFlight.delete(write);
           });
@@ -916,7 +916,7 @@ export class TrafficAuditService {
             return false;
           }
           inFlight.add(write);
-          void write.then((accepted) => {
+          write.then((accepted) => {
             dropped ||= !accepted;
             inFlight.delete(write);
           });

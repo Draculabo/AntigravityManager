@@ -32,7 +32,7 @@ export function createErrorOwner(
     }
     const task = work();
     pending.add(task);
-    void task.finally(() => pending.delete(task)).catch(() => undefined);
+    task.finally(() => pending.delete(task)).catch(() => undefined);
     return task;
   };
   const assertCurrent = (source: ErrorWindowService, identity: ContentIdentity) => {

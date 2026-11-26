@@ -51,7 +51,9 @@ export function AuditHarExportAction({
         variant="outline"
         disabled={disabled || state === 'saving'}
         aria-busy={state === 'saving'}
-        onClick={() => void save()}
+        onClick={() => {
+          save();
+        }}
       >
         {state === 'saving' ? (
           <Loader2

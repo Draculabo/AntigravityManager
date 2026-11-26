@@ -120,7 +120,9 @@ export function AuditAndThoughtStoreCard({
                 <Switch
                   aria-label={t('proxy.persistence.audit-title')}
                   checked={config.traffic_audit.enabled}
-                  onCheckedChange={(enabled) => void save({ traffic_audit: { enabled } })}
+                  onCheckedChange={(enabled) => {
+                    save({ traffic_audit: { enabled } });
+                  }}
                 />
               </div>
 
@@ -137,9 +139,9 @@ export function AuditAndThoughtStoreCard({
                   id="audit-successful-probes"
                   checked={config.traffic_audit.capture_successful_probes}
                   disabled={!config.traffic_audit.enabled}
-                  onCheckedChange={(capture_successful_probes) =>
-                    void save({ traffic_audit: { capture_successful_probes } })
-                  }
+                  onCheckedChange={(capture_successful_probes) => {
+                    save({ traffic_audit: { capture_successful_probes } });
+                  }}
                 />
               </div>
               {auditStats.data && (
@@ -163,7 +165,9 @@ export function AuditAndThoughtStoreCard({
                 <AuditStorageUsage
                   stats={auditStats.data}
                   failed={auditStats.isError}
-                  retry={() => void auditStats.refetch()}
+                  retry={() => {
+                    auditStats.refetch();
+                  }}
                 />
               </div>
               {auditStats.data && auditStats.data.droppedCount > 0 && (
@@ -276,7 +280,9 @@ export function AuditAndThoughtStoreCard({
               <Switch
                 aria-label={t('proxy.persistence.thought-title')}
                 checked={config.thought_store.enabled}
-                onCheckedChange={(enabled) => void save({ thought_store: { enabled } })}
+                onCheckedChange={(enabled) => {
+                  save({ thought_store: { enabled } });
+                }}
               />
             </div>
             <div className="text-muted-foreground flex flex-wrap gap-x-4 text-xs">
@@ -301,7 +307,13 @@ export function AuditAndThoughtStoreCard({
             {thoughtStats.isError && (
               <p role="alert" className="text-destructive text-xs">
                 {t('proxy.persistence.thought-stats-unavailable')}{' '}
-                <Button variant="link" size="sm" onClick={() => void thoughtStats.refetch()}>
+                <Button
+                  variant="link"
+                  size="sm"
+                  onClick={() => {
+                    thoughtStats.refetch();
+                  }}
+                >
                   {t('traffic.refresh')}
                 </Button>
               </p>

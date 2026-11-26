@@ -20,7 +20,14 @@ export function SettingsSaveFeedback(props: Props) {
     {initializationFailed ? <>
       <p role="alert">{t('settings.defaults-writeback-failed')}</p>
       {initialization.diagnosticId ? <p className="text-muted-foreground break-all text-xs">{t('proxy.service.persistence-diagnostic', { diagnosticId: initialization.diagnosticId })}</p> : null}
-      <Button variant="outline" onClick={() => void props.retryService()}>{t('settings.service-retry')}</Button>
+      <Button
+        variant="outline"
+        onClick={() => {
+          props.retryService();
+        }}
+      >
+        {t('settings.service-retry')}
+      </Button>
     </> : null}
     {failed ? <>
       <p role="alert">{t('settings.partial-save-failed')}</p>
@@ -29,7 +36,17 @@ export function SettingsSaveFeedback(props: Props) {
           {t('settings.save-owner-' + outcome.owner)}: {t('settings.save-state-' + outcome.state)}
         </li>)}
       </ul>
-      {props.hasUnsavedChanges ? <Button variant="outline" disabled={props.isSaving} onClick={() => { void props.retrySave().catch(() => undefined); }}>{t('settings.retry-unsaved')}</Button> : null}
+      {props.hasUnsavedChanges ? (
+        <Button
+          variant="outline"
+          disabled={props.isSaving}
+          onClick={() => {
+            props.retrySave().catch(() => undefined);
+          }}
+        >
+          {t('settings.retry-unsaved')}
+        </Button>
+      ) : null}
     </> : null}
     {applicationState === 'partial-failure' ? <p role="alert">{t('settings.service-apply-failed')}</p> : null}
     {applyIssues.length ? <ul className="space-y-2">

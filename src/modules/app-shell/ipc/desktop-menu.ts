@@ -36,7 +36,12 @@ export function installDesktopMenu(): void {
     {
       role: 'help',
       submenu: [
-        { label: 'Learn More', click: () => void shell.openExternal('https://electronjs.org') },
+        {
+          label: 'Learn More',
+          click: () => {
+            shell.openExternal('https://electronjs.org');
+          },
+        },
       ],
     },
   ];

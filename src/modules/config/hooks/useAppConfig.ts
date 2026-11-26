@@ -167,7 +167,7 @@ export function useAppConfig() {
     } finally {
       saveInFlightRef.current = false;
       if (pendingResolversRef.current.length && debounceTimerRef.current === null) {
-        void flushPendingSave();
+        flushPendingSave();
       }
     }
   }, [mutateConfig, t]);
@@ -191,7 +191,7 @@ export function useAppConfig() {
       pendingResolversRef.current.push({ resolve, reject });
       debounceTimerRef.current = setTimeout(() => {
         debounceTimerRef.current = null;
-        void flushPendingSave();
+        flushPendingSave();
       }, SAVE_DEBOUNCE_MS);
     });
   }, [config, flushPendingSave]);
@@ -208,7 +208,7 @@ export function useAppConfig() {
     pendingChangeRef.current = mergeSettingsChanges(pendingChangeRef.current, unsavedChangeRef.current);
     return new Promise<void>((resolve, reject) => {
       pendingResolversRef.current.push({ resolve, reject });
-      void flushPendingSave();
+      flushPendingSave();
     });
   }, [flushPendingSave]);
 
@@ -217,7 +217,7 @@ export function useAppConfig() {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
         debounceTimerRef.current = null;
-        void flushPendingSave();
+        flushPendingSave();
       }
     };
     window.addEventListener('beforeunload', flush);

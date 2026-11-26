@@ -51,7 +51,7 @@ export function subscribeSelectedAuditEvents(
       if (!stopped) {
         timer = setTimeout(
           () => {
-            void poll();
+            poll();
           },
           unavailable ? 2000 : 250,
         );

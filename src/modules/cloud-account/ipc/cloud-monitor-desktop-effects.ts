@@ -70,7 +70,7 @@ export function presentAccountOwnerEvent(
   const account = views.find((view) => view.id === event.accountId);
   if (event.kind === 'account-switched') {
     if (event.target === 'classic') {
-      void refreshTrayAccount();
+      refreshTrayAccount();
     }
     if (account && event.reason === 'auto') {
       showAutoSwitch(account.email);

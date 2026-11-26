@@ -58,7 +58,7 @@ export class ThoughtHydrationRequests<TResult = ThoughtRecord[]> {
     if (fresh) {
       const task = this.execute(key, current, load);
       this.pending.add(task);
-      void task.finally(() => this.pending.delete(task));
+      task.finally(() => this.pending.delete(task));
     }
     return result;
   }

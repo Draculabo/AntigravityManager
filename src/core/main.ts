@@ -85,4 +85,4 @@ async function runCore(): Promise<void> {
   }
 }
 
-void runCore();
+runCore();

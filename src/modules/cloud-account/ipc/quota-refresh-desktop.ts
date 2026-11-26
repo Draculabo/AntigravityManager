@@ -4,7 +4,7 @@ import { cloudAccountWeeklyWarmupRunner } from '@/modules/cloud-account/services
 import type { CloudAccount } from '@/modules/cloud-account/types';
 
 export function notifyTrayUpdate(): void {
-  void refreshTrayAccount();
+  refreshTrayAccount();
 }
 
 export async function refreshAccountQuotaForDesktop(accountId: string): Promise<CloudAccount> {

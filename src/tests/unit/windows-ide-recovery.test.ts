@@ -212,7 +212,7 @@ describe('Windows IDE credential recovery', () => {
         }),
     );
     const recovering = restoreWindowsIdeCredentials(options());
-    void recovering.catch(() => {});
+    recovering.catch(() => {});
     const switchAction = vi.fn().mockResolvedValue(undefined);
     try {
       await vi.waitFor(() => expect(mocks.restore).toHaveBeenCalledOnce());

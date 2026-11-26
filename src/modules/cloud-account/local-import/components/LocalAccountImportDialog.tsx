@@ -270,7 +270,7 @@ function useImportPanel(onBusyChange?: (busy: boolean) => void) {
     const sessionId = activeSessionIdRef.current;
     activeSessionIdRef.current = null;
     if (sessionId) {
-      void discardSession(sessionId);
+      discardSession(sessionId);
     }
   }, [discardSession]);
 
@@ -315,7 +315,7 @@ function useImportPanel(onBusyChange?: (busy: boolean) => void) {
         setState({ phase: 'result', result });
       }
     } catch (error) {
-      void discardSession(sessionId);
+      discardSession(sessionId);
       if (generationRef.current === generation) {
         setState({ phase: 'error', message: getImportErrorMessage(error, t) });
       }
@@ -461,7 +461,7 @@ export function LocalAccountImportDialog({
   useImperativeHandle(ref, () => ({
     open: () => {
       setIsOpen(true);
-      void panel.scan();
+      panel.scan();
     },
   }));
 

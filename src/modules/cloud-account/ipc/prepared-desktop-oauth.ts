@@ -46,11 +46,11 @@ export class PreparedDesktopOAuth implements PreparedDesktopOAuthOperations {
         const forgetLink = () => {
           attempt.authorizationUrl = null;
         };
-        void result.then(forgetLink, forgetLink);
+        result.then(forgetLink, forgetLink);
         ready.resolve({ sessionId: session.sessionId });
       }),
     );
-    void result.catch(ready.reject);
+    result.catch(ready.reject);
     return ready.promise;
   }
 

@@ -195,7 +195,14 @@ export function ImageSendWindowSettings({
               </div>
             )}
           </fieldset>
-          <Button variant="outline" size="sm" disabled={!dirty} onClick={() => void save()}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!dirty}
+            onClick={() => {
+              save();
+            }}
+          >
             {t(saving ? 'image-send-window.saving' : 'image-send-window.save')}
           </Button>
         </fieldset>

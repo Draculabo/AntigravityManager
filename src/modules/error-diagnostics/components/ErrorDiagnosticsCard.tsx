@@ -136,7 +136,13 @@ export function ErrorDiagnosticsCard({
         ) : sources.isError ? (
           <div role="alert" className="flex flex-wrap items-center gap-3 text-sm">
             <p>{t('error-diagnostics.load-failed')}</p>
-            <Button variant="outline" size="sm" onClick={() => void sources.refetch()}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                sources.refetch();
+              }}
+            >
               {t('error-diagnostics.retry')}
             </Button>
           </div>

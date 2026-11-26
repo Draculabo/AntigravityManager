@@ -18,7 +18,7 @@ export async function createLiveClientRelay({ gateway, trace, probe, marker, mea
       chunks.push(chunk);
     });
     request.on('end', () => {
-      void (async () => {
+      (async () => {
         try {
           const bytes = Buffer.concat(chunks);
           const parsed = z

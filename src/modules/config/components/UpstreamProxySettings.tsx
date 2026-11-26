@@ -102,7 +102,9 @@ export function UpstreamProxySettings({ proxy, available, onSaved, onApplication
               (!proxy.upstream_proxy.enabled && !proxy.upstream_proxy_configured)
             }
             aria-describedby="upstream-proxy-help"
-            onCheckedChange={(enabled) => void save({ proxy: { upstream_proxy: { enabled } } })}
+            onCheckedChange={(enabled) => {
+              save({ proxy: { upstream_proxy: { enabled } } });
+            }}
           />
         </div>
         <p
@@ -138,12 +140,19 @@ export function UpstreamProxySettings({ proxy, available, onSaved, onApplication
             </p>
           )}
           <div className="flex flex-wrap items-center gap-2">
-            <Button disabled={!available || busy} onClick={() => void reveal()}>
+            <Button
+              disabled={!available || busy}
+              onClick={() => {
+                reveal();
+              }}
+            >
               {t('proxy.config.show_key')}
             </Button>
             <Button
               disabled={!available || busy || draft === null || invalidDraft}
-              onClick={() => void save({ name: 'upstream-proxy', value: draft?.trim() || null })}
+              onClick={() => {
+                save({ name: 'upstream-proxy', value: draft?.trim() || null });
+              }}
             >
               {t('settings.service-save')}
             </Button>

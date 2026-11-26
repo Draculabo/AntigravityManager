@@ -283,7 +283,7 @@ export async function runGenerationWithDeadline<T>(
 }
 
 function awaitGenerationOperation<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
-  void operation.then(
+  operation.then(
     (value) => {
       if (
         signal.aborted &&

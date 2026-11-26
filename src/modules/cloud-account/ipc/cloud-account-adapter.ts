@@ -258,7 +258,7 @@ function createStandaloneCoreAdapter(
     listViews: () => client.accountViews(),
     refreshQuota: async (accountId) => {
       const account = await client.refreshAccountQuota(accountId);
-      void import('@/modules/app-shell/ipc/tray/handler')
+      import('@/modules/app-shell/ipc/tray/handler')
         .then(({ refreshTrayAccount }) => refreshTrayAccount())
         .catch(() => logger.warn('Failed to load tray presentation after quota refresh'));
       return account;

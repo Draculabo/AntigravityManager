@@ -58,7 +58,7 @@ export class AccountOwnerEventPump {
     }
   }
   private tick(): void {
-    void this.poll()
+    this.poll()
       .catch(() => {
         logger.warn('Owner event transport unavailable');
       })

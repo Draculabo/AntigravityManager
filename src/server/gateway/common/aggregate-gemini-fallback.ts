@@ -122,7 +122,7 @@ export async function aggregateGeminiFallback(
   try {
     throwIfRequestAborted(signal);
     pending = start();
-    void pending.then(
+    pending.then(
       (late) => {
         if (signal?.aborted && stream !== late) {
           destroy(late);
@@ -139,7 +139,7 @@ export async function aggregateGeminiFallback(
     }
     if (!stream && pending && signal?.aborted) {
       // Releasing early would allow arbitrarily many uncooperative provider operations.
-      void pending.then(release, release);
+      pending.then(release, release);
     } else {
       release();
     }

@@ -148,7 +148,7 @@ async function closeDesktop() {
     ) {
       const closed = once(current.child, 'exit');
       const closing = current.browser.newBrowserCDPSession().then((session) => {
-        void session.send('Browser.close').catch(() => undefined);
+        session.send('Browser.close').catch(() => undefined);
         return closed;
       });
       await Promise.race([

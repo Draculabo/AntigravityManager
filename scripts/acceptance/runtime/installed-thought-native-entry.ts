@@ -54,7 +54,7 @@ async function seed(): Promise<void> {
   }
   process.stdout.write(`Native Thought fixture persisted ${LARGE_THOUGHT_BYTES} bytes.\n`);
 }
-void seed().catch((error: unknown) => {
+seed().catch((error: unknown) => {
   process.stderr.write(`${String(error)}\n`);
   process.exitCode = 1;
 });

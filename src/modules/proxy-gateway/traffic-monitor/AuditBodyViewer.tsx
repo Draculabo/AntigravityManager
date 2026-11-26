@@ -363,7 +363,7 @@ function AuditBodyViewerContent({ body }: AuditBodyViewerProps) {
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter') {
-                void search();
+                search();
               }
             }}
             aria-busy={searching}
@@ -429,14 +429,21 @@ function AuditBodyViewerContent({ body }: AuditBodyViewerProps) {
             onClick={() => {
               setMode('full');
               setViewAll(true);
-              void loadUntil(INITIAL_BYTES);
+              loadUntil(INITIAL_BYTES);
             }}
           >
             {t('traffic.view-all-body')}
           </Button>
         )}
         {viewAll && !complete && (
-          <Button size="sm" variant="outline" className="h-8" onClick={() => void loadMore()}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8"
+            onClick={() => {
+              loadMore();
+            }}
+          >
             {loading ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
@@ -458,9 +465,9 @@ function AuditBodyViewerContent({ body }: AuditBodyViewerProps) {
             size="sm"
             variant="outline"
             disabled={loading}
-            onClick={() =>
-              void loadUntil(lastRead.current.targetBytes, lastRead.current.replaceWindow)
-            }
+            onClick={() => {
+              loadUntil(lastRead.current.targetBytes, lastRead.current.replaceWindow);
+            }}
           >
             {t(paused ? 'traffic.capture.resume' : 'traffic.capture.retry')}
           </Button>

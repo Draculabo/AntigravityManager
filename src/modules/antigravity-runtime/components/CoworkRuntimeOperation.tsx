@@ -147,7 +147,13 @@ export function CoworkRuntimeConfirmation({ plan, pending, onDismiss, onConfirm 
           <Button type="button" variant="outline" disabled={pending} onClick={onDismiss}>
             {t('common.cancel')}
           </Button>
-          <Button type="button" disabled={pending} onClick={() => void onConfirm(restart)}>
+          <Button
+            type="button"
+            disabled={pending}
+            onClick={() => {
+              onConfirm(restart);
+            }}
+          >
             {pending ? t('settings.cowork-runtime.mutating') : t(`settings.cowork-runtime.actions.${action}`)}
           </Button>
         </DialogFooter>

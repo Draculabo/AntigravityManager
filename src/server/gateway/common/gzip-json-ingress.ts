@@ -50,7 +50,7 @@ export function registerGzipJsonIngress(instance: FastifyInstance): void {
       if (!(error instanceof HttpException)) {
         throw error;
       }
-      void reply.code(error.getStatus()).header('connection', 'close').send(error.getResponse());
+      reply.code(error.getStatus()).header('connection', 'close').send(error.getResponse());
       return;
     }
     if (encoding !== 'gzip') {

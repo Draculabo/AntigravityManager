@@ -106,7 +106,7 @@ async function openPreview() {
   }
 }
 
-void openPreview().catch(() => {
+openPreview().catch(() => {
   console.error('The isolated error-notification window could not open.');
   app.exit(1);
 });

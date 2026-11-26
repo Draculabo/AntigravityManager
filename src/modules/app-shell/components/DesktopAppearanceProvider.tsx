@@ -108,7 +108,7 @@ export function DesktopAppearanceProvider({ children }: { children: ReactNode })
 
   useEffect(() => {
     if (savedLanguage) {
-      void synchronizeLanguage(savedLanguage).catch((error: unknown) => {
+      synchronizeLanguage(savedLanguage).catch((error: unknown) => {
         console.error('[Language] Failed to apply the saved desktop language:', error);
       });
     } else {

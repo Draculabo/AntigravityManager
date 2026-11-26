@@ -64,7 +64,7 @@ export function initTray(
     return false;
   }
 
-  void refreshTrayAccount();
+  refreshTrayAccount();
   return true;
 }
 
@@ -173,7 +173,7 @@ function renderTrayMenu(currentTray: Tray, account: TrayAccount | null): void {
       label: texts.quit,
       click: () => {
         if (onQuitRequested) {
-          void onQuitRequested();
+          onQuitRequested();
           return;
         }
         app.quit();

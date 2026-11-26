@@ -258,7 +258,7 @@ async function runClient(): Promise<void> {
     process.exitCode = 1;
   }
 }
-void runClient().catch(() => {
+runClient().catch(() => {
   process.stderr.write('Controlled client acceptance could not complete.\n');
   process.exitCode = 1;
 });

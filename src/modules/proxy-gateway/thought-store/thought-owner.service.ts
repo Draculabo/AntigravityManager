@@ -74,7 +74,7 @@ export function createThoughtOwner(
       () => undefined,
       () => undefined,
     );
-    void tail.then(() => pending.delete(task));
+    tail.then(() => pending.delete(task));
     return task;
   }
   return {

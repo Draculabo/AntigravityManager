@@ -81,7 +81,7 @@ function OAuthAttempt({ clientKey, sessionQueueRef, onAuthorized, onRestart }: O
         }
         sessionId = prepared.sessionId;
         setAttempt({ kind: 'ready', sessionId });
-        void waitForOAuthSession(sessionId).then(
+        waitForOAuthSession(sessionId).then(
           () => onAuthorized(current),
           (error: unknown) => {
             if (current) {
@@ -135,7 +135,7 @@ function OAuthAttempt({ clientKey, sessionQueueRef, onAuthorized, onRestart }: O
   function submitCallback(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (callback.trim()) {
-      void runAction('submit');
+      runAction('submit');
     }
   }
 
@@ -158,7 +158,9 @@ function OAuthAttempt({ clientKey, sessionQueueRef, onAuthorized, onRestart }: O
         <Button
           type="button"
           disabled={attempt.kind === 'preparing' || Boolean(action)}
-          onClick={() => void runAction('open')}
+          onClick={() => {
+            runAction('open');
+          }}
         >
           {attempt.kind === 'preparing' || action === 'open' ? (
             <Loader2 aria-hidden="true" className="size-4 animate-spin" />
@@ -171,7 +173,9 @@ function OAuthAttempt({ clientKey, sessionQueueRef, onAuthorized, onRestart }: O
           type="button"
           variant="outline"
           disabled={attempt.kind === 'preparing' || Boolean(action)}
-          onClick={() => void runAction('copy')}
+          onClick={() => {
+            runAction('copy');
+          }}
         >
           <Copy aria-hidden="true" className="size-4" />
           {t('cloud.add-flow.copy-link')}

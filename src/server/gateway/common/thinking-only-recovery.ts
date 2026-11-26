@@ -314,7 +314,7 @@ export function recoverThinkingOnlyStream(
           }
           firstUsage = lastUsage;
           const pendingStream = recovery.invoke(send, signal);
-          void pendingStream.then(
+          pendingStream.then(
             (late) => {
               if (signal.aborted) {
                 readable(late).destroy();

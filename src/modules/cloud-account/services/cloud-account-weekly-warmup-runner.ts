@@ -39,7 +39,7 @@ export class CloudAccountWeeklyWarmupRunner {
   }
 
   schedule(accounts: CloudAccount[]): void {
-    void this.run(accounts).catch(() => {
+    this.run(accounts).catch(() => {
       logger.warn('Weekly warmup refresh could not complete');
     });
   }

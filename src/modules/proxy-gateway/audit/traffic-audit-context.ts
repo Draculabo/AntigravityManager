@@ -397,7 +397,7 @@ export function registerTrafficAuditHttpHooks(instance: FastifyInstance): void {
       reply.raw.once('close', () => {
         if (!reply.raw.writableFinished) {
           state.responsePartial = true;
-          void completeHttpAuditStateAfterCapture(state, reply, 'client_disconnected');
+          completeHttpAuditStateAfterCapture(state, reply, 'client_disconnected');
         }
       });
       return capturingStream;
@@ -655,11 +655,15 @@ function createCapturingTransform(payload: Readable, state: HttpAuditState): Tra
       callback(null, chunk);
     },
   });
-  transform.on('finish', () => void finishCapture(false));
-  transform.on('error', (error) => {
-    void finishCapture(true, error);
+  transform.on('finish', () => {
+    finishCapture(false);
   });
-  transform.on('close', () => void finishCapture(!transform.writableFinished));
+  transform.on('error', (error) => {
+    finishCapture(true, error);
+  });
+  transform.on('close', () => {
+    finishCapture(!transform.writableFinished);
+  });
   payload.pipe(transform);
   return transform;
 }

@@ -106,7 +106,7 @@ export const PlaygroundDualView: React.FC<PlaygroundDualViewProps> = ({
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault();
       if (!isRunning && prompt.trim()) {
-        void handleRun();
+        handleRun();
       }
     }
   };

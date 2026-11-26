@@ -150,7 +150,7 @@ function handleConnection(
             }
 
             const pendingStream = dependencies.streamRequest(action.request, signal, context);
-            void pendingStream.then(
+            pendingStream.then(
               (lateStream) => {
                 if (signal.aborted && lateStream instanceof FlowControlledSseStream) {
                   lateStream.destroy();

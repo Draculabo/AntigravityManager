@@ -124,12 +124,12 @@ export function ProxyServiceControl({ config, running, onRuntimeChange, onError 
       risk.setOpen(true);
       return;
     }
-    void toggleService(!active);
+    toggleService(!active);
   };
   const confirmStart = () => {
     if (!operationPending.current) {
       risk.acknowledge();
-      void toggleService(true);
+      toggleService(true);
     }
   };
 
@@ -140,7 +140,13 @@ export function ProxyServiceControl({ config, running, onRuntimeChange, onError 
         {active ? t('proxy.service.stop') : t('proxy.service.start')}
       </Button>
       {unsaved && (
-        <Button variant="outline" disabled={pending} onClick={() => void retrySave()}>
+        <Button
+          variant="outline"
+          disabled={pending}
+          onClick={() => {
+            retrySave();
+          }}
+        >
           {t('proxy.service.retry-save')}
         </Button>
       )}

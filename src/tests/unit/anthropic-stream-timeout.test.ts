@@ -142,7 +142,7 @@ describe('Anthropic stream timeout compatibility', () => {
     const lease = createLease([createAccount('acc-1'), createAccount('acc-2')]);
     const request = createAnthropicStream(createGateway(upstream, lease).anthropicService);
     const settled = vi.fn();
-    void request.then(settled, settled);
+    request.then(settled, settled);
     const expired = expect(request).rejects.toMatchObject({
       name: 'GenerationDeadlineExceededError',
     });

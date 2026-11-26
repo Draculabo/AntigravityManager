@@ -146,7 +146,7 @@ export async function checkElectronUpdaterUpdate(): Promise<ManualUpdateCheckRes
     lastAvailableUpdate = toNotification(version, downloadedUpdate ? 'downloaded' : 'available');
     if (!downloadedUpdate) {
       lastAvailableUpdate = { ...lastAvailableUpdate, state: 'downloading' };
-      void downloadElectronUpdaterUpdate();
+      downloadElectronUpdaterUpdate();
     }
     return { status: 'available', update: lastAvailableUpdate };
   } catch {

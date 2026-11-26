@@ -392,7 +392,7 @@ describe('private account snapshot files', () => {
       });
     });
     const reading = readAccountBackupFile(file);
-    void reading.catch(() => {});
+    reading.catch(() => {});
     try {
       await started;
       const newer = { ...backup, account: { ...backup.account, name: 'Newer capture' } };
@@ -420,7 +420,7 @@ describe('private account snapshot files', () => {
       });
     });
     const reading = readAccountBackupFile(file);
-    void reading.catch(() => {});
+    reading.catch(() => {});
     try {
       await started;
       fs.unlinkSync(file);

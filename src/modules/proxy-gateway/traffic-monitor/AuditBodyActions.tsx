@@ -93,7 +93,9 @@ export function AuditBodyActions({
               className="h-8 w-8"
               aria-label={t('traffic.copy-loaded')}
               disabled={disabled || content.length === 0}
-              onClick={() => void copy()}
+              onClick={() => {
+                copy();
+              }}
             >
               {copied ? (
                 <Check className="size-3.5" aria-hidden="true" />
@@ -113,7 +115,9 @@ export function AuditBodyActions({
               aria-label={t('traffic.save-full')}
               disabled={disabled || saving || body.state === 'writing'}
               aria-busy={saving}
-              onClick={() => void save()}
+              onClick={() => {
+                save();
+              }}
             >
               {saving ? (
                 <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />

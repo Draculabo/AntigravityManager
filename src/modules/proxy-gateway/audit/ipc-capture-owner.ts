@@ -151,7 +151,7 @@ export function createIpcCaptureOwner(source: Source = trafficAuditService) {
         if (entry.active || entry.busy) {
           entry.timer = arm(token, entry);
         } else {
-          void track(retire(token, entry, 'internal_error', 'IPC capture expired')).catch(() =>
+          track(retire(token, entry, 'internal_error', 'IPC capture expired')).catch(() =>
             logger.warn('Expired IPC capture could not finish persistence'),
           );
         }

@@ -129,7 +129,13 @@ function SessionChoices({
       ) : results.isError && !results.data ? (
         <div role="alert" className="flex flex-wrap items-center gap-2 text-xs">
           {t('traffic.usage-load-failed')}
-          <Button size="xs" variant="outline" onClick={() => void results.refetch()}>
+          <Button
+            size="xs"
+            variant="outline"
+            onClick={() => {
+              results.refetch();
+            }}
+          >
             {t('action.retry')}
           </Button>
         </div>
@@ -170,7 +176,9 @@ function SessionChoices({
               size="xs"
               variant="outline"
               disabled={results.isFetchingNextPage}
-              onClick={() => void results.fetchNextPage()}
+              onClick={() => {
+                results.fetchNextPage();
+              }}
             >
               {t(
                 results.isFetchingNextPage

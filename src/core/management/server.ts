@@ -89,7 +89,7 @@ export class ManagementServer {
     );
     server.post('/v1/shutdown', async (_request, reply): Promise<void> => {
       reply.raw.once('finish', () => {
-        void this.options.shutdown().catch(this.options.onShutdownError);
+        this.options.shutdown().catch(this.options.onShutdownError);
       });
       const response: ManagementResponse = {
         version: MANAGEMENT_PROTOCOL_VERSION,

@@ -26,7 +26,7 @@ export function ErrorDiagnosticPreview({ role, id }: { role: ErrorDiagnosticRole
   useEffect(
     () => () => {
       if (capabilityId) {
-        void ipc.client.errorDiagnostics.discard({ capabilityId }).catch(() => undefined);
+        ipc.client.errorDiagnostics.discard({ capabilityId }).catch(() => undefined);
       }
     },
     [capabilityId],
@@ -42,7 +42,13 @@ export function ErrorDiagnosticPreview({ role, id }: { role: ErrorDiagnosticRole
     return (
       <div role="alert" className="space-y-3 py-6 text-sm">
         <p>{t('error-diagnostics.preview-unavailable')}</p>
-        <Button variant="outline" size="sm" onClick={() => void preview.refetch()}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            preview.refetch();
+          }}
+        >
           {t('error-diagnostics.retry')}
         </Button>
       </div>

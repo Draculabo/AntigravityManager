@@ -20,7 +20,7 @@ export function DiagnosticLogAttachment() {
     return () => {
       current.active = false;
       if (current.id) {
-        void discard(current.id);
+        discard(current.id);
       }
     };
   }, []);
@@ -36,7 +36,7 @@ export function DiagnosticLogAttachment() {
       const result = await ipc.client.app.diagnosticLogs.prepare();
       if (!current.active) {
         if (result.status === 'ready') {
-          void discard(result.preview.id);
+          discard(result.preview.id);
         }
         return;
       }
@@ -45,7 +45,7 @@ export function DiagnosticLogAttachment() {
         return;
       }
       if (current.id) {
-        void discard(current.id);
+        discard(current.id);
       }
       current.id = result.preview.id;
       setPreview(result.preview);
@@ -93,7 +93,9 @@ export function DiagnosticLogAttachment() {
           variant="outline"
           size="sm"
           disabled={busy}
-          onClick={() => void generate()}
+          onClick={() => {
+            generate();
+          }}
         >
           {status === 'generating' ? (
             <Loader2 className="size-4 animate-spin" aria-hidden="true" />
@@ -108,7 +110,9 @@ export function DiagnosticLogAttachment() {
             variant="outline"
             size="sm"
             disabled={busy || status === 'saved' || status === 'expired'}
-            onClick={() => void save()}
+            onClick={() => {
+              save();
+            }}
           >
             {status === 'saving' ? (
               <Loader2 className="size-4 animate-spin" aria-hidden="true" />

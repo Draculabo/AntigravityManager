@@ -48,6 +48,7 @@ See [src/modules/AGENTS.md](src/modules/AGENTS.md), [src/modules/proxy-gateway/A
 - Inspect the owning code and nearby tests before editing. Preserve existing naming, structure and error semantics.
 - Make the smallest complete change. Do not add dependencies, abstractions, compatibility paths or defensive states without a current owner and demonstrated need.
 - Always use braces for control flow. Keep `return`, `throw` and similar statements on their own lines.
+- Do not prefix function or method calls with the `void` operator. Use a call statement or a block-bodied callback to discard the result, and preserve Promise rejection handling.
 - Comments and JSDoc explain non-obvious contracts, invariants, trade-offs and safe use. Do not restate visible control flow or keep changelog commentary in source.
 - For failure, recovery, cancellation or background-task changes, follow [failure ownership](docs/error-handling.md) to define partial effects, safe continuation and final reporting.
 - Prefer Radix primitives and Tailwind utilities for UI. Put user-visible strings in `react-i18next` resources using kebab-case keys.

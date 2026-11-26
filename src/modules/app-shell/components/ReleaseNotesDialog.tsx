@@ -72,14 +72,22 @@ export function ReleaseNotesDialog({ target, onClose }: ReleaseNotesDialogProps)
           ) : failed ? (
             <div role="alert" className="space-y-3 py-4">
               <p>{t('update.release-notes.failed')}</p>
-              <Button variant="outline" size="sm" onClick={() => void notes.refetch()}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  notes.refetch();
+                }}
+              >
                 {t('action.retry')}
               </Button>
             </div>
           ) : notes.data?.status === 'ready' ? (
             <ReleaseNotesMarkdown
               notes={notes.data.notes}
-              onOpenLink={(url) => void openLink(url)}
+              onOpenLink={(url) => {
+                openLink(url);
+              }}
             />
           ) : (
             <p className="text-muted-foreground py-6">{t('update.release-notes.empty')}</p>
@@ -91,12 +99,19 @@ export function ReleaseNotesDialog({ target, onClose }: ReleaseNotesDialogProps)
           </p>
         )}
         <DialogFooter className="flex-wrap">
-          <Button variant="outline" onClick={() => void openLink(RELEASE_HISTORY_URL)}>
+          <Button
+            variant="outline"
+            onClick={() => {
+              openLink(RELEASE_HISTORY_URL);
+            }}
+          >
             {t('update.release-notes.history')}
           </Button>
           <Button
             variant="outline"
-            onClick={() => void openLink(getTargetReleaseUrl(target.tagName))}
+            onClick={() => {
+              openLink(getTargetReleaseUrl(target.tagName));
+            }}
           >
             {t('update.release-notes.release-page')}
           </Button>

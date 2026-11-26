@@ -97,7 +97,7 @@ it('reports an unconfirmed exit when the last Windows observation consumes the c
     messageKey: 'process-runtime.exit-unconfirmed',
     cause,
   });
-  void result.catch(() => undefined);
+  result.catch(() => undefined);
   await vi.advanceTimersByTimeAsync(501);
   await result;
   expect(mocks.execFile).toHaveBeenCalledTimes(1);
@@ -195,7 +195,7 @@ it('allows a slow initial native snapshot within the total close budget', async 
     })
     .mockResolvedValueOnce([]);
   const result = expect(stopFromContext(windowsContext, 5000)).resolves.toBeUndefined();
-  void result.catch(() => undefined);
+  result.catch(() => undefined);
   await vi.advanceTimersByTimeAsync(1500);
   await result;
   expect(mocks.closeWindow).toHaveBeenCalledExactlyOnceWith(421);

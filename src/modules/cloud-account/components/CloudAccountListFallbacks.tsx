@@ -100,7 +100,9 @@ export function CloudAccountLoadError({ error, onRetry }: CloudAccountLoadErrorP
                 type="button"
                 className="text-left underline underline-offset-4 disabled:opacity-50"
                 disabled={reporting}
-                onClick={() => void reportIssue()}
+                onClick={() => {
+                  reportIssue();
+                }}
               >
                 {t('cloud.error.dataRepair.stepOpenIssue')}
               </button>
@@ -110,7 +112,9 @@ export function CloudAccountLoadError({ error, onRetry }: CloudAccountLoadErrorP
             <Button
               variant="outline"
               size="sm"
-              onClick={() => void window.electron.openExternalUrl(GITHUB_REPOSITORY_URL)}
+              onClick={() => {
+                window.electron.openExternalUrl(GITHUB_REPOSITORY_URL);
+              }}
             >
               <ExternalLink className="h-4 w-4" />
               {t('cloud.error.dataRepair.openRepository')}
@@ -123,7 +127,14 @@ export function CloudAccountLoadError({ error, onRetry }: CloudAccountLoadErrorP
           <RefreshCw className="h-4 w-4" />
           {t('action.retry')}
         </Button>
-        <Button variant="outline" size="sm" disabled={reporting} onClick={() => void reportIssue()}>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={reporting}
+          onClick={() => {
+            reportIssue();
+          }}
+        >
           {reporting ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (

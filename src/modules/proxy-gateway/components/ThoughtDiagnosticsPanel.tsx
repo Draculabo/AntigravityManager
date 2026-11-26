@@ -135,7 +135,7 @@ export function ThoughtDiagnosticsPanel() {
                   size="sm"
                   variant="outline"
                   onClick={() => {
-                    void sessions.refetch();
+                    sessions.refetch();
                   }}
                 >
                   {t('proxy.persistence.refresh')}

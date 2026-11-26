@@ -211,7 +211,9 @@ export function GatewayAccessSettings({
                 onChange={(event) =>
                   setNetworkDrafts((current) => ({ ...current, allowlist: event.target.value }))
                 }
-                onBlur={() => void updateNetworkList('ip_allowlist', 'allowlist')}
+                onBlur={() => {
+                  updateNetworkList('ip_allowlist', 'allowlist');
+                }}
               />
             </div>
 
@@ -226,7 +228,9 @@ export function GatewayAccessSettings({
                 onChange={(event) =>
                   setNetworkDrafts((current) => ({ ...current, blocklist: event.target.value }))
                 }
-                onBlur={() => void updateNetworkList('ip_blocklist', 'blocklist')}
+                onBlur={() => {
+                  updateNetworkList('ip_blocklist', 'blocklist');
+                }}
               />
             </div>
 
@@ -244,7 +248,9 @@ export function GatewayAccessSettings({
                     trustedProxyCidrs: event.target.value,
                   }))
                 }
-                onBlur={() => void updateNetworkList('trusted_proxy_cidrs', 'trustedProxyCidrs')}
+                onBlur={() => {
+                  updateNetworkList('trusted_proxy_cidrs', 'trustedProxyCidrs');
+                }}
               />
             </div>
 

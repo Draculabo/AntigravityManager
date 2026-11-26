@@ -122,7 +122,7 @@ async function verifyTransport(): Promise<void> {
   }
 }
 
-void verifyTransport().catch(() => {
+verifyTransport().catch(() => {
   process.stderr.write('Controlled Sentry transport verification failed.\n');
   process.exitCode = 1;
 });

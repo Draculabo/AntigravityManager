@@ -90,7 +90,7 @@ export function CoworkCompactionCard({
       : config.auto_threshold;
     setThreshold(String(value));
     if (value !== config.auto_threshold) {
-      void save({ auto_threshold: value });
+      save({ auto_threshold: value });
     }
   };
 
@@ -108,7 +108,9 @@ export function CoworkCompactionCard({
             type="button"
             variant="outline"
             disabled={pending || !apiKeyConfigured || config.trusted_client_key_hashes.length >= 32}
-            onClick={() => void trustCurrentCredential()}
+            onClick={() => {
+              trustCurrentCredential();
+            }}
           >
             {t('proxy.config.compaction.trust-current-key')}
           </Button>
@@ -134,13 +136,13 @@ export function CoworkCompactionCard({
                     size="xs"
                     disabled={pending}
                     aria-label={t('proxy.config.compaction.revoke-key-label', { digest })}
-                    onClick={() =>
-                      void save({
+                    onClick={() => {
+                      save({
                         trusted_client_key_hashes: config.trusted_client_key_hashes.filter(
                           (value) => value !== digest,
                         ),
-                      })
-                    }
+                      });
+                    }}
                   >
                     {t('proxy.config.compaction.revoke-key')}
                   </Button>
@@ -166,7 +168,9 @@ export function CoworkCompactionCard({
               type="button"
               variant="outline"
               size="xs"
-              onClick={() => void runChange(saveState.retry)}
+              onClick={() => {
+                runChange(saveState.retry);
+              }}
             >
               {t('proxy.config.compaction.retry')}
             </Button>
@@ -183,7 +187,9 @@ export function CoworkCompactionCard({
             id="cowork-auto-compaction"
             checked={config.auto_enabled}
             disabled={pending}
-            onCheckedChange={(auto_enabled) => void save({ auto_enabled })}
+            onCheckedChange={(auto_enabled) => {
+              save({ auto_enabled });
+            }}
           />
         </div>
         <div className="flex items-center justify-between gap-4">
@@ -197,7 +203,9 @@ export function CoworkCompactionCard({
             id="cowork-manual-compaction"
             checked={config.manual_enabled}
             disabled={pending}
-            onCheckedChange={(manual_enabled) => void save({ manual_enabled })}
+            onCheckedChange={(manual_enabled) => {
+              save({ manual_enabled });
+            }}
           />
         </div>
         <div className="space-y-2">

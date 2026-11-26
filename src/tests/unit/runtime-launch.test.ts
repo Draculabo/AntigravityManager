@@ -89,7 +89,7 @@ describe('direct launch', () => {
     const result = expect(startup).rejects.toMatchObject({
       messageKey: 'process-runtime.startup-unconfirmed',
     });
-    void result.catch(() => undefined);
+    result.catch(() => undefined);
     await vi.advanceTimersByTimeAsync(6000);
     await result;
     expect(mocks.spawn).toHaveBeenCalledTimes(1);
@@ -205,7 +205,7 @@ describe('direct launch', () => {
     });
     const startup = startFromContext(context);
     const result = expect(startup).resolves.toEqual({ pid: 81234 });
-    void result.catch(() => undefined);
+    result.catch(() => undefined);
     await vi.advanceTimersByTimeAsync(6000);
     await result;
     expect(mocks.spawn).toHaveBeenCalledTimes(1);

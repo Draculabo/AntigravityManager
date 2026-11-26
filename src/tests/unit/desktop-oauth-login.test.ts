@@ -242,7 +242,7 @@ describe('desktop owner-side OAuth login', () => {
       return url.toString();
     });
     const exchange = Promise.withResolvers<CloudAccount>();
-    void exchange.promise.catch(() => undefined);
+    exchange.promise.catch(() => undefined);
     const enroll = vi
       .fn(async () => ({ id: view.id, email: view.email }) as CloudAccount)
       .mockImplementationOnce(() => exchange.promise);
@@ -294,7 +294,7 @@ describe('desktop owner-side OAuth login', () => {
     expect(loadView).not.toHaveBeenCalled();
 
     const restarted = login.start();
-    void restarted.catch(() => undefined);
+    restarted.catch(() => undefined);
     await vi.waitFor(() => expect(openExternal).toHaveBeenCalledTimes(2));
     const fresh = await startSession.mock.results[1].value;
     const freshAuthorization = new URL(openExternal.mock.calls[1][0]);
