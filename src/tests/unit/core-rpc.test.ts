@@ -126,6 +126,7 @@ function operations(): CoreRpcOperations {
       discard: vi.fn(),
       getPostImportStatus: vi.fn(),
     },
+    importCloudAccountCredential: vi.fn(),
     accountSwitchStatus: vi.fn(),
     accountEvents: () => ({ epoch: '11111111-1111-4111-8111-111111111111', latest: 0, events: [] }),
     monitor: {
@@ -250,6 +251,34 @@ it('transports only a core-sanitized log snapshot over the private pipe within i
   expect(result.text).not.toMatch(/private@example|synthetic-private-prompt/);
   expect(result.text).toContain('{"code":"ECONNRESET","status":502}');
   expect(Buffer.byteLength(result.text)).toBeLessThanOrEqual(LOG_SOURCE_MAX_BYTES);
+});
+
+it('imports a pasted Google credential through the selected profile owner', async () => {
+  const socketPath = await endpoint();
+  const importCredential = vi.fn(async () => ({
+    status: 'added' as const,
+    email: 'imported@example.test',
+  }));
+  const server = new ManagementServer({
+    endpoint: socketPath,
+    getStatus: () => ({
+      state: 'running',
+      pid: process.pid,
+      gateway: { running: false, port: null },
+    }),
+    shutdown: async () => {},
+    onShutdownError: vi.fn(),
+    rpc: { ...operations(), importCloudAccountCredential: importCredential },
+  });
+  closeables.push(server);
+  await server.start();
+
+  const input = { refreshToken: 'dummy-refresh-core', oauthClientKey: 'test-client' };
+  expect(await new CoreRpcClient(socketPath).importCloudAccountCredential(input)).toEqual({
+    status: 'added',
+    email: 'imported@example.test',
+  });
+  expect(importCredential).toHaveBeenCalledExactlyOnceWith(input);
 });
 
 describe('core application RPC', () => {

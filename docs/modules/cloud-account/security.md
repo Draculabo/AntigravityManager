@@ -85,12 +85,17 @@ secrets, so `account login` uses the core's active/default client without a clie
 The printed URL must be opened in a browser on the same machine because its redirect target is
 `127.0.0.1`.
 
-The desktop opens its authorization URL in the system browser after validating its trusted Google
-origin. Its renderer RPC returns only a strict cloud-account view or a stable, value-free failure
-category. The manual fallback passes bounded text to the selected owner while login is pending.
-The manual submission route bypasses payload capture, and its responses omit pasted data.
-Authorization URLs, session IDs, CSRF state and callback codes generated or received by the
-owner stay on the owner side of the preload boundary. In remote adapter mode, the private management endpoint starts and
+The desktop validates the authorization URL's trusted Google origin before opening it in the
+system browser or copying it to the system clipboard. The renderer receives a desktop session
+handle, a strict cloud-account view, or a stable failure category. Closing the dialog or leaving
+the Google sign-in tab cancels authorization that is still waiting for a callback. A callback
+already accepted by the owner can still finish saving the account.
+
+The manual fallback passes bounded text to the selected owner while login is pending. Prepared
+OAuth routes bypass payload capture and their responses omit pasted text. The URL, Google CSRF
+state, and automatically received callback code stay behind the preload boundary.
+
+In remote adapter mode, the private management endpoint starts and
 polls the core-owned session; its optional bounded OAuth client key is captured in the same start
 request. Its manual completion endpoint accepts bounded input for a live session. Electron persists the selected preference through core RPC, then passes the explicit key
 to session start so another preference change cannot alter the exchange client. A desktop failure
@@ -98,6 +103,13 @@ or quit cancels only its pending core session; cancellation never interrupts an 
 admitted by the core. The former fixed-port callback listener and renderer code-delivery channel
 are removed. Embedded desktop shutdown waits for accepted enrollment before gateway teardown,
 subject to the bounded forced-exit timeout.
+
+Pasted account import sends one bounded refresh token per request to the selected account owner.
+Both the desktop IPC and private core import operation exclude the request from audit capture.
+The owner verifies the Google identity with the active OAuth client before saving and returns only
+an outcome and, on success, the verified email. An identical grant is skipped. A different grant
+can update an existing account only when the verified Google subject matches the stored subject.
+Use Google sign-in to reauthorize an account that has no matching subject.
 
 OAuth client discovery and active-client preference use strict public descriptors containing
 only the key, label, client ID and active/builtin flags. Client secrets and registry internals

@@ -1,5 +1,10 @@
 import type { CoreRpcOperations, CoreRpcWorkLifecycle } from './operations';
-import { GatewayRememberChoiceSchema, GatewayManualStartResultSchema, GatewayManualStopResultSchema, GatewayChoicePersistenceSchema } from '@/modules/proxy-gateway/services/gateway-management.schema';
+import {
+  GatewayRememberChoiceSchema,
+  GatewayManualStartResultSchema,
+  GatewayManualStopResultSchema,
+  GatewayChoicePersistenceSchema,
+} from '@/modules/proxy-gateway/services/gateway-management.schema';
 import { gatewayLifecycleService } from '@/modules/proxy-gateway/services/gateway-lifecycle.service';
 import { createPlaygroundRouter } from '@/modules/proxy-gateway/playground/playground.router';
 import { playgroundService } from '@/modules/proxy-gateway/playground/playground.service';
@@ -49,6 +54,8 @@ import { CloudAccountSwitchStatusSchema } from '@/modules/cloud-account/services
 import { toCloudAccountSwitchStatusError } from '@/modules/cloud-account/services/cloud-account-switch-status.error';
 import { localAccountImportCoordinator } from '@/modules/cloud-account/local-import/local-account-import-coordinator.service';
 import { createLocalAccountImportRouter } from '@/modules/cloud-account/local-import/transport.router';
+import { createCloudAccountCredentialImportRouter } from '@/modules/cloud-account/services/cloud-account-credential-import.transport';
+import { importCloudAccountRefreshToken } from '@/modules/cloud-account/services/cloud-account-credential-import.service';
 import { accountOwnerEvents } from '@/modules/cloud-account/services/account-owner-events.service';
 import { setCloudAccountRouting } from '@/modules/cloud-account/services/cloud-account-routing.service';
 import {
@@ -149,7 +156,14 @@ import {
 } from './schema';
 
 export function createCoreRpcOperations(
-  core: Pick<CoreService, 'startGateway' | 'stopGateway' | 'manualStartGateway' | 'manualStopGateway' | 'retryGatewaySaveChoice'>,
+  core: Pick<
+    CoreService,
+    | 'startGateway'
+    | 'stopGateway'
+    | 'manualStartGateway'
+    | 'manualStopGateway'
+    | 'retryGatewaySaveChoice'
+  >,
 ): CoreRpcOperations & CoreRpcWorkLifecycle {
   const inFlightAccountWork = new Set<Promise<unknown>>();
   let acceptingAccountMutations = true;
@@ -245,6 +259,8 @@ export function createCoreRpcOperations(
       discard: (sessionId) => localAccountImportCoordinator.discard(sessionId),
       getPostImportStatus: (taskId) => localAccountImportCoordinator.getPostImportStatus(taskId),
     },
+    importCloudAccountCredential: (input) =>
+      runAccountMutation(() => importCloudAccountRefreshToken(input)),
     accountSwitchStatus: getCloudAccountSwitchStatus,
     accountEvents: (epoch, after) => accountOwnerEvents.read(epoch, after),
     monitor: {
@@ -329,8 +345,10 @@ export function createCoreRpcOperations(
     },
     accountProjectId: {
       getAccountProjectId: cloudAccountProjectId.getAccountProjectId,
-      setAccountProjectId: (input) => runAccountMutation(() => cloudAccountProjectId.setAccountProjectId(input)),
-      fetchAccountProjectId: (input) => runAccountMutation(() => cloudAccountProjectId.fetchAccountProjectId(input)),
+      setAccountProjectId: (input) =>
+        runAccountMutation(() => cloudAccountProjectId.setAccountProjectId(input)),
+      fetchAccountProjectId: (input) =>
+        runAccountMutation(() => cloudAccountProjectId.fetchAccountProjectId(input)),
     },
     accountSetRouting: (input) =>
       runAccountMutation(async () => {
@@ -351,7 +369,8 @@ export function createCoreRpcOperations(
     gatewayStart: (port) => core.startGateway(port),
     gatewayManualStart: (port) => runAccountMutation(() => core.manualStartGateway(port)),
     gatewayManualStop: () => runAccountMutation(() => core.manualStopGateway()),
-    gatewayRetrySaveChoice: (choice) => runAccountMutation(() => core.retryGatewaySaveChoice(choice)),
+    gatewayRetrySaveChoice: (choice) =>
+      runAccountMutation(() => core.retryGatewaySaveChoice(choice)),
     gatewayStop: async () => {
       const success = await core.stopGateway();
       if (!success) {
@@ -365,10 +384,16 @@ export function createCoreRpcOperations(
 export function createCoreRpcRouter(operations: CoreRpcOperations) {
   return os.router({
     ...createCloudAccountProjectIdProcedures(() => operations.accountProjectId),
-    gatewayManualStart: os.input(z.strictObject({ port: z.number().int().min(1024).max(65535) }))
-      .output(GatewayManualStartResultSchema).handler(({ input }) => operations.gatewayManualStart(input.port)),
-    gatewayManualStop: os.output(GatewayManualStopResultSchema).handler(() => operations.gatewayManualStop()),
-    gatewayRetrySaveChoice: os.input(GatewayRememberChoiceSchema).output(GatewayChoicePersistenceSchema)
+    gatewayManualStart: os
+      .input(z.strictObject({ port: z.number().int().min(1024).max(65535) }))
+      .output(GatewayManualStartResultSchema)
+      .handler(({ input }) => operations.gatewayManualStart(input.port)),
+    gatewayManualStop: os
+      .output(GatewayManualStopResultSchema)
+      .handler(() => operations.gatewayManualStop()),
+    gatewayRetrySaveChoice: os
+      .input(GatewayRememberChoiceSchema)
+      .output(GatewayChoicePersistenceSchema)
       .handler(({ input }) => operations.gatewayRetrySaveChoice(input)),
     playground: createPlaygroundRouter(operations.playground),
     diagnosticLogs: createDiagnosticLogCoreRouter(operations.diagnosticLogs),
@@ -408,6 +433,9 @@ export function createCoreRpcRouter(operations: CoreRpcOperations) {
         }
       }),
     localImport: createLocalAccountImportRouter(operations.localImport),
+    credentialImport: createCloudAccountCredentialImportRouter(
+      operations.importCloudAccountCredential,
+    ),
     ...createCloudMonitorCoreRouter(operations.monitor),
     accountSwitchStatus: os.output(CloudAccountSwitchStatusSchema).handler(() => {
       try {

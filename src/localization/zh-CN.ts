@@ -495,13 +495,17 @@ const zhCn = {
     'dual-ttft-diff': '{{winner}} 首字响应提前了 {{diff}} 秒',
   },
   traffic: {
-    'usage-sessions-intro': '按会话归集已保存的模型请求，可以看到哪些会话消耗了最多 Token，并逐条查看请求。',
-    'usage-context-intro': '看各模型收到了多少输入、命中了多少缓存，以及峰值输入用了多少上下文窗口。',
+    'usage-sessions-intro':
+      '按会话归集已保存的模型请求，可以看到哪些会话消耗了最多 Token，并逐条查看请求。',
+    'usage-context-intro':
+      '看各模型收到了多少输入、命中了多少缓存，以及峰值输入用了多少上下文窗口。',
     'usage-no-saved-model-requests': '此时段没有留存的模型请求',
-    'usage-empty-period-help': '用量取自本机网关留存的模型请求。应用操作、探测等其他记录，以及客户端直连的调用，不计入这里。',
+    'usage-empty-period-help':
+      '用量取自本机网关留存的模型请求。应用操作、探测等其他记录，以及客户端直连的调用，不计入这里。',
     'usage-show-all-history': '查看全部留存',
     'usage-open-request-history': '打开请求记录',
-    'usage-session-search-empty': '在所选日期和账号范围内，留存的用户消息和助手回复中没有找到匹配内容。',
+    'usage-session-search-empty':
+      '在所选日期和账号范围内，留存的用户消息和助手回复中没有找到匹配内容。',
     'usage-session-id-missing': '此时段有留存的模型请求，但没有可用于归集的会话标识。',
     'usage-clear-session-search': '清除会话搜索',
     'usage-context-counters-missing': '当前范围没有留存输入 Token 计数',
@@ -579,8 +583,10 @@ const zhCn = {
     'usage-csv-changed': '导出期间历史记录发生变化，请刷新后重试。',
     'usage-context-breakdown': '上下文构成',
     'usage-context-exact': '输入 {{input}} · 缓存 {{cached}} · 占目录窗口 {{fill}}',
-    'usage-context-unavailable': '查看构成需要已留存、可识别、完整且不超过 128 KiB 的 JSON 请求体。',
-    'usage-context-estimation': '构成比例按已识别部分的 JSON 字节计算。Token 使用上游按整条请求上报的值。',
+    'usage-context-unavailable':
+      '查看构成需要已留存、可识别、完整且不超过 128 KiB 的 JSON 请求体。',
+    'usage-context-estimation':
+      '构成比例按已识别部分的 JSON 字节计算。Token 使用上游按整条请求上报的值。',
     'context-part-system': '系统指令',
     'context-part-tools': '工具定义',
     'context-part-skills': '技能',
@@ -1633,6 +1639,44 @@ const zhCn = {
       description: '根据最近一次获取的 {{context}} 配额自动推荐。',
       context: { overall: '综合', claude: 'Claude', pro3: 'Gemini Pro', flash: 'Gemini Flash' },
     },
+    'add-flow': {
+      description: '登录 Google，或导入已有的 Antigravity 账号。',
+      methods: '添加账号方式',
+      tabs: {
+        google: 'Google 授权',
+        credentials: 'Token / JSON',
+        local: '本机导入',
+      },
+      'copy-link': '复制链接',
+      'preparing-link': '正在准备授权链接…',
+      'link-copied': '已复制链接。请在浏览器中打开链接并登录。',
+      'browser-instructions': '请在浏览器中登录。授权完成后，应用会保存账号。',
+      'callback-label': '回调地址',
+      'callback-help': '完成登录后，粘贴浏览器地址栏里的完整地址。',
+      'submit-callback': '完成登录',
+      'retry-authorization': '获取新链接',
+      credentials: {
+        label: 'Refresh Token 或 JSON',
+        placeholder: '粘贴凭据',
+        help: '每行输入一个 Refresh Token，或粘贴 JSON 对象或数组。',
+        examples: '查看输入示例',
+        import: '导入账号',
+        retry: '重试失败项',
+        progress: '已处理 {{processed}} / {{total}} 项',
+        result: '新增 {{added}} · 更新 {{updated}} · 跳过 {{skipped}} · 失败 {{failed}}',
+        'row-error': '第 {{position}} 项：{{error}}',
+        errors: {
+          empty: '请至少粘贴一条凭据。',
+          'invalid-format': '请检查 Token 或 JSON 格式后重试。',
+          'too-many': '每次最多导入 100 项。',
+          'too-large': '粘贴的内容过大。',
+          'invalid-token': 'Google 拒绝了此 OAuth 客户端使用该 Refresh Token。',
+          'verification-failed': '无法验证 Google 账号。请检查 Token 和 OAuth 客户端。',
+          'save-failed': '无法保存账号。',
+          'request-failed': '无法确认导入结果。',
+        },
+      },
+    },
     authDialog: {
       'manual-sign-in': '粘贴授权码或回调地址',
       'waiting-for-browser': '请在浏览器中完成登录。完成后，此窗口会自动更新。',
@@ -1648,6 +1692,7 @@ const zhCn = {
       verify: '验证并添加',
     },
     localImport: {
+      scan: '扫描本机',
       trigger: '从本机导入账号',
       title: '从本机导入账号',
       description: '查找这台电脑上已登录的账号，核对结果后再导入。',

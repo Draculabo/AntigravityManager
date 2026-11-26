@@ -44,7 +44,8 @@ export function registerCoreRpcRoutes(
       if (
         extra !== undefined ||
         !capability.success ||
-        request.url.startsWith('/rpc/ipcCapture/')
+        request.url.startsWith('/rpc/ipcCapture/') ||
+        request.url.startsWith('/rpc/credentialImport/')
       ) {
         return reply.code(400).send({ error: 'Invalid IPC capture' });
       }

@@ -5,7 +5,7 @@ import {
   type TrafficAuditRequestContext,
   runWithTrafficAuditRequestContext,
 } from './traffic-audit-context';
-import { isAuditManagementIpc, readIpcSessionId } from './ipc-audit-policy';
+import { isAccountEnrollmentIpc, isAuditManagementIpc, readIpcSessionId } from './ipc-audit-policy';
 import type { createRemoteIpcAuditRecorder } from './remote-ipc-audit-recorder';
 
 let selectedRemote: ReturnType<typeof createRemoteIpcAuditRecorder> | undefined;
@@ -32,6 +32,9 @@ export function createIpcAuditRecorder(source: IpcAuditSource = trafficAuditServ
       return remote.run(path, input, next);
     }
     const auditPath = path.join('/');
+    if (isAccountEnrollmentIpc(auditPath)) {
+      return next();
+    }
     const sessionId = readIpcSessionId(input);
     const parent = isAuditManagementIpc(auditPath)
       ? null

@@ -55,6 +55,28 @@ describe('IPC audit recording and drain', () => {
     },
   );
 
+  it.each(
+    [
+      ['cloud', 'oauthSession', 'prepare'],
+      ['cloud', 'oauthSession', 'wait'],
+      ['cloud', 'oauthSession', 'submit'],
+      ['cloud', 'credentialImport', 'importToken'],
+    ].map((path) => ({ path })),
+  )('omits account enrollment payloads at $path', async ({ path }) => {
+    const { source, recorder } = fixture();
+    const input = {
+      sessionId: 'private-session',
+      code: 'private-callback',
+      refreshToken: 'private-token',
+    };
+    const result = { output: { accepted: true } };
+    await expect(recorder.run(path, input, () => result)).resolves.toBe(result);
+    expect(source.startParent).not.toHaveBeenCalled();
+    expect(source.completeParent).not.toHaveBeenCalled();
+    recorder.closeAdmission();
+    await recorder.drain();
+  });
+
   it('accepts the synchronous result allowed by the oRPC middleware contract', async () => {
     const { source, recorder } = fixture();
     const result = { output: 'pong' };

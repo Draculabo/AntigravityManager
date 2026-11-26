@@ -177,6 +177,7 @@ describe('Electron gateway read adapter', () => {
         discard: vi.fn(),
         getPostImportStatus: vi.fn(),
       },
+      importCloudAccountCredential: vi.fn(),
       accountSwitchStatus: vi.fn(),
       accountEvents: () => ({
         epoch: '11111111-1111-4111-8111-111111111111',

@@ -3,6 +3,7 @@ import type { getCloudAccountSwitchStatus } from '@/modules/cloud-account/servic
 import type { ServiceConfigOperations } from '@/modules/config/service-config.service';
 import type { CloudAccountAlertPolicyOperations } from '@/modules/cloud-account/services/cloud-account-alert-policy.service';
 import type { LocalAccountImportOwner } from '@/modules/cloud-account/local-import/transport.router';
+import type { CloudAccountCredentialImport } from '@/modules/cloud-account/services/cloud-account-credential-import.schema';
 import type { accountOwnerEvents } from '@/modules/cloud-account/services/account-owner-events.service';
 import type { cloudAccountMonitorControl } from '@/modules/cloud-account/services/cloud-account-monitor-control.service';
 import type {
@@ -54,9 +55,19 @@ import type { AuditOperations } from '@/modules/proxy-gateway/audit/audit-owner.
 import { ErrorReportingOperations } from '@/modules/config/error-reporting.service';
 
 export interface CoreRpcOperations {
-  gatewayManualStart(port: number): Promise<import('@/modules/proxy-gateway/services/gateway-management.schema').GatewayManualStartResult>;
-  gatewayManualStop(): Promise<import('@/modules/proxy-gateway/services/gateway-management.schema').GatewayManualStopResult>;
-  gatewayRetrySaveChoice(choice: import('@/modules/proxy-gateway/services/gateway-management.schema').GatewayRememberChoice): Promise<import('@/modules/proxy-gateway/services/gateway-management.schema').GatewayChoicePersistence>;
+  gatewayManualStart(
+    port: number,
+  ): Promise<
+    import('@/modules/proxy-gateway/services/gateway-management.schema').GatewayManualStartResult
+  >;
+  gatewayManualStop(): Promise<
+    import('@/modules/proxy-gateway/services/gateway-management.schema').GatewayManualStopResult
+  >;
+  gatewayRetrySaveChoice(
+    choice: import('@/modules/proxy-gateway/services/gateway-management.schema').GatewayRememberChoice,
+  ): Promise<
+    import('@/modules/proxy-gateway/services/gateway-management.schema').GatewayChoicePersistence
+  >;
   errorDiagnostics: import('@/modules/error-diagnostics/public').ErrorDiagnosticOperations;
   playground: import('@/modules/proxy-gateway/playground/playground.service').PlaygroundOperations;
   diagnosticLogs: import('@/modules/app-shell/diagnostic-logs/core-router').CoreLogReader;
@@ -89,6 +100,7 @@ export interface CoreRpcOperations {
   serviceConfig: ServiceConfigOperations;
   accountSwitchStatus: typeof getCloudAccountSwitchStatus;
   localImport: LocalAccountImportOwner;
+  importCloudAccountCredential: CloudAccountCredentialImport;
   accountEvents: typeof accountOwnerEvents.read;
   monitor: typeof cloudAccountMonitorControl;
   accountFileImport(

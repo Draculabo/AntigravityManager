@@ -99,6 +99,69 @@ describe('desktop owner-side OAuth login', () => {
     await expect(pending).rejects.toMatchObject({ loginCode: 'proxy-configuration-invalid' });
   });
 
+  it('closes a cancelled prepared listener and keeps a fresh session usable after an open failure', async () => {
+    vi.spyOn(GoogleAPIService, 'getActiveOAuthClientKey').mockReturnValue('client-a');
+    vi.spyOn(GoogleAPIService, 'getAuthUrl').mockImplementation((_key, session) => {
+      const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+      url.searchParams.set('redirect_uri', session.redirectUri);
+      url.searchParams.set('state', session.state);
+      return url.toString();
+    });
+    const enroll = vi.fn(async () => ({ id: view.id, email: view.email }) as CloudAccount);
+    const session = new HeadlessOAuthSessionService(enroll);
+    sessions.push(session);
+    const openExternal = vi.fn<(url: string) => Promise<void>>();
+    const writeClipboard = vi.fn<(url: string) => void>();
+    const login = new DesktopOAuthLogin({
+      session,
+      selectClient: vi.fn(),
+      openExternal,
+      writeClipboard,
+      loadView: vi.fn(async () => view),
+    });
+
+    const first = await login.prepared.prepare();
+    expect(first).toEqual({ sessionId: expect.any(String) });
+    expect(openExternal).not.toHaveBeenCalled();
+    await login.prepared.copy(first.sessionId);
+    const old = new URL(writeClipboard.mock.calls[0][0]);
+    await expect(login.start()).rejects.toMatchObject({ loginCode: 'login-active' });
+    await login.prepared.cancel(first.sessionId);
+    await expect(login.prepared.wait(first.sessionId)).rejects.toMatchObject({
+      loginCode: 'login-cancelled',
+    });
+    await expect(callback(`${old.searchParams.get('redirect_uri')}?code=late`)).rejects.toThrow();
+
+    const next = await login.prepared.prepare();
+    await expect(login.prepared.copy(first.sessionId)).rejects.toMatchObject({
+      loginCode: 'login-cancelled',
+    });
+    await login.prepared.cancel(first.sessionId);
+    openExternal.mockRejectedValueOnce(new Error('synthetic browser failure'));
+    await expect(login.prepared.open(next.sessionId)).rejects.toMatchObject({
+      loginCode: 'browser-open-failed',
+    });
+    await login.prepared.copy(next.sessionId);
+    const authorization = new URL(writeClipboard.mock.calls[1][0]);
+    const redirect = authorization.searchParams.get('redirect_uri');
+    const state = authorization.searchParams.get('state');
+    expect(() => login.submitCode(`${redirect}?code=4%2Fmanual&state=${state}`)).toThrow();
+    await expect(
+      login.prepared.submit(next.sessionId, `${redirect}?code=4%2Fmanual&state=wrong`),
+    ).rejects.toMatchObject({ loginCode: 'invalid-manual-input' });
+    expect(enroll).not.toHaveBeenCalled();
+    await login.prepared.submit(next.sessionId, `${redirect}?code=4%2Fmanual&state=${state}`);
+    await expect(login.prepared.wait(next.sessionId)).resolves.toEqual(view);
+    await expect(login.prepared.open(next.sessionId)).rejects.toMatchObject({
+      loginCode: 'login-cancelled',
+    });
+    expect(enroll).toHaveBeenCalledExactlyOnceWith('4/manual', {
+      oauthClientKey: 'client-a',
+      redirectUri: redirect,
+      operation: expect.any(GoogleLoginOperation),
+    });
+  });
+
   it('keeps a rejected manual callback retryable and accepts the current browser session', async () => {
     vi.spyOn(GoogleAPIService, 'getActiveOAuthClientKey').mockReturnValue('client-a');
     vi.spyOn(GoogleAPIService, 'getAuthUrl').mockImplementation((_key, session) => {

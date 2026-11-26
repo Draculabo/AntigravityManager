@@ -10,6 +10,7 @@ type OwnerScope =
   | 'opencode'
   | 'audit'
   | 'thought'
+  | 'credential-import'
   | 'audit-curl';
 const pathSchema = z.array(z.string());
 const configError = z.strictObject({ configCode: ServiceConfigErrorCodeSchema });
@@ -21,6 +22,7 @@ type OwnerCategory =
   | z.infer<typeof openCodeError>
   | { auditCode: 'invalid-input' | 'operation-failed' }
   | { thoughtCode: 'invalid-input' | 'operation-failed' }
+  | { credentialImportCode: 'invalid-input' | 'operation-failed' }
   | { auditCurlCode: 'invalid-input' | 'operation-failed' };
 export type OwnerOperationErrorData = OwnerCategory & {
   backendCode: 'BAD_REQUEST' | 'SERVICE_UNAVAILABLE';
@@ -40,6 +42,8 @@ function getOwnerErrorMessage(scope: OwnerScope, invalid: boolean): string {
       return 'Settings are unavailable right now. Please try again.';
     case 'local-account':
       return 'Unable to complete this account action right now. Please try again.';
+    case 'credential-import':
+      return 'Unable to import this account right now. Please try again.';
     case 'audit':
       return 'Request history is unavailable right now. Please try again.';
     case 'thought':
@@ -60,6 +64,9 @@ function resolveScope(requestPath: string): OwnerScope | null {
   }
   if (path[0] === 'config' && ['service', 'accountAlertPolicy'].includes(path[1])) {
     return 'configuration';
+  }
+  if (path[0] === 'cloud' && path[1] === 'credentialImport' && path[2] === 'importToken') {
+    return 'credential-import';
   }
   if (path[0] === 'gateway' && path[1] === 'auditCopyCurl') {
     return 'audit-curl';
@@ -159,6 +166,8 @@ export function projectOwnerOperationError(
     category = { auditCode: invalid ? 'invalid-input' : 'operation-failed' };
   } else if (scope === 'thought') {
     category = { thoughtCode: invalid ? 'invalid-input' : 'operation-failed' };
+  } else if (scope === 'credential-import') {
+    category = { credentialImportCode: invalid ? 'invalid-input' : 'operation-failed' };
   } else if (scope === 'audit-curl') {
     category = { auditCurlCode: invalid ? 'invalid-input' : 'operation-failed' };
   } else {

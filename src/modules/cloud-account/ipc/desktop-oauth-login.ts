@@ -1,4 +1,4 @@
-import { shell } from 'electron';
+import { clipboard, shell } from 'electron';
 import { setTimeout as delay } from 'node:timers/promises';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import {
@@ -21,6 +21,7 @@ import { DesktopOAuthLoginError } from '@/modules/cloud-account/services/desktop
 import { GoogleLoginOperation } from '@/modules/cloud-account/services/google-login-operation';
 import { classifyOperationCause } from '@/modules/cloud-account/services/operation-cause';
 import { InvalidManualOAuthInputError } from '@/modules/cloud-account/services/manual-oauth-input';
+import { PreparedDesktopOAuth, type RevealPreparedOAuthSession } from './prepared-desktop-oauth';
 
 interface OAuthSessionClient {
   start(
@@ -37,18 +38,35 @@ interface DesktopOAuthLoginDependencies {
   session: OAuthSessionClient;
   selectClient(clientKey?: string): void;
   openExternal(url: string): Promise<void>;
+  writeClipboard?(url: string): void;
   loadView(accountId: string): Promise<CloudAccountView | null>;
 }
 
-/** Owns the full desktop login; authorization data never enters renderer IPC. */
 export class DesktopOAuthLogin {
   private pending: Promise<CloudAccountView> | null = null;
-  private sessionId: string | null = null;
+  private session: { id: string; mode: 'legacy' | 'prepared' } | null = null;
   private stopping = false;
+  readonly prepared = new PreparedDesktopOAuth(
+    (key, reveal) => this.begin(key, reveal),
+    (url) => this.dependencies.openExternal(url),
+    (url) =>
+      this.dependencies.writeClipboard
+        ? this.dependencies.writeClipboard(url)
+        : clipboard.writeText(url),
+    (sessionId, code) => this.submitCode(code, sessionId),
+    (sessionId) => this.dependencies.session.cancel(sessionId),
+  );
 
   constructor(private readonly dependencies: DesktopOAuthLoginDependencies) {}
 
-  async start(oauthClientKey?: string): Promise<CloudAccountView> {
+  start(oauthClientKey?: string): Promise<CloudAccountView> {
+    return this.begin(oauthClientKey);
+  }
+
+  private async begin(
+    oauthClientKey?: string,
+    reveal?: RevealPreparedOAuthSession,
+  ): Promise<CloudAccountView> {
     const operation = new GoogleLoginOperation();
     if (this.stopping) {
       throw new DesktopOAuthLoginError(
@@ -62,7 +80,7 @@ export class DesktopOAuthLogin {
         operation.finish(undefined, 'login-active', true),
       );
     }
-    const pending = this.run(operation, oauthClientKey);
+    const pending = this.run(operation, oauthClientKey, reveal);
     this.pending = pending;
     const clearPending = () => {
       if (this.pending === pending) {
@@ -76,12 +94,13 @@ export class DesktopOAuthLogin {
   private async run(
     operation: GoogleLoginOperation,
     oauthClientKey?: string,
+    reveal?: RevealPreparedOAuthSession,
   ): Promise<CloudAccountView> {
     let started: Awaited<ReturnType<OAuthSessionClient['start']>> | undefined;
     try {
       await operation.run('client-selection', () => this.dependencies.selectClient(oauthClientKey));
       started = await this.dependencies.session.start(undefined, operation);
-      this.sessionId = started.sessionId;
+      this.session = { id: started.sessionId, mode: reveal ? 'prepared' : 'legacy' };
       operation.enter('authorization-url');
       const authorizationUrl = normalizeTrustedGoogleValidationUrl(started.authorizationUrl);
       if (!authorizationUrl) {
@@ -89,12 +108,19 @@ export class DesktopOAuthLogin {
         await this.dependencies.session.cancel(started.sessionId).catch(() => undefined);
         throw new DesktopOAuthLoginError('login-failed', diagnostic);
       }
-      try {
-        await operation.run('browser-open', () => this.dependencies.openExternal(authorizationUrl));
-      } catch (error) {
-        const diagnostic = operation.finish(error);
-        await this.dependencies.session.cancel(started.sessionId).catch(() => undefined);
-        throw new DesktopOAuthLoginError('browser-open-failed', diagnostic);
+      if (reveal) {
+        operation.enter('authorization');
+        reveal({ sessionId: started.sessionId, authorizationUrl });
+      } else {
+        try {
+          await operation.run('browser-open', () =>
+            this.dependencies.openExternal(authorizationUrl),
+          );
+        } catch (error) {
+          const diagnostic = operation.finish(error);
+          await this.dependencies.session.cancel(started.sessionId).catch(() => undefined);
+          throw new DesktopOAuthLoginError('browser-open-failed', diagnostic);
+        }
       }
 
       // A callback can start enrollment before the browser-open promise completes.
@@ -147,16 +173,20 @@ export class DesktopOAuthLogin {
             ),
       );
     } finally {
-      if (started && this.sessionId === started.sessionId) {
-        this.sessionId = null;
+      if (started && this.session?.id === started.sessionId) {
+        this.session = null;
       }
     }
   }
 
-  submitCode(code: string): void {
+  submitCode(code: string, expectedSessionId?: string): void {
     const operation = new GoogleLoginOperation();
     operation.enter('authorization');
-    const sessionId = this.sessionId;
+    const session = this.session;
+    if (expectedSessionId && (session?.mode !== 'prepared' || session.id !== expectedSessionId)) {
+      throw new DesktopOAuthLoginError('login-cancelled');
+    }
+    const sessionId = expectedSessionId ?? (session?.mode === 'legacy' ? session.id : null);
     let accepted = false;
     try {
       accepted = sessionId !== null && this.dependencies.session.completeCode(sessionId, code);

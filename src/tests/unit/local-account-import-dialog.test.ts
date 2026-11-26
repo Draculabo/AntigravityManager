@@ -35,6 +35,7 @@ vi.mock('react-i18next', () => ({
 
 import {
   LocalAccountImportDialog,
+  LocalAccountImportPanel,
   type LocalAccountImportDialogHandle,
 } from '@/modules/cloud-account/local-import/components/LocalAccountImportDialog';
 
@@ -220,5 +221,40 @@ describe('LocalAccountImportDialog', () => {
       });
     });
     expect(screen.queryByText('person@example.com')).toBeNull();
+  });
+
+  it('scans on demand and reports a confirmed write as busy until its result is visible', async () => {
+    const pending = Promise.withResolvers<typeof IMPORT_RESULT>();
+    mocks.confirm.mutateAsync.mockReturnValue(pending.promise);
+    const onBusyChange = vi.fn();
+    render(createElement(LocalAccountImportPanel, { onBusyChange }));
+
+    const scan = screen.getByRole('button', { name: 'cloud.localImport.scan' });
+    expect(mocks.preview.mutateAsync).not.toHaveBeenCalled();
+    fireEvent.click(scan);
+    expect(await screen.findByText('person@example.com')).toBeTruthy();
+    expect(onBusyChange).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'cloud.localImport.confirm:1' }));
+    expect(onBusyChange.mock.calls).toEqual([[true]]);
+    expect(screen.getByRole('status').textContent).toContain('cloud.localImport.importing');
+
+    await act(async () => pending.resolve(IMPORT_RESULT));
+    expect(screen.getByText('cloud.localImport.resultTitle')).toBeTruthy();
+    expect(onBusyChange.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it('discards a preview that finishes after switching away from the inline panel', async () => {
+    const pending = Promise.withResolvers<typeof PREVIEW>();
+    mocks.preview.mutateAsync.mockReturnValue(pending.promise);
+    const panel = render(createElement(LocalAccountImportPanel));
+    fireEvent.click(screen.getByRole('button', { name: 'cloud.localImport.scan' }));
+    panel.unmount();
+
+    await act(async () => pending.resolve(PREVIEW));
+    expect(mocks.discard.mutateAsync).toHaveBeenCalledExactlyOnceWith({
+      sessionId: PREVIEW.sessionId,
+    });
+    expect(mocks.confirm.mutateAsync).not.toHaveBeenCalled();
   });
 });

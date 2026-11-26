@@ -49,6 +49,10 @@ import {
 } from '@/modules/cloud-account/local-import/transport.schema';
 import { AccountOwnerEventBatchSchema } from '@/modules/cloud-account/services/account-owner-events.schema';
 import {
+  CloudAccountCredentialImportResultSchema,
+  type CloudAccountCredentialImportInput,
+} from '@/modules/cloud-account/services/cloud-account-credential-import.schema';
+import {
   CloudMonitorModelsSchema,
   CloudMonitorWarmupSchema,
   CloudMonitorMutationResultSchema,
@@ -322,6 +326,11 @@ export class CoreRpcClient {
       await this.accountMutationRpc.localImport.preview(),
     );
   }
+  async importCloudAccountCredential(input: CloudAccountCredentialImportInput) {
+    return CloudAccountCredentialImportResultSchema.parse(
+      await this.accountMutationRpc.credentialImport.importToken(input),
+    );
+  }
   async localImportConfirm(sessionId: string) {
     return LocalAccountImportResultSchema.parse(
       await this.accountMutationRpc.localImport.confirm({ sessionId }),
@@ -506,11 +515,15 @@ export class CoreRpcClient {
   }
 
   async setAccountProjectId(input: SetAccountProjectIdInput) {
-    return AccountProjectIdResultSchema.parse(await this.accountMutationRpc.setAccountProjectId(input));
+    return AccountProjectIdResultSchema.parse(
+      await this.accountMutationRpc.setAccountProjectId(input),
+    );
   }
 
   async fetchAccountProjectId(input: FetchAccountProjectIdInput) {
-    return AccountProjectIdResultSchema.parse(await this.accountMutationRpc.fetchAccountProjectId(input));
+    return AccountProjectIdResultSchema.parse(
+      await this.accountMutationRpc.fetchAccountProjectId(input),
+    );
   }
 
   async setAccountRouting(input: SetCloudAccountRoutingInput): Promise<void> {

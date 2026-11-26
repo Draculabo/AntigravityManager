@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
-  DialogClose,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -18,21 +17,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
-import { useExportCloudAccounts, useImportCloudAccounts } from '../hooks/useCloudAccounts';
+import { useExportCloudAccounts } from '../hooks/useCloudAccounts';
 import {
   LocalAccountImportDialog,
   type LocalAccountImportDialogHandle,
 } from '../local-import/components/LocalAccountImportDialog';
-import { readCloudAccountFileErrorCode } from '../services/cloud-account-file.schema';
+import {
+  readCloudAccountFileErrorCode,
+  type CloudAccountImportSummary,
+} from '../services/cloud-account-file.schema';
+import { CloudAccountFileImportPanel } from './CloudAccountFileImportPanel';
 
 export function CloudAccountTransferMenu() {
   const { t } = useTranslation();
@@ -41,11 +36,8 @@ export function CloudAccountTransferMenu() {
   const menuButton = useRef<HTMLButtonElement>(null);
   const localImportDialog = useRef<LocalAccountImportDialogHandle>(null);
   const launchingDialog = useRef(false);
-  const [importStrategy, setImportStrategy] = useState<'merge' | 'overwrite' | 'skip-existing'>(
-    'merge',
-  );
+  const [isImporting, setIsImporting] = useState(false);
   const exportMutation = useExportCloudAccounts();
-  const importMutation = useImportCloudAccounts();
 
   const fileErrorMessage = (error: unknown) =>
     t(`cloud.exportImport.file-errors.${readCloudAccountFileErrorCode(error) ?? 'import-failed'}`);
@@ -68,42 +60,21 @@ export function CloudAccountTransferMenu() {
     }
   };
 
-  const handleImport = () => {
-    importMutation.mutate(
-      { strategy: importStrategy },
-      {
-        onSuccess: (result) => {
-          if (result.status === 'cancelled') {
-            return;
-          }
-          setFileDialog(null);
-          setImportStrategy('merge');
-          toast({ title: t('cloud.exportImport.importSuccess', result) });
-          if (result.failed > 0) {
-            toast({
-              title: t('cloud.exportImport.importErrors', { count: result.failed }),
-              description: result.errors
-                .slice(0, 3)
-                .map((error) =>
-                  [error.email, t(`cloud.exportImport.file-errors.${error.code}`)]
-                    .filter(Boolean)
-                    .join(': '),
-                )
-                .join('\n'),
-              variant: 'destructive',
-            });
-          }
-        },
-        onError: (error) => {
-          toast({
-            error,
-            title: t('cloud.error.loadFailed'),
-            description: fileErrorMessage(error),
-            variant: 'destructive',
-          });
-        },
-      },
-    );
+  const handleImported = (result: CloudAccountImportSummary) => {
+    setFileDialog(null);
+    toast({ title: t('cloud.exportImport.importSuccess', result) });
+    if (result.failed > 0) {
+      toast({
+        title: t('cloud.exportImport.importErrors', { count: result.failed }),
+        description: result.errors
+          .slice(0, 3)
+          .map(({ email, code }) =>
+            [email, t(`cloud.exportImport.file-errors.${code}`)].filter(Boolean).join(': '),
+          )
+          .join('\n'),
+        variant: 'destructive',
+      });
+    }
   };
 
   const openDialog = (open: () => void) => {
@@ -198,60 +169,25 @@ export function CloudAccountTransferMenu() {
       <Dialog
         open={fileDialog === 'import'}
         onOpenChange={(open) => {
-          if (!open) {
+          if (!open && !isImporting) {
             setFileDialog(null);
-            setImportStrategy('merge');
           }
         }}
       >
-        <DialogContent className="sm:max-w-[500px]" onCloseAutoFocus={restoreMenuFocus}>
+        <DialogContent
+          className="sm:max-w-[500px]"
+          onCloseAutoFocus={restoreMenuFocus}
+          closeDisabled={isImporting}
+        >
           <DialogHeader className="pr-8">
             <DialogTitle>{t('cloud.exportImport.importTitle')}</DialogTitle>
             <DialogDescription>{t('cloud.exportImport.importDesc')}</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="cloud-import-strategy">
-                {t('cloud.exportImport.importStrategy')}
-              </Label>
-              <Select
-                value={importStrategy}
-                onValueChange={(value) => {
-                  if (value === 'merge' || value === 'overwrite' || value === 'skip-existing') {
-                    setImportStrategy(value);
-                  }
-                }}
-              >
-                <SelectTrigger id="cloud-import-strategy">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="merge">{t('cloud.exportImport.strategyMerge')}</SelectItem>
-                  <SelectItem value="overwrite">
-                    {t('cloud.exportImport.strategyOverwrite')}
-                  </SelectItem>
-                  <SelectItem value="skip-existing">
-                    {t('cloud.exportImport.strategySkip')}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">{t('common.close', 'Close')}</Button>
-            </DialogClose>
-            <Button
-              onClick={handleImport}
-              disabled={importMutation.isPending}
-              aria-busy={importMutation.isPending}
-            >
-              {importMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {importMutation.isPending
-                ? t('cloud.exportImport.importing')
-                : t('cloud.exportImport.import')}
-            </Button>
-          </DialogFooter>
+          <CloudAccountFileImportPanel
+            onBusyChange={setIsImporting}
+            onImported={handleImported}
+            onClose={() => setFileDialog(null)}
+          />
         </DialogContent>
       </Dialog>
     </>

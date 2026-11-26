@@ -1318,6 +1318,7 @@ const fr = {
       description: 'Sélectionné automatiquement à partir du dernier quota {{context}} récupéré.',
       context: { overall: 'global', claude: 'Claude', pro3: 'Gemini Pro', flash: 'Gemini Flash' },
     },
+    'add-flow': en.cloud['add-flow'],
     authDialog: {
       'manual-sign-in': 'Coller un code ou une adresse de retour',
       'waiting-for-browser':
@@ -1336,6 +1337,7 @@ const fr = {
     },
     localImport: {
       ...en.cloud.localImport,
+      scan: 'Analyser cet appareil',
       description:
         'Recherchez les comptes déjà connectés sur cet ordinateur, puis vérifiez les résultats avant de les importer.',
       emailCollision: '{{email}} possède {{count}} connexions enregistrées différentes.',
@@ -1470,7 +1472,8 @@ const fr = {
       'proxy-routing-save': 'Enregistrer le routage',
       'proxy-priority-gemini': 'Gemini',
       'proxy-priority-claude': 'Claude',
-      'proxy-family-priority-hint': 'Les nombres les plus bas sont prioritaires. Laissez un champ vide pour utiliser la priorité globale.',
+      'proxy-family-priority-hint':
+        'Les nombres les plus bas sont prioritaires. Laissez un champ vide pour utiliser la priorité globale.',
       'proxy-priority': 'Priorité du proxy (1–100)',
       'proxy-enabled': 'Utiliser ce compte pour les requêtes proxy',
       noProxy: 'Aucun proxy',

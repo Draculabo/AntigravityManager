@@ -8,8 +8,13 @@ import { CloudAccountTransferMenu } from '@/modules/cloud-account/components/Clo
 
 const actions = vi.hoisted(() => ({
   listOAuthClients: vi.fn(),
-  startAuthFlow: vi.fn(),
-  submitAuthCode: vi.fn(),
+  prepareOAuthSession: vi.fn(),
+  openOAuthSession: vi.fn(),
+  copyOAuthSessionLink: vi.fn(),
+  waitForOAuthSession: vi.fn(),
+  submitOAuthSessionCallback: vi.fn(),
+  cancelOAuthSession: vi.fn(),
+  importCloudAccountRefreshToken: vi.fn(),
   setActiveOAuthClient: vi.fn(),
   exportCloudAccounts: vi.fn(),
   importCloudAccounts: vi.fn(),
@@ -34,11 +39,16 @@ beforeEach(() => {
   actions.listOAuthClients.mockResolvedValue([
     { key: 'active-client', label: 'Active client', is_active: true },
   ]);
-  actions.submitAuthCode.mockResolvedValue(undefined);
+  actions.prepareOAuthSession.mockResolvedValue({ sessionId: 'session-1' });
+  actions.waitForOAuthSession.mockImplementation(() => new Promise(() => {}));
+  actions.cancelOAuthSession.mockResolvedValue(undefined);
+  actions.openOAuthSession.mockResolvedValue(undefined);
+  actions.copyOAuthSessionLink.mockResolvedValue(undefined);
+  actions.submitOAuthSessionCallback.mockResolvedValue(undefined);
   actions.setActiveOAuthClient.mockResolvedValue(undefined);
 });
-afterEach(() => {
-  cleanup();
+afterEach(async () => {
+  await act(async () => cleanup());
   clients.splice(0).forEach((client) => client.clear());
   vi.resetAllMocks();
 });
@@ -74,68 +84,57 @@ function openTransferMenu() {
 }
 
 describe('account dialog state ownership', () => {
-  it('keeps a rejected callback address for retry and sends its state to the owner unchanged', async () => {
-    const login = Promise.withResolvers<void>();
-    actions.startAuthFlow.mockReturnValue(login.promise);
-    actions.submitAuthCode.mockRejectedValueOnce({ data: { loginCode: 'invalid-manual-input' } });
+  async function openLogin() {
+    await userEvent.click(screen.getByRole('button', { name: 'cloud.addAccount' }));
+    const open = await screen.findByRole<HTMLButtonElement>('button', {
+      name: 'cloud.authDialog.openLogin',
+    });
+    await waitFor(() => expect(open.disabled).toBe(false));
+    return open;
+  }
+
+  it('prepares without opening a browser and copies the prepared link', async () => {
     renderDialogs();
-    fireEvent.click(screen.getByRole('button', { name: 'cloud.addAccount' }));
-    const open = screen.getByRole('button', { name: 'cloud.authDialog.openLogin' });
-    await waitFor(() => expect((open as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(open);
-    const input = screen.getByLabelText('cloud.authDialog.authCode');
-    const pasted = 'http://127.0.0.1:1234/oauth-callback?code=4%2Fsynthetic&state=current';
-    fireEvent.change(input, { target: { value: ` ${pasted} ` } });
-    const submit = screen.getByRole('button', { name: 'cloud.authDialog.verify' });
-    await waitFor(() => expect((submit as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(submit);
-    await waitFor(() =>
-      expect(actions.toast).toHaveBeenCalledWith(
-        expect.objectContaining({
-          description: 'cloud.toast.addFailed.codes.invalid-manual-input',
-          variant: 'destructive',
-        }),
-      ),
-    );
-    expect((input as HTMLInputElement).value).toBe(` ${pasted} `);
-    expect(actions.submitAuthCode).toHaveBeenCalledExactlyOnceWith(
-      { code: pasted },
-      expect.anything(),
-    );
-    fireEvent.click(submit);
-    await waitFor(() => expect((input as HTMLInputElement).value).toBe(''));
-    expect(actions.submitAuthCode).toHaveBeenCalledTimes(2);
-    await act(async () => login.resolve());
+    await openLogin();
+    expect(actions.prepareOAuthSession).toHaveBeenCalledExactlyOnceWith('active-client');
+    expect(actions.openOAuthSession).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'cloud.add-flow.copy-link' }));
+    expect(actions.copyOAuthSessionLink).toHaveBeenCalledExactlyOnceWith('session-1');
+    expect(await screen.findByText('cloud.add-flow.link-copied')).toBeTruthy();
   });
 
-  it('keeps typing and browser login updates out of the parent and sibling grid', async () => {
-    const login = Promise.withResolvers<void>();
-    actions.startAuthFlow.mockReturnValue(login.promise);
+  it('keeps a rejected callback address and submits its state unchanged on retry', async () => {
+    actions.submitOAuthSessionCallback.mockRejectedValueOnce({
+      data: { loginCode: 'invalid-manual-input' },
+    });
     renderDialogs();
-    fireEvent.click(screen.getByRole('button', { name: 'cloud.addAccount' }));
-    const openLogin = screen.getByRole('button', { name: 'cloud.authDialog.openLogin' });
-    await waitFor(() => expect((openLogin as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(openLogin);
-    await waitFor(() =>
-      expect(actions.startAuthFlow).toHaveBeenCalledExactlyOnceWith(
-        { oauthClientKey: 'active-client' },
-        expect.anything(),
-      ),
+    await userEvent.click(await openLogin());
+    expect(actions.openOAuthSession).toHaveBeenCalledExactlyOnceWith('session-1');
+    await userEvent.click(screen.getByText('cloud.authDialog.manual-sign-in'));
+    const input = screen.getByLabelText<HTMLInputElement>('cloud.add-flow.callback-label');
+    const pasted = 'http://127.0.0.1:1234/oauth-callback?code=4%2Fsynthetic&state=current';
+    fireEvent.change(input, { target: { value: ` ${pasted} ` } });
+    const submit = screen.getByRole('button', { name: 'cloud.add-flow.submit-callback' });
+    await userEvent.click(submit);
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'cloud.toast.addFailed.codes.invalid-manual-input',
     );
-    const input = screen.getByLabelText('cloud.authDialog.authCode');
-    fireEvent.change(input, { target: { value: '  4/synthetic-code  ' } });
-    const verify = screen.getByRole('button', { name: 'cloud.authDialog.verify' });
-    await waitFor(() => expect((verify as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(verify);
-    await waitFor(() =>
-      expect(actions.submitAuthCode).toHaveBeenCalledExactlyOnceWith(
-        { code: '4/synthetic-code' },
-        expect.anything(),
-      ),
-    );
-    await waitFor(() => expect((input as HTMLInputElement).value).toBe(''));
+    expect(input.value).toBe(` ${pasted} `);
+    expect(actions.submitOAuthSessionCallback).toHaveBeenCalledExactlyOnceWith('session-1', pasted);
+    await userEvent.click(submit);
+    await waitFor(() => expect(input.value).toBe(''));
+    expect(actions.submitOAuthSessionCallback).toHaveBeenCalledTimes(2);
+  });
+
+  it('updates the account list after browser authorization without re-rendering the grid', async () => {
+    const login = Promise.withResolvers<void>();
+    actions.waitForOAuthSession.mockReturnValueOnce(login.promise);
+    const client = renderDialogs();
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    await userEvent.click(await openLogin());
     await act(async () => login.resolve());
-    await waitFor(() => expect(screen.queryByLabelText('cloud.authDialog.authCode')).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['cloudAccounts'] });
     expect(actions.toast).toHaveBeenCalledWith({
       title: 'cloud.toast.addSuccess',
       variant: 'success',
@@ -144,19 +143,58 @@ describe('account dialog state ownership', () => {
     expect(actions.siblingRender).toHaveBeenCalledOnce();
   });
 
-  it('clears a pasted code when closing the login dialog', async () => {
+  it('cancels when leaving the authorization tab and clears the callback on return', async () => {
     renderDialogs();
-    fireEvent.click(screen.getByRole('button', { name: 'cloud.addAccount' }));
-    fireEvent.change(screen.getByLabelText('cloud.authDialog.authCode'), {
+    await openLogin();
+    await userEvent.click(screen.getByText('cloud.authDialog.manual-sign-in'));
+    fireEvent.change(screen.getByLabelText('cloud.add-flow.callback-label'), {
       target: { value: 'synthetic-code' },
     });
-    fireEvent.click(screen.getAllByRole('button', { name: 'common.close' })[0]);
-    fireEvent.click(screen.getByRole('button', { name: 'cloud.addAccount' }));
-    expect((screen.getByLabelText('cloud.authDialog.authCode') as HTMLInputElement).value).toBe('');
+    await userEvent.click(screen.getByRole('tab', { name: 'cloud.add-flow.tabs.local' }));
+    await waitFor(() => expect(actions.cancelOAuthSession).toHaveBeenCalledWith('session-1'));
+    expect(screen.queryByLabelText('cloud.add-flow.callback-label')).toBeNull();
+    await userEvent.click(screen.getByRole('tab', { name: 'cloud.add-flow.tabs.google' }));
+    await userEvent.click(screen.getByText('cloud.authDialog.manual-sign-in'));
+    expect(screen.getByLabelText<HTMLInputElement>('cloud.add-flow.callback-label').value).toBe('');
     expect(
-      (screen.getByRole('button', { name: 'cloud.authDialog.verify' }) as HTMLButtonElement)
+      screen.getByRole<HTMLButtonElement>('button', { name: 'cloud.add-flow.submit-callback' })
         .disabled,
     ).toBe(true);
+  });
+
+  it('de-duplicates pasted credentials and retries only failed rows', async () => {
+    actions.importCloudAccountRefreshToken
+      .mockResolvedValueOnce({ status: 'added', email: 'first@example.test' })
+      .mockResolvedValueOnce({ status: 'failed', reason: 'verification-failed' })
+      .mockResolvedValueOnce({ status: 'added', email: 'retry@example.test' });
+    const client = renderDialogs();
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    await openLogin();
+    await userEvent.click(screen.getByRole('tab', { name: 'cloud.add-flow.tabs.credentials' }));
+    const input = screen.getByLabelText<HTMLTextAreaElement>('cloud.add-flow.credentials.label');
+    const first = 'synthetic-refresh-first';
+    const second = 'synthetic-refresh-second';
+    fireEvent.change(input, { target: { value: [first, second, first].join('\n') } });
+    await userEvent.click(
+      screen.getByRole('button', { name: 'cloud.add-flow.credentials.import' }),
+    );
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'cloud.add-flow.credentials.retry' }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', {
+          name: 'cloud.add-flow.credentials.retry',
+        }),
+      ).toBeNull(),
+    );
+    expect(actions.importCloudAccountRefreshToken.mock.calls).toEqual([
+      [first],
+      [second],
+      [second],
+    ]);
+    expect(input.value).toBe('');
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['cloudAccounts'] });
   });
 
   it('retains the export dialog on cancellation and preserves both export options', async () => {

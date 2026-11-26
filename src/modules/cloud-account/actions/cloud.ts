@@ -76,12 +76,32 @@ export function setWeeklyWarmupConfig(config: WeeklyWarmupConfig) {
   return ipc.client.cloud.setWeeklyWarmupConfig(config);
 }
 
-export function startAuthFlow(input?: { oauthClientKey?: string }) {
-  return ipc.client.cloud.startAuthFlow(input);
+export function prepareOAuthSession(oauthClientKey?: string) {
+  return ipc.client.cloud.oauthSession.prepare(oauthClientKey ? { oauthClientKey } : {});
 }
 
-export function submitAuthCode(input: { code: string }) {
-  return ipc.client.cloud.submitAuthCode(input);
+export function openOAuthSession(sessionId: string) {
+  return ipc.client.cloud.oauthSession.open({ sessionId });
+}
+
+export function copyOAuthSessionLink(sessionId: string) {
+  return ipc.client.cloud.oauthSession.copy({ sessionId });
+}
+
+export function waitForOAuthSession(sessionId: string) {
+  return ipc.client.cloud.oauthSession.wait({ sessionId });
+}
+
+export function submitOAuthSessionCallback(sessionId: string, code: string) {
+  return ipc.client.cloud.oauthSession.submit({ sessionId, code });
+}
+
+export function cancelOAuthSession(sessionId: string) {
+  return ipc.client.cloud.oauthSession.cancel({ sessionId });
+}
+
+export function importCloudAccountRefreshToken(refreshToken: string, oauthClientKey?: string) {
+  return ipc.client.cloud.credentialImport.importToken({ refreshToken, oauthClientKey });
 }
 
 export function listOAuthClients() {

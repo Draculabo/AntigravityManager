@@ -150,59 +150,78 @@ describe('remote desktop OAuth login', () => {
     await expect(login.submitCode('4/replay')).rejects.toMatchObject({ loginCode: 'login-failed' });
   }, 15_000);
 
-  it('uses the core owner over a real private endpoint and returns only its strict view', async () => {
-    vi.spyOn(GoogleAPIService, 'getActiveOAuthClientKey').mockReturnValue('active-client');
-    vi.spyOn(GoogleAPIService, 'getAuthUrl').mockImplementation((_key, session) => {
-      const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-      url.searchParams.set('redirect_uri', session.redirectUri);
-      url.searchParams.set('state', session.state);
-      return url.toString();
-    });
-    const enroll = vi.fn(async () => ({ id: view.id, email: view.email }) as CloudAccount);
-    const session = new HeadlessOAuthSessionService(enroll);
-    sessions.push(session);
-    const socketPath = await endpoint();
-    const server = new ManagementServer({
-      endpoint: socketPath,
-      getStatus: () => ({ state: 'running', pid: 123, gateway: { running: false, port: null } }),
-      shutdown: async () => {},
-      onShutdownError: vi.fn(),
-      oauth: session,
-    });
-    closeables.push(server);
-    await server.start();
+  it.each(['automatic', 'prepared'])(
+    'uses the core owner over a real private endpoint and returns only its strict view (%s)',
+    async (mode) => {
+      vi.spyOn(GoogleAPIService, 'getActiveOAuthClientKey').mockReturnValue('active-client');
+      vi.spyOn(GoogleAPIService, 'getAuthUrl').mockImplementation((_key, session) => {
+        const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+        url.searchParams.set('redirect_uri', session.redirectUri);
+        url.searchParams.set('state', session.state);
+        return url.toString();
+      });
+      const enroll = vi.fn(async () => ({ id: view.id, email: view.email }) as CloudAccount);
+      const session = new HeadlessOAuthSessionService(enroll);
+      sessions.push(session);
+      const socketPath = await endpoint();
+      const server = new ManagementServer({
+        endpoint: socketPath,
+        getStatus: () => ({ state: 'running', pid: 123, gateway: { running: false, port: null } }),
+        shutdown: async () => {},
+        onShutdownError: vi.fn(),
+        oauth: session,
+      });
+      closeables.push(server);
+      await server.start();
 
-    const openExternal = vi.fn(async (_url: string) => {});
-    const setPreference = vi.fn(async (_key: string) => {});
-    const accountViews = vi.fn(async () => [view]);
-    const login = new StandaloneCoreOAuthLogin({
-      management: new ManagementClient(socketPath),
-      setPreference,
-      accountViews,
-      openExternal,
-    });
-    const pending = login.start('explicit-client');
-    await vi.waitFor(() => expect(openExternal).toHaveBeenCalledOnce());
-    const url = new URL(openExternal.mock.calls[0][0]);
-    const redirect = url.searchParams.get('redirect_uri');
-    const state = url.searchParams.get('state');
-    expect(setPreference).toHaveBeenCalledExactlyOnceWith('explicit-client');
-    expect(url.hostname).toBe('accounts.google.com');
-    expect(await callback(`${redirect}?code=bad&state=wrong`)).toBe(400);
-    expect(enroll).not.toHaveBeenCalled();
+      const openExternal = vi.fn(async (_url: string) => {});
+      const writeClipboard = vi.fn<(url: string) => void>();
+      const setPreference = vi.fn(async (_key: string) => {});
+      const accountViews = vi.fn(async () => [view]);
+      const login = new StandaloneCoreOAuthLogin({
+        management: new ManagementClient(socketPath),
+        setPreference,
+        accountViews,
+        openExternal,
+        writeClipboard,
+      });
+      let pending: Promise<CloudAccountView>;
+      if (mode === 'prepared') {
+        const prepared = await login.prepared.prepare('explicit-client');
+        expect(prepared).toEqual({ sessionId: expect.any(String) });
+        expect(openExternal).not.toHaveBeenCalled();
+        await login.prepared.copy(prepared.sessionId);
+        await login.prepared.open(prepared.sessionId);
+        expect(openExternal).toHaveBeenCalledExactlyOnceWith(writeClipboard.mock.calls[0][0]);
+        pending = login.prepared.wait(prepared.sessionId);
+      } else {
+        pending = login.start('explicit-client');
+      }
+      await vi.waitFor(() => expect(openExternal).toHaveBeenCalledOnce());
+      const url = new URL(openExternal.mock.calls[0][0]);
+      const redirect = url.searchParams.get('redirect_uri');
+      const state = url.searchParams.get('state');
+      expect(setPreference).toHaveBeenCalledExactlyOnceWith('explicit-client');
+      expect(url.hostname).toBe('accounts.google.com');
+      expect(await callback(`${redirect}?code=bad&state=wrong`)).toBe(400);
+      expect(enroll).not.toHaveBeenCalled();
 
-    vi.mocked(GoogleAPIService.getActiveOAuthClientKey).mockReturnValue('changed-active');
-    expect(await callback(`${redirect}?code=private-code&state=${state}`)).toBe(200);
-    expect(await pending).toEqual(view);
-    expect(enroll).toHaveBeenCalledExactlyOnceWith('private-code', {
-      oauthClientKey: 'explicit-client',
-      redirectUri: redirect,
+      vi.mocked(GoogleAPIService.getActiveOAuthClientKey).mockReturnValue('changed-active');
+      expect(await callback(`${redirect}?code=private-code&state=${state}`)).toBe(200);
+      expect(await pending).toEqual(view);
+      expect(enroll).toHaveBeenCalledExactlyOnceWith('private-code', {
+        oauthClientKey: 'explicit-client',
+        redirectUri: redirect,
 
-      operation: expect.any(GoogleLoginOperation),
-    });
-    expect(accountViews).toHaveBeenCalledOnce();
-    expect(JSON.stringify(await pending)).not.toMatch(/private-code|refresh_token|sessionId|state/);
-  }, 15_000);
+        operation: expect.any(GoogleLoginOperation),
+      });
+      expect(accountViews).toHaveBeenCalledOnce();
+      expect(JSON.stringify(await pending)).not.toMatch(
+        /private-code|refresh_token|sessionId|state/,
+      );
+    },
+    15_000,
+  );
 
   it.each([
     ['https://evil.example/private-code', 'login-failed'],

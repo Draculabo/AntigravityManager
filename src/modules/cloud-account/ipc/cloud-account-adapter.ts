@@ -4,6 +4,8 @@ import { setCloudAccountRouting } from '../services/cloud-account-routing.servic
 import type { CloudAccountSwitchStatus } from '../services/cloud-account-switch-status.schema';
 import { localAccountImportCoordinator } from '../local-import/local-account-import-coordinator.service';
 import type { LocalAccountImportOwner } from '../local-import/transport.router';
+import type { CloudAccountCredentialImport } from '../services/cloud-account-credential-import.schema';
+import { importCloudAccountRefreshToken } from '../services/cloud-account-credential-import.service';
 import { cloudAccountMonitorControl } from '../services/cloud-account-monitor-control.service';
 import type { AutoSwitchModelConfig } from '../types';
 import type { WeeklyWarmupConfig } from '../services/weekly-warmup-contract';
@@ -48,8 +50,10 @@ import {
 import type { CloudAccountProjectIdOperations } from '../services/cloud-account-project-id.schema';
 import { cloudAccountProjectId } from '../services/cloud-account-project-id.service';
 import { logger } from '@/shared/logging/logger';
+import type { PreparedDesktopOAuthOperations } from './prepared-desktop-oauth';
 
 export interface CloudAccountAdapter extends CloudAccountProjectIdOperations {
+  importCredential: CloudAccountCredentialImport;
   getSwitchStatus(): Promise<CloudAccountSwitchStatus>;
   localImport: LocalAccountImportOwner;
   getAutoSwitchEnabled(): Promise<boolean>;
@@ -61,6 +65,7 @@ export interface CloudAccountAdapter extends CloudAccountProjectIdOperations {
   setWeeklyWarmupConfig(config: WeeklyWarmupConfig): Promise<void>;
   importFile(filePath: string, strategy: ImportStrategy): Promise<CloudAccountImportSummary>;
   exportFile(filePath: string, stripTokens: boolean): Promise<{ status: 'saved' }>;
+  getOAuthSession(): Promise<PreparedDesktopOAuthOperations>;
   startLogin(oauthClientKey?: string): Promise<CloudAccountView>;
   submitLoginCode(code: string): Promise<void>;
   stopLogin(): Promise<void>;
@@ -127,6 +132,7 @@ type StandaloneCoreCloudAccountClient = Pick<
   | 'deleteIdentityProfileRevision'
 > & {
   setAccountRouting?: CoreRpcClient['setAccountRouting'];
+  importCloudAccountCredential?: CoreRpcClient['importCloudAccountCredential'];
 };
 
 export type CloudAccountAdapterSelection =
@@ -141,7 +147,9 @@ export type CloudAccountAdapterSelection =
     };
 
 function createDesktopEmbeddedAdapter(): CloudAccountAdapter {
+  const getLogin = async () => (await import('./desktop-oauth-login')).desktopOAuthLogin;
   return {
+    importCredential: importCloudAccountRefreshToken,
     localImport: {
       preview: () => localAccountImportCoordinator.preview(),
       confirm: (id) => localAccountImportCoordinator.confirm(id),
@@ -158,18 +166,12 @@ function createDesktopEmbeddedAdapter(): CloudAccountAdapter {
     setWeeklyWarmupConfig: cloudAccountMonitorControl.setWeeklyWarmupConfig,
     importFile: importCloudAccountFile,
     exportFile: exportCloudAccountFile,
-    startLogin: async (oauthClientKey) => {
-      const { desktopOAuthLogin } = await import('./desktop-oauth-login');
-      return desktopOAuthLogin.start(oauthClientKey);
-    },
+    getOAuthSession: async () => (await getLogin()).prepared,
+    startLogin: async (oauthClientKey) => (await getLogin()).start(oauthClientKey),
     submitLoginCode: async (code) => {
-      const { desktopOAuthLogin } = await import('./desktop-oauth-login');
-      desktopOAuthLogin.submitCode(code);
+      (await getLogin()).submitCode(code);
     },
-    stopLogin: async () => {
-      const { desktopOAuthLogin } = await import('./desktop-oauth-login');
-      await desktopOAuthLogin.stop();
-    },
+    stopLogin: async () => (await getLogin()).stop(),
     switchAccount: async (accountId, appTarget) => {
       const { switchCloudAccountForDesktop } = await import('./cloud-account-switch-desktop');
       await switchCloudAccountForDesktop(accountId, appTarget);
@@ -225,6 +227,11 @@ function createStandaloneCoreAdapter(
     return standaloneCoreLogin;
   };
   return {
+    importCredential: async (input) =>
+      (await client.importCloudAccountCredential?.(input)) ?? {
+        status: 'failed',
+        reason: 'save-failed',
+      },
     localImport: {
       preview: () => client.localImportPreview(),
       confirm: (sessionId) => client.localImportConfirm(sessionId),
@@ -241,6 +248,7 @@ function createStandaloneCoreAdapter(
     setWeeklyWarmupConfig: (config) => client.setWeeklyWarmupConfig(config),
     importFile: (filePath, strategy) => client.importAccountFile(filePath, strategy),
     exportFile: (filePath, stripTokens) => client.exportAccountFile(filePath, stripTokens),
+    getOAuthSession: async () => (await getStandaloneCoreLogin()).prepared,
     startLogin: async (oauthClientKey) => (await getStandaloneCoreLogin()).start(oauthClientKey),
     submitLoginCode: async (code) => (await getStandaloneCoreLogin()).submitCode(code),
     stopLogin: async () => {

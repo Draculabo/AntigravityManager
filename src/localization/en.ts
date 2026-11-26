@@ -539,19 +539,25 @@ const en = {
     'dual-ttft-diff': '{{winner}} responded {{diff}}s earlier (TTFT)',
   },
   traffic: {
-    'usage-sessions-intro': 'Group saved model requests by conversation to see which sessions used the most tokens and inspect each timeline.',
-    'usage-context-intro': 'See how much input entered each model, how much came from cache, and how close peak input was to the catalog window.',
+    'usage-sessions-intro':
+      'Group saved model requests by conversation to see which sessions used the most tokens and inspect each timeline.',
+    'usage-context-intro':
+      'See how much input entered each model, how much came from cache, and how close peak input was to the catalog window.',
     'usage-no-saved-model-requests': 'No saved model requests in this period',
-    'usage-empty-period-help': 'Usage comes from saved model requests through the local gateway. Other request categories and calls made directly by clients are outside this view.',
+    'usage-empty-period-help':
+      'Usage comes from saved model requests through the local gateway. Other request categories and calls made directly by clients are outside this view.',
     'usage-show-all-history': 'Show all retained history',
     'usage-open-request-history': 'Open request history',
     'usage-session-search-empty':
       'No retained user message or assistant reply matches in this date range and account selection.',
-    'usage-session-id-missing': 'There are saved model requests in this period. They did not provide a usable session ID for grouping.',
+    'usage-session-id-missing':
+      'There are saved model requests in this period. They did not provide a usable session ID for grouping.',
     'usage-clear-session-search': 'Clear session search',
     'usage-context-counters-missing': 'No input-token counters were saved for this selection',
-    'usage-context-counters-help': 'You can still inspect individual requests. Context composition is available when a complete, supported request body was captured.',
-    'audit-drops-scope': 'Cumulative audit capture drops across categories, including app operations and system events.',
+    'usage-context-counters-help':
+      'You can still inspect individual requests. Context composition is available when a complete, supported request body was captured.',
+    'audit-drops-scope':
+      'Cumulative audit capture drops across categories, including app operations and system events.',
     'audit-last-drop-reason': 'Latest recorded reason · {{reason}}',
     'usage-request-actions': 'Request actions',
     'usage-session-controls': 'Session filter',
@@ -572,7 +578,8 @@ const en = {
     'usage-series-clients': 'Observed client',
     'usage-series-protocols': 'Protocol',
     'usage-series-value': '{{date}} · {{group}} · {{value}}',
-    'usage-series-help': 'Shows the six largest groups by observed tokens. A request can appear in multiple groups when it retries.',
+    'usage-series-help':
+      'Shows the six largest groups by observed tokens. A request can appear in multiple groups when it retries.',
     'usage-transport-volume': 'Observed upstream body transfer',
     'usage-transport-upload': 'Uploaded body bytes',
     'usage-transport-download': 'Downloaded body bytes',
@@ -615,7 +622,8 @@ const en = {
     'usage-price-total': 'Estimated cost',
     'usage-nonfailed': 'Other requests',
     'usage-request-insights': 'Request analytics',
-    'usage-insights-default': 'Analytics uses the latest seven calendar days unless the request start date is set.',
+    'usage-insights-default':
+      'Analytics uses the latest seven calendar days unless the request start date is set.',
     'usage-csv-export': 'Export CSV',
     'usage-csv-exporting': 'Preparing CSV…',
     'usage-csv-ready': 'CSV prepared for download.',
@@ -624,8 +632,10 @@ const en = {
     'usage-csv-changed': 'History changed during export. Refresh and try again.',
     'usage-context-breakdown': 'Context composition',
     'usage-context-exact': '{{input}} input · {{cached}} cached · {{fill}} of catalog window',
-    'usage-context-unavailable': 'Composition requires a recognized, complete retained JSON request body up to 128 KiB.',
-    'usage-context-estimation': 'Shares use the JSON bytes of recognized sections. Providers report tokens at the request level.',
+    'usage-context-unavailable':
+      'Composition requires a recognized, complete retained JSON request body up to 128 KiB.',
+    'usage-context-estimation':
+      'Shares use the JSON bytes of recognized sections. Providers report tokens at the request level.',
     'context-part-system': 'System instructions',
     'context-part-tools': 'Tool definitions',
     'context-part-skills': 'Skills',
@@ -670,7 +680,8 @@ const en = {
     'usage-load-failed': 'Could not load usage',
     'usage-loading': 'Loading usage',
     'usage-empty': 'No requests in this period',
-    'usage-retained': 'Usage covers retained local gateway requests. Token totals include the counters upstream reported.',
+    'usage-retained':
+      'Usage covers retained local gateway requests. Token totals include the counters upstream reported.',
     'usage-observed-tokens': 'Observed tokens',
     'usage-token-split': '{{input}} input · {{output}} output',
     'usage-retry-count': '{{value}} retried',
@@ -1771,6 +1782,46 @@ const en = {
       description: 'Automatically selected from the latest fetched {{context}} quota.',
       context: { overall: 'overall', claude: 'Claude', pro3: 'Gemini Pro', flash: 'Gemini Flash' },
     },
+    'add-flow': {
+      description: 'Sign in to Google or import an existing Antigravity account.',
+      methods: 'Ways to add an account',
+      tabs: {
+        google: 'Google sign-in',
+        credentials: 'Token / JSON',
+        local: 'This device',
+      },
+      'copy-link': 'Copy link',
+      'preparing-link': 'Preparing authorization link…',
+      'link-copied': 'Link copied. Open it in a browser to sign in.',
+      'browser-instructions':
+        'Sign in in your browser. Manager saves the account after authorization.',
+      'callback-label': 'Callback address',
+      'callback-help': 'Paste the full address from the browser after you finish signing in.',
+      'submit-callback': 'Complete sign-in',
+      'retry-authorization': 'Get a new link',
+      credentials: {
+        label: 'Refresh tokens or JSON',
+        placeholder: 'Paste credentials',
+        help: 'Enter one refresh token per line, or paste a JSON object or array.',
+        examples: 'Show input examples',
+        import: 'Import accounts',
+        retry: 'Retry failed',
+        progress: '{{processed}} of {{total}} processed',
+        result: '{{added}} added · {{updated}} updated · {{skipped}} skipped · {{failed}} failed',
+        'row-error': 'Entry {{position}}: {{error}}',
+        errors: {
+          empty: 'Paste at least one credential.',
+          'invalid-format': 'Check the token or JSON format and try again.',
+          'too-many': 'Import up to 100 entries at a time.',
+          'too-large': 'The pasted input is too large.',
+          'invalid-token': 'Google rejected this refresh token for the active OAuth client.',
+          'verification-failed':
+            'Could not verify the Google account. Check the token and OAuth client.',
+          'save-failed': 'Could not save the account.',
+          'request-failed': 'Could not confirm the import result.',
+        },
+      },
+    },
     authDialog: {
       'manual-sign-in': 'Paste a code or callback address',
       'waiting-for-browser':
@@ -1788,6 +1839,7 @@ const en = {
       verify: 'Verify & Add',
     },
     localImport: {
+      scan: 'Scan this device',
       trigger: 'Import from this computer',
       title: 'Import from this computer',
       description:
@@ -1943,7 +1995,8 @@ const en = {
       'proxy-routing-save': 'Save routing',
       'proxy-priority-gemini': 'Gemini',
       'proxy-priority-claude': 'Claude',
-      'proxy-family-priority-hint': 'Lower numbers are selected first. Leave a family blank to use the global priority.',
+      'proxy-family-priority-hint':
+        'Lower numbers are selected first. Leave a family blank to use the global priority.',
       'proxy-priority': 'Proxy priority (1–100)',
       'proxy-enabled': 'Use this account for proxy requests',
       noProxy: 'No proxy',

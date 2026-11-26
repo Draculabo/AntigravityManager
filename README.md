@@ -146,7 +146,7 @@ On Linux, open a terminal in the folder containing the packaged desktop executab
 
 ### Add accounts and switch clients
 
-1. Open Manager and add a Google account through browser authorization. To discover existing local accounts, choose **Import / Export** → **Import from this computer**, review the preview, and confirm the accounts to import.
+1. Open Manager and select **Add Account**. Sign in with Google, paste account credentials, or scan this device and review the accounts to import.
 2. Refresh quota and inspect the available models, remaining quota and reset times. Model access depends on the account and upstream service. Gemini and Claude entries describe models available through those Google accounts.
 3. Select the intended Antigravity client target: **Antigravity (Classic)**, **Antigravity IDE** or **agy CLI**. Save work in a desktop client before switching; switching can close and relaunch it.
 4. Switch to the selected account, then verify the signed-in identity in the official client. Complete any official first-use setup or terms confirmation shown there.

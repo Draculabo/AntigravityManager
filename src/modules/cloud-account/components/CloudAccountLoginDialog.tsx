@@ -1,134 +1,117 @@
-import { useState } from 'react';
-import type { TFunction } from 'i18next';
+import { useCallback, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Cloud, DatabaseZap, KeyRound, Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useToast } from '@/components/ui/use-toast';
-import { getLocalizedErrorMessage } from '@/shared/utils/errorMessages';
-import { readFinalizedOperationDiagnostic } from '@/shared/observability/operationDiagnostic';
+import { Button } from '@/components/ui/button';
 import {
-  useStartGoogleAuthFlow,
-  useSubmitGoogleAuthCode,
-  useOAuthClients,
-  useSetActiveOAuthClient,
-} from '../hooks/useCloudAccounts';
-import { readDesktopOAuthLoginErrorCode } from '../services/desktop-oauth-login.schema';
-import { CloudAccountAuthDialog } from './CloudAccountAuthDialog';
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useToast } from '@/components/ui/use-toast';
+import { QUERY_KEYS } from '../hooks/useCloudAccounts';
+import { LocalAccountImportPanel } from '../local-import/components/LocalAccountImportDialog';
+import { CloudAccountOAuthPanel } from './CloudAccountOAuthPanel';
+import { CloudAccountCredentialImportPanel } from './CloudAccountCredentialImportPanel';
 
-function loginFailureDescription(error: unknown, t: TFunction): string {
-  const loginCode = readDesktopOAuthLoginErrorCode(error) ?? 'login-failed';
-  const diagnostic = readFinalizedOperationDiagnostic(error);
-  if (
-    diagnostic &&
-    (diagnostic.accountCommit === 'confirmed' ||
-      diagnostic.accountCommit === 'uncertain' ||
-      ![
-        'duplicate-account',
-        'authorization-denied',
-        'login-active',
-        'login-cancelled',
-        'invalid-manual-input',
-      ].includes(loginCode))
-  ) {
-    return getLocalizedErrorMessage(error, t);
-  }
-  return t(`cloud.toast.addFailed.codes.${loginCode}`);
-}
+const methods = [
+  { id: 'google', icon: Cloud },
+  { id: 'credentials', icon: KeyRound },
+  { id: 'local', icon: DatabaseZap },
+] as const;
+
+type AddMethod = (typeof methods)[number]['id'];
 
 export function CloudAccountLoginDialog() {
   const { t } = useTranslation();
   const { toast } = useToast();
-  const loginMutation = useStartGoogleAuthFlow();
-  const submitCodeMutation = useSubmitGoogleAuthCode();
-  const { data: oauthClients = [], isLoading: isOAuthClientsLoading } = useOAuthClients();
-  const setActiveOAuthClientMutation = useSetActiveOAuthClient();
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [authCode, setAuthCode] = useState('');
-  const [overrideOAuthClientKey, setSelectedOAuthClientKey] = useState<string | null>(null);
-  const selectedOAuthClientKey =
-    overrideOAuthClientKey ?? oauthClients.find((client) => client.is_active)?.key ?? '';
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [method, setMethod] = useState<AddMethod>('google');
+  const [importing, setImporting] = useState(false);
+  const sessionQueueRef = useRef(Promise.resolve());
 
-  const openGoogleAuthSignIn = () => {
-    setAuthCode('');
-    const effectiveClientKey =
-      selectedOAuthClientKey || oauthClients.find((client) => client.is_active)?.key;
-    loginMutation.mutate(effectiveClientKey ? { oauthClientKey: effectiveClientKey } : undefined, {
-      onSuccess: () => {
-        setIsAddDialogOpen(false);
-        setAuthCode('');
+  const accountSaved = useCallback(
+    (isCurrent: boolean) => {
+      void queryClient.invalidateQueries({ queryKey: QUERY_KEYS.cloudAccounts });
+      if (isCurrent) {
+        setOpen(false);
         toast({ title: t('cloud.toast.addSuccess'), variant: 'success' });
-      },
-      onError: (error) => {
-        toast({
-          error,
-          title: t('cloud.toast.addFailed.title'),
-          description: loginFailureDescription(error, t),
-          variant: 'destructive',
-        });
-      },
-    });
-  };
-
-  const submitManualAuthCode = () => {
-    const code = authCode.trim();
-    if (!code || !loginMutation.isPending) {
-      return;
-    }
-    submitCodeMutation.mutate(
-      { code },
-      {
-        onSuccess: () => setAuthCode(''),
-        onError: (error) => {
-          toast({
-            error,
-            title: t('cloud.toast.addFailed.title'),
-            description: loginFailureDescription(error, t),
-            variant: 'destructive',
-          });
-        },
-      },
-    );
-  };
-
-  const handleAddDialogOpenChange = (open: boolean) => {
-    setIsAddDialogOpen(open);
-    if (!open) {
-      setAuthCode('');
-    }
-  };
-
-  const handleOAuthClientChange = (value: string) => {
-    setSelectedOAuthClientKey(value);
-    setActiveOAuthClientMutation.mutate(
-      {
-        clientKey: value,
-      },
-      {
-        onError: (error) => {
-          toast({
-            error,
-            title: t('cloud.toast.updateSettingsFailed'),
-            description: getLocalizedErrorMessage(error, t),
-            variant: 'destructive',
-          });
-        },
-      },
-    );
-  };
+      }
+    },
+    [queryClient, t, toast],
+  );
 
   return (
-    <CloudAccountAuthDialog
-      open={isAddDialogOpen}
-      onOpenChange={handleAddDialogOpenChange}
-      selectedOAuthClientKey={selectedOAuthClientKey}
-      oauthClients={oauthClients}
-      isOAuthClientsLoading={isOAuthClientsLoading}
-      isSetActiveOAuthClientPending={setActiveOAuthClientMutation.isPending}
-      isAddPending={loginMutation.isPending}
-      isCodeSubmitting={submitCodeMutation.isPending}
-      authCode={authCode}
-      onOAuthClientChange={handleOAuthClientChange}
-      onOpenGoogleAuthSignIn={openGoogleAuthSignIn}
-      onAuthCodeChange={setAuthCode}
-      onSubmitAuthCode={submitManualAuthCode}
-    />
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!importing) {
+          setOpen(nextOpen);
+          if (nextOpen) {
+            setMethod('google');
+          }
+        }
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button>
+          <Plus aria-hidden="true" className="size-4" />
+          {t('cloud.addAccount')}
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-xl" closeDisabled={importing}>
+        <DialogHeader>
+          <DialogTitle>{t('cloud.addAccount')}</DialogTitle>
+          <DialogDescription>{t('cloud.add-flow.description')}</DialogDescription>
+        </DialogHeader>
+        {open && (
+          <Tabs
+            value={method}
+            onValueChange={(value) => {
+              const next = methods.find(({ id }) => id === value);
+              if (next && !importing) {
+                setMethod(next.id);
+              }
+            }}
+            activationMode="manual"
+          >
+            <TabsList className="grid w-full grid-cols-3" aria-label={t('cloud.add-flow.methods')}>
+              {methods.map(({ id, icon: Icon }) => (
+                <TabsTrigger
+                  key={id}
+                  value={id}
+                  disabled={importing && id !== method}
+                  className="gap-1.5 px-1 text-xs sm:text-sm"
+                >
+                  <Icon aria-hidden="true" className="hidden size-4 sm:block" />
+                  {t(`cloud.add-flow.tabs.${id}`)}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            <TabsContent value="google" className="mt-4">
+              {method === 'google' && (
+                <CloudAccountOAuthPanel
+                  sessionQueueRef={sessionQueueRef}
+                  onAuthorized={accountSaved}
+                />
+              )}
+            </TabsContent>
+            <TabsContent value="credentials" className="mt-4">
+              {method === 'credentials' && (
+                <CloudAccountCredentialImportPanel onBusyChange={setImporting} />
+              )}
+            </TabsContent>
+            <TabsContent value="local" className="mt-4">
+              {method === 'local' && <LocalAccountImportPanel onBusyChange={setImporting} />}
+            </TabsContent>
+          </Tabs>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

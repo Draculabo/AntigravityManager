@@ -2035,6 +2035,7 @@ const ptBR = {
         flash: 'Gemini Flash',
       },
     },
+    'add-flow': en.cloud['add-flow'],
     authDialog: {
       'manual-sign-in': 'Colar código ou endereço de retorno',
       'waiting-for-browser':
@@ -2052,6 +2053,7 @@ const ptBR = {
       verify: 'Verificar e Adicionar',
     },
     localImport: {
+      scan: 'Examinar este dispositivo',
       trigger: 'Importar deste computador',
       title: 'Importar deste computador',
       description:
@@ -2215,7 +2217,8 @@ const ptBR = {
       'proxy-routing-save': 'Salvar roteamento',
       'proxy-priority-gemini': 'Gemini',
       'proxy-priority-claude': 'Claude',
-      'proxy-family-priority-hint': 'Os números menores têm prioridade. Deixe um campo em branco para usar a prioridade global.',
+      'proxy-family-priority-hint':
+        'Os números menores têm prioridade. Deixe um campo em branco para usar a prioridade global.',
       'proxy-priority': 'Proxy priority (1–100)',
       'proxy-enabled': 'Use this account for proxy requests',
     },

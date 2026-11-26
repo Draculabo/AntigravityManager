@@ -75,6 +75,34 @@ describe('remote IPC capture', () => {
     },
   );
 
+  it.each(
+    [
+      ['cloud', 'oauthSession', 'submit'],
+      ['cloud', 'credentialImport', 'importToken'],
+    ].map((path) => ({ path })),
+  )(
+    'keeps enrollment metadata and credentials off the capture transport at $path',
+    async ({ path }) => {
+      const { owner, recorder, source } = fixture();
+      const begin = vi.spyOn(owner, 'begin');
+      const input = {
+        sessionId: 'private-session',
+        code: 'private-callback',
+        refreshToken: 'private-token',
+      };
+      const result = { output: { accepted: true } };
+      try {
+        await expect(recorder.run(path, input, () => result)).resolves.toBe(result);
+        expect(begin).not.toHaveBeenCalled();
+        expect(source.startParent).not.toHaveBeenCalled();
+        expect(source.completeParent).not.toHaveBeenCalled();
+      } finally {
+        owner.closeAdmission();
+        await owner.drain();
+      }
+    },
+  );
+
   it('admits business calls only after prepared metadata is complete and freezes input fields', async () => {
     const { owner, source } = fixture();
     const capability = await owner.prepare();

@@ -1,4 +1,4 @@
-import { shell } from 'electron';
+import { clipboard, shell } from 'electron';
 import { setTimeout as delay } from 'node:timers/promises';
 import { ManagementClient, OAuthManagementError } from '@/core/management/client';
 import { getManagementEndpoint } from '@/core/management/endpoint';
@@ -14,6 +14,7 @@ import {
 } from '@/modules/cloud-account/services/google-login-operation';
 import type { HeadlessOAuthStatus } from '@/modules/cloud-account/services/headless-oauth-session.service';
 import { normalizeTrustedGoogleValidationUrl } from '@/modules/cloud-account/utils/google-validation-url';
+import { PreparedDesktopOAuth, type RevealPreparedOAuthSession } from './prepared-desktop-oauth';
 
 interface RemoteOAuthManagement {
   startOAuth(
@@ -30,18 +31,33 @@ interface StandaloneCoreOAuthLoginDependencies {
   setPreference(clientKey: string): Promise<void>;
   accountViews(): Promise<CloudAccountView[]>;
   openExternal(url: string): Promise<void>;
+  writeClipboard?(url: string): void;
 }
 
 /** Electron opens the browser; the standalone core owns callback and enrollment. */
 export class StandaloneCoreOAuthLogin {
   private pending: Promise<CloudAccountView> | null = null;
-  private sessionId: string | null = null;
+  private session: { id: string; mode: 'legacy' | 'prepared' } | null = null;
   private stopping = false;
+  readonly prepared = new PreparedDesktopOAuth(
+    (key, reveal) => this.begin(key, reveal),
+    (url) => this.dependencies.openExternal(url),
+    (url) =>
+      this.dependencies.writeClipboard
+        ? this.dependencies.writeClipboard(url)
+        : clipboard.writeText(url),
+    (sessionId, code) => this.submitCode(code, sessionId),
+    (sessionId) => this.dependencies.management.cancelOAuth(sessionId),
+  );
 
-  async submitCode(code: string): Promise<void> {
+  async submitCode(code: string, expectedSessionId?: string): Promise<void> {
     const operation = new GoogleLoginOperation();
     operation.enter('authorization');
-    const sessionId = this.sessionId;
+    const session = this.session;
+    if (expectedSessionId && (session?.mode !== 'prepared' || session.id !== expectedSessionId)) {
+      throw new DesktopOAuthLoginError('login-cancelled');
+    }
+    const sessionId = expectedSessionId ?? (session?.mode === 'legacy' ? session.id : null);
     if (!sessionId || this.stopping) {
       throw new DesktopOAuthLoginError(
         'login-failed',
@@ -77,7 +93,14 @@ export class StandaloneCoreOAuthLogin {
 
   constructor(private readonly dependencies: StandaloneCoreOAuthLoginDependencies) {}
 
-  async start(oauthClientKey?: string): Promise<CloudAccountView> {
+  start(oauthClientKey?: string): Promise<CloudAccountView> {
+    return this.begin(oauthClientKey);
+  }
+
+  private async begin(
+    oauthClientKey?: string,
+    reveal?: RevealPreparedOAuthSession,
+  ): Promise<CloudAccountView> {
     const operation = new GoogleLoginOperation();
     if (this.stopping) {
       throw new DesktopOAuthLoginError(
@@ -91,7 +114,7 @@ export class StandaloneCoreOAuthLogin {
         operation.finish(undefined, 'login-active', true),
       );
     }
-    const pending = this.run(operation, oauthClientKey);
+    const pending = this.run(operation, oauthClientKey, reveal);
     this.pending = pending;
     pending.then(
       () => this.clearPending(pending),
@@ -109,6 +132,7 @@ export class StandaloneCoreOAuthLogin {
   private async run(
     operation: GoogleLoginOperation,
     oauthClientKey?: string,
+    reveal?: RevealPreparedOAuthSession,
   ): Promise<CloudAccountView> {
     let ownerFinished = false;
     try {
@@ -129,7 +153,7 @@ export class StandaloneCoreOAuthLogin {
       if (started.diagnosticId !== operation.context.diagnosticId) {
         throw new Error('OAuth operation identity does not match the owner');
       }
-      this.sessionId = started.sessionId;
+      this.session = { id: started.sessionId, mode: reveal ? 'prepared' : 'legacy' };
       if (this.stopping) {
         throw new DesktopOAuthLoginError('login-cancelled');
       }
@@ -138,10 +162,16 @@ export class StandaloneCoreOAuthLogin {
       if (!authorizationUrl) {
         throw new DesktopOAuthLoginError('login-failed');
       }
-      try {
-        await operation.run('browser-open', () => this.dependencies.openExternal(authorizationUrl));
-      } catch (error) {
-        throw new DesktopOAuthLoginError('browser-open-failed', operation.finish(error));
+      if (reveal) {
+        reveal({ sessionId: started.sessionId, authorizationUrl });
+      } else {
+        try {
+          await operation.run('browser-open', () =>
+            this.dependencies.openExternal(authorizationUrl),
+          );
+        } catch (error) {
+          throw new DesktopOAuthLoginError('browser-open-failed', operation.finish(error));
+        }
       }
       // Once authorization is available, a transport loss cannot establish whether the owner persisted it.
       operation.accountCommit = 'uncertain';
@@ -212,12 +242,12 @@ export class StandaloneCoreOAuthLogin {
             ),
       );
     } finally {
-      this.sessionId = null;
+      this.session = null;
     }
   }
 
   private async cancelPendingSession(): Promise<void> {
-    const sessionId = this.sessionId;
+    const sessionId = this.session?.id;
     if (sessionId) {
       await this.dependencies.management.cancelOAuth(sessionId).catch(() => undefined);
     }

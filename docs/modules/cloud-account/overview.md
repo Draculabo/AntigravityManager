@@ -11,10 +11,21 @@ Gemini and Claude. Lower numbers take precedence among eligible accounts. Leave 
 empty to use the default. **Save routing** applies all three priorities and the proxy participation
 setting together. Model aliases use the resolved upstream family. Other models use the default.
 
-## Local Antigravity CLI sign-in
+## Add accounts
 
-On the Accounts page, the **Import / Export** menu opens local account discovery, file import,
-and account export. **Add Account** starts browser authorization.
+On the Accounts page, **Add Account** offers three methods:
+
+- **Google sign-in** prepares an authorization link. Open it in the default browser or copy it
+  for another browser. Manager saves the account after the callback. If automatic delivery fails,
+  paste the full callback address into the manual sign-in form.
+- **Token / JSON** accepts one refresh token per line or JSON with a `refresh_token` or
+  `refreshToken` field. It shows import progress and counts. Use **Retry failed** to retry only
+  failed entries. Expand **Import from file** to restore a Manager backup.
+- **This device** scans supported local clients and shows a preview before any account is imported.
+
+The **Import / Export** menu also opens local account discovery, file import, and account export.
+
+## Local Antigravity CLI sign-in
 
 Local account import discovers credentials in the selected owner's operating system environment.
 An `agy` login in the shared system keyring appears under the system credential source. A login

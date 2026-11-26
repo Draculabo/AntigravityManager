@@ -139,8 +139,14 @@ describe('ManagementClient', () => {
       '11111111-1111-4111-8111-111111111111',
       '4/manual-code',
     );
+    const callback = 'http://127.0.0.1:1234/oauth-callback?code=4%2Fsynthetic&state=synthetic';
+    await client.completeOAuth('11111111-1111-4111-8111-111111111111', callback);
+    expect(oauth.completeCode).toHaveBeenLastCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+      callback,
+    );
     await expect(
-      client.completeOAuth('11111111-1111-4111-8111-111111111111', 'bad code'),
+      client.completeOAuth('11111111-1111-4111-8111-111111111111', ' '),
     ).rejects.toMatchObject({
       code: 'INVALID_REQUEST',
     });

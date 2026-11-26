@@ -15,6 +15,12 @@ export const DesktopOAuthCodeSchema = z
 export const DesktopOAuthManualInputSchema = z.string().trim().min(1).max(2048);
 export const DesktopOAuthCodeInputSchema = z.strictObject({ code: DesktopOAuthManualInputSchema });
 
+export const DesktopOAuthSessionInputSchema = z.strictObject({ sessionId: z.uuid() });
+export const DesktopOAuthSessionCodeInputSchema = DesktopOAuthSessionInputSchema.extend({
+  code: DesktopOAuthManualInputSchema,
+});
+export type DesktopOAuthSessionInput = z.infer<typeof DesktopOAuthSessionInputSchema>;
+
 export const DesktopOAuthLoginErrorCodeSchema = z.enum([
   'authorization-denied',
   'login-active',

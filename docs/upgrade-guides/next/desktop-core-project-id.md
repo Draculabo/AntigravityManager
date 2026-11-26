@@ -27,6 +27,7 @@ This applies to profiles using a standalone Core owner. Desktop-only profiles ca
    The session lookup requires owner compatibility `21`.
 10. Open **Traffic Monitor > Requests** and verify that the daily heatmap updates with the request
     filters. The filtered 53-week activity query requires owner compatibility `23`.
+11. Open **Add Account > Token / JSON**. Pasted account import requires owner compatibility `24`.
 
 ## Data and recovery
 

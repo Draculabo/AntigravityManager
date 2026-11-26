@@ -1,8 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   listCloudAccounts,
-  startAuthFlow,
-  submitAuthCode,
   deleteCloudAccount,
   refreshAccountQuota,
   setAccountProxy,
@@ -46,21 +44,6 @@ export function useCloudAccounts(refetchInterval: number | false = false) {
   });
 }
 
-export function useStartGoogleAuthFlow() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: startAuthFlow,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.cloudAccounts });
-    },
-  });
-}
-
-export function useSubmitGoogleAuthCode() {
-  return useMutation({ mutationFn: submitAuthCode });
-}
-
 export function useOAuthClients() {
   return useQuery<OAuthClientDescriptor[]>({
     queryKey: QUERY_KEYS.oauthClients,
@@ -73,9 +56,7 @@ export function useSetActiveOAuthClient() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: setActiveOAuthClient,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.oauthClients });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: QUERY_KEYS.oauthClients }),
   });
 }
 

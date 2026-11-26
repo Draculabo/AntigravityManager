@@ -5,7 +5,7 @@ import {
   type IncrementalAuditPayloadKind,
   AUDIT_BODY_CHUNK_BYTES,
 } from './incremental-audit-serializer';
-import { readIpcSessionId } from './ipc-audit-policy';
+import { isAccountEnrollmentIpc, readIpcSessionId } from './ipc-audit-policy';
 import { runWithRemoteIpcCapture } from './ipc-capture-transport-context';
 import { extractAuditModel, serializeAuditError } from './audit-parent-metadata';
 import type { IpcCaptureCapability } from './ipc-capture.schema';
@@ -70,8 +70,12 @@ export function createRemoteIpcAuditRecorder(
       input: unknown,
       next: () => TResult | PromiseLike<TResult>,
     ): Promise<TResult> {
+      const auditPath = path.join('/');
+      if (isAccountEnrollmentIpc(auditPath)) {
+        return next();
+      }
       const metadata = {
-        path: path.join('/'),
+        path: auditPath,
         sessionId: readIpcSessionId(input),
         model: extractAuditModel(input),
       };
