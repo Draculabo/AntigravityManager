@@ -1,8 +1,33 @@
-// Without a reported cache count, estimate at the standard input rate.
-export const auditUsageCostSql = `CASE
-  WHEN input IS NOT NULL AND output IS NOT NULL AND prices.model IS NOT NULL
-    AND (cached_rate IS NULL OR cached_rate=input_rate OR cached_tokens IS NULL OR cache<=input)
-  THEN ((input - CASE WHEN cached_rate IS NULL OR cached_rate=input_rate THEN 0 ELSE COALESCE(cache,0) END) * (1.0 * input_rate)
-    + output * (1.0 * output_rate)
-    + CASE WHEN cached_rate IS NULL OR cached_rate=input_rate THEN 0 ELSE COALESCE(cache,0) * (1.0 * cached_rate) END) / 1000000.0
-  END`;
+import { sql, type SQLWrapper } from 'drizzle-orm';
+
+interface AuditUsageCostFields {
+  input: SQLWrapper;
+  output: SQLWrapper;
+  cache: SQLWrapper;
+  cachedTokens: SQLWrapper;
+  model: SQLWrapper;
+  inputRate: SQLWrapper;
+  outputRate: SQLWrapper;
+  cachedRate: SQLWrapper;
+}
+
+export function auditUsageCost({
+  input,
+  output,
+  cache,
+  cachedTokens,
+  model,
+  inputRate,
+  outputRate,
+  cachedRate,
+}: AuditUsageCostFields) {
+  const useStandardRate = sql`${cachedRate} is null or ${cachedRate} = ${inputRate}`;
+  return sql<number | null>`case
+    when ${input} is not null and ${output} is not null and ${model} is not null
+      and (${useStandardRate} or ${cachedTokens} is null or ${cache} <= ${input})
+    then (
+      (${input} - case when ${useStandardRate} then 0 else coalesce(${cache}, 0) end) * (1.0 * ${inputRate})
+      + ${output} * (1.0 * ${outputRate})
+      + case when ${useStandardRate} then 0 else coalesce(${cache}, 0) * (1.0 * ${cachedRate}) end
+    ) / 1000000.0 end`;
+}

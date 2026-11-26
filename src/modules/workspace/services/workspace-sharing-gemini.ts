@@ -4,7 +4,14 @@ import { logger } from '@/shared/logging/logger';
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
+import { and, count, eq } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { sqliteTable } from 'drizzle-orm/sqlite-core';
+import { sqliteSchema } from '@/shared/persistence/database/sqlite-metadata';
 import { safeSymlink } from './workspace-sharing-files';
+
+const conversationSummaries = sqliteTable('conversation_summaries', {});
+
 export function isStaleOrScaffoldGeminiDir(targetDir: string, dirName: string): boolean {
   try {
     if (!fs.existsSync(targetDir)) {
@@ -74,15 +81,16 @@ export function isStaleOrScaffoldGeminiDir(targetDir: string, dirName: string): 
         let db: Database.Database | null = null;
         try {
           db = new Database(dbPath, { readonly: true, timeout: 1000 });
-          const tableCheck = db
-            .prepare(
-              "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'conversation_summaries'",
+          const orm = drizzle(db);
+          const tableCheck = orm
+            .select({ name: sqliteSchema.name })
+            .from(sqliteSchema)
+            .where(
+              and(eq(sqliteSchema.type, 'table'), eq(sqliteSchema.name, 'conversation_summaries')),
             )
             .get();
           if (tableCheck) {
-            const rowCount = db
-              .prepare('SELECT count(*) as count FROM conversation_summaries')
-              .get() as { count?: number } | undefined;
+            const rowCount = orm.select({ count: count() }).from(conversationSummaries).get();
             if (rowCount && typeof rowCount.count === 'number' && rowCount.count > 0) {
               return false; // Non-zero conversations recorded
             }

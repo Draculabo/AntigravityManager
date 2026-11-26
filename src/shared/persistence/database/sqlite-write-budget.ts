@@ -58,17 +58,14 @@ export class SqliteWriteBudget {
     let busy = false;
     try {
       this.raw.pragma('busy_timeout = 0');
-      busy =
-        this.raw.prepare<[], { busy: number }>('PRAGMA wal_checkpoint(TRUNCATE)').get()?.busy !== 0;
+      busy = this.raw.pragma('wal_checkpoint(TRUNCATE)', { simple: true }) !== 0;
       if (
         !busy &&
         Number(this.raw.pragma('auto_vacuum', { simple: true })) === 2 &&
         Number(this.raw.pragma('freelist_count', { simple: true })) > 0
       ) {
         this.raw.pragma('incremental_vacuum(128)');
-        busy =
-          this.raw.prepare<[], { busy: number }>('PRAGMA wal_checkpoint(TRUNCATE)').get()?.busy !==
-          0;
+        busy = this.raw.pragma('wal_checkpoint(TRUNCATE)', { simple: true }) !== 0;
       }
     } catch (error) {
       throw new SqliteDiskAdmissionError('reclaim_failed', { cause: error });

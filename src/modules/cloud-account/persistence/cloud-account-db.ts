@@ -5,7 +5,6 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { getCloudAccountsDbPath } from '@/shared/platform/paths';
 import { logger } from '@/shared/logging/logger';
 import { TableInfoRowSchema } from '@/shared/persistence/database/types';
-import { parseRowsFromStatement } from '@/shared/persistence/database/sqlite';
 import {
   configureDatabase,
   openDrizzleConnection,
@@ -60,12 +59,7 @@ function ensureDatabaseInitialized(dbPath: string): void {
       );
     `);
 
-    const accountColumns = db.prepare("SELECT name FROM pragma_table_info('accounts')");
-    const tableInfo = parseRowsFromStatement(
-      accountColumns,
-      TableInfoRowSchema,
-      'cloud.accounts.tableInfo',
-    );
+    const tableInfo = TableInfoRowSchema.array().parse(db.pragma('table_info(accounts)'));
     const hasIsActive = tableInfo.some((col) => col.name === 'is_active');
     const hasDeviceProfileJson = tableInfo.some((col) => col.name === 'device_profile_json');
     const hasDeviceHistoryJson = tableInfo.some((col) => col.name === 'device_history_json');
@@ -106,10 +100,8 @@ function ensureDatabaseInitialized(dbPath: string): void {
       const connection = db;
       connection
         .transaction(() => {
-          const columns = parseRowsFromStatement(
-            accountColumns,
-            TableInfoRowSchema,
-            'cloud.accounts.tableInfo',
+          const columns = TableInfoRowSchema.array().parse(
+            connection.pragma('table_info(accounts)'),
           );
           if (!columns.some((column) => column.name === 'proxy_gemini_priority')) {
             connection.exec('ALTER TABLE accounts ADD COLUMN proxy_gemini_priority INTEGER');
@@ -144,10 +136,8 @@ function ensureDatabaseInitialized(dbPath: string): void {
       );
     `);
 
-    const wpTableInfo = parseRowsFromStatement(
-      db.prepare<[]>("SELECT name FROM pragma_table_info('workspace_profiles')"),
-      TableInfoRowSchema,
-      'cloud.workspace_profiles.tableInfo',
+    const wpTableInfo = TableInfoRowSchema.array().parse(
+      db.pragma('table_info(workspace_profiles)'),
     );
     const hasLastLaunchedAt = wpTableInfo.some((col) => col.name === 'last_launched_at');
     if (!hasLastLaunchedAt && wpTableInfo.length > 0) {

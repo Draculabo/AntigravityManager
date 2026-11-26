@@ -1,8 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
+import { asc, eq, placeholder, sql } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { isEqual } from 'lodash-es';
 import { z } from 'zod';
+import { accounts } from '@/shared/persistence/database/schema';
 
 const ConversionFieldsSchema = z.object({
   id: z.string(),
@@ -16,11 +19,15 @@ export type AccountConversionFields = z.infer<typeof ConversionFieldsSchema>;
 export function readAccountConversionFields(
   database: Database.Database,
 ): AccountConversionFields[] {
-  const rows: unknown = database
-    .prepare(
-      `SELECT id, token_json AS tokenJson, quota_json AS quotaJson, health_json AS healthJson
-     FROM accounts ORDER BY id`,
-    )
+  const rows = drizzle(database)
+    .select({
+      id: accounts.id,
+      tokenJson: accounts.tokenJson,
+      quotaJson: accounts.quotaJson,
+      healthJson: accounts.healthJson,
+    })
+    .from(accounts)
+    .orderBy(asc(accounts.id))
     .all();
   const parsed = z.array(ConversionFieldsSchema).safeParse(rows);
   if (!parsed.success) {
@@ -73,16 +80,22 @@ export async function preserveCloudAccountMigrationBackups(
   try {
     // A completed backup is self-contained and must not depend on a transient WAL/SHM sibling.
     candidate.pragma('journal_mode = DELETE');
-    const update = candidate.prepare(
-      'UPDATE accounts SET token_json = ?, quota_json = ?, health_json = ? WHERE id = ?',
-    );
-    candidate.transaction(() => {
+    drizzle(candidate).transaction((tx) => {
+      const update = tx
+        .update(accounts)
+        .set({
+          tokenJson: sql`${placeholder('tokenJson')}`,
+          quotaJson: sql`${placeholder('quotaJson')}`,
+          healthJson: sql`${placeholder('healthJson')}`,
+        })
+        .where(eq(accounts.id, placeholder('id')))
+        .prepare();
       for (const row of converted) {
-        if (update.run(row.tokenJson, row.quotaJson, row.healthJson, row.id).changes !== 1) {
+        if (update.run(row).changes !== 1) {
           throw new Error('Account conversion backup update failed');
         }
       }
-    })();
+    });
   } finally {
     candidate.close();
   }

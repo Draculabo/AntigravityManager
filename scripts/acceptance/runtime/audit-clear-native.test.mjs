@@ -49,6 +49,10 @@ test('serial Worker rejects delayed old parent admission after a scoped clear an
       await audit.command('insertAttempt', {
         accountId: null,
         accountIdHash: null,
+        accountGenerationHash: null,
+        accountSubjectHash: null,
+        accountGrantHash: null,
+        usageScope: null,
         attemptIndex: 1,
         endpoint: 'https://example.test',
         id: 'late-attempt',

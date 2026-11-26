@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { count, eq, sql } from 'drizzle-orm';
+import { and, between, count, desc, eq, isNull, sql } from 'drizzle-orm';
 import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { getQuotaModelFamilyId } from '@/modules/cloud-account/utils/quota-model-families';
 
@@ -251,47 +251,24 @@ export class TrafficAuditRepository {
   private clearRecords(
     payload: Extract<TrafficAuditWorkerCommand, { operation: 'clear' }>['payload'],
   ): number {
-    const affected = this.raw.transaction(() => {
-      if (payload.trafficClass === 'system') {
-        return this.raw.transaction(() => {
-          const requests =
-            this.orm
-              .select({ value: count() })
-              .from(requestLogs)
-              .where(eq(requestLogs.trafficClass, 'system'))
-              .get()?.value ?? 0;
-          const events =
-            this.orm.select({ value: count() }).from(auditAdminEvents).get()?.value ?? 0;
-          this.orm.delete(requestLogs).where(eq(requestLogs.trafficClass, 'system')).run();
-          this.orm.delete(auditAdminEvents).run();
-          this.orm.delete(auditDropStats).where(eq(auditDropStats.trafficClass, 'system')).run();
-          return requests + events;
-        })();
+    const { trafficClass } = payload;
+    const affected = this.orm.transaction((tx) => {
+      const requests = trafficClass ? eq(requestLogs.trafficClass, trafficClass) : undefined;
+      const drops = trafficClass ? eq(auditDropStats.trafficClass, trafficClass) : undefined;
+      const clearsAdminEvents = !trafficClass || trafficClass === 'system';
+      const requestCount =
+        tx.select({ value: count() }).from(requestLogs).where(requests).get()?.value ?? 0;
+      const eventCount = clearsAdminEvents
+        ? (tx.select({ value: count() }).from(auditAdminEvents).get()?.value ?? 0)
+        : 0;
+
+      tx.delete(requestLogs).where(requests).run();
+      if (clearsAdminEvents) {
+        tx.delete(auditAdminEvents).run();
       }
-      if (payload.trafficClass) {
-        const rows =
-          this.orm
-            .select({ value: count() })
-            .from(requestLogs)
-            .where(eq(requestLogs.trafficClass, payload.trafficClass))
-            .get()?.value ?? 0;
-        this.orm
-          .delete(requestLogs)
-          .where(eq(requestLogs.trafficClass, payload.trafficClass))
-          .run();
-        this.orm
-          .delete(auditDropStats)
-          .where(eq(auditDropStats.trafficClass, payload.trafficClass))
-          .run();
-        return rows;
-      }
-      const rows = this.orm.select({ value: count() }).from(requestLogs).get()?.value ?? 0;
-      const events = this.orm.select({ value: count() }).from(auditAdminEvents).get()?.value ?? 0;
-      this.orm.delete(requestLogs).run();
-      this.orm.delete(auditAdminEvents).run();
-      this.orm.delete(auditDropStats).run();
-      return rows + events;
-    })();
+      tx.delete(auditDropStats).where(drops).run();
+      return requestCount + eventCount;
+    });
     for (const scope of payload.trafficClass ? [payload.trafficClass] : AUDIT_TRAFFIC_CLASSES) {
       this.generations[scope] = Math.max(
         this.generations[scope],
@@ -313,12 +290,17 @@ export class TrafficAuditRepository {
   private completeParent(
     payload: Extract<TrafficAuditWorkerCommand, { operation: 'completeParent' }>['payload'],
   ): number {
-    const attributedAttempt = this.raw
-      .prepare<
-        [string],
-        { accountId: string | null; model: string | null }
-      >('SELECT account_id accountId, model FROM upstream_attempts WHERE parent_id=? ' + "ORDER BY CASE WHEN outcome='completed' AND status BETWEEN 200 AND 299 THEN 0 ELSE 1 END, " + 'attempt_index DESC LIMIT 1')
-      .get(payload.id);
+    const successful = and(
+      eq(upstreamAttempts.outcome, 'completed'),
+      between(upstreamAttempts.status, 200, 299),
+    );
+    const attributedAttempt = this.orm
+      .select({ accountId: upstreamAttempts.accountId, model: upstreamAttempts.model })
+      .from(upstreamAttempts)
+      .where(eq(upstreamAttempts.parentId, payload.id))
+      .orderBy(sql`case when ${successful} then 0 else 1 end`, desc(upstreamAttempts.attemptIndex))
+      .limit(1)
+      .get();
     return this.orm
       .update(requestLogs)
       .set({
@@ -350,30 +332,23 @@ export class TrafficAuditRepository {
   private insertAttempt(
     payload: Extract<TrafficAuditWorkerCommand, { operation: 'insertAttempt' }>['payload'],
   ): number {
-    return this.raw.transaction(() => {
-      if (!this.raw.prepare('SELECT 1 FROM request_logs WHERE id=?').get(payload.parentId)) {
+    return this.orm.transaction((tx) => {
+      const parent = eq(requestLogs.id, payload.parentId);
+      if (!tx.select({ id: requestLogs.id }).from(requestLogs).where(parent).get()) {
         return 0;
       }
-      const changes = this.orm
+      const changes = tx
         .insert(upstreamAttempts)
         .values({ ...payload, outcome: 'in_progress' })
         .run().changes;
       if (payload.model) {
-        const current = this.orm
-          .select({ mappedModel: requestLogs.mappedModel })
-          .from(requestLogs)
-          .where(eq(requestLogs.id, payload.parentId))
-          .get();
-        if (current?.mappedModel === null) {
-          this.orm
-            .update(requestLogs)
-            .set({ mappedModel: payload.model })
-            .where(eq(requestLogs.id, payload.parentId))
-            .run();
-        }
+        tx.update(requestLogs)
+          .set({ mappedModel: payload.model })
+          .where(and(parent, isNull(requestLogs.mappedModel)))
+          .run();
       }
       return changes;
-    })();
+    });
   }
 
   private completeAttempt(

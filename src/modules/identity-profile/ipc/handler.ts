@@ -2,6 +2,8 @@ import type { PathResolutionOptions } from '@/shared/platform/paths';
 import { initializeStorageFile } from '../persistence/initialize-storage';
 import { publishProfileFileIfMissing } from '../persistence/publish-profile-file';
 import Database from 'better-sqlite3';
+import { eq } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
 import fs from 'fs';
 import path from 'path';
 import { createHash, randomBytes } from 'crypto';
@@ -10,6 +12,7 @@ import { isObjectLike, isString } from 'lodash-es';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { DeviceProfileSchema, type DeviceProfile } from '@/modules/identity-profile/types';
 import { logger } from '@/shared/logging/logger';
+import { itemTable } from '@/shared/persistence/database/schema';
 import {
   getAgentDir,
   getAntigravityDbPaths,
@@ -231,9 +234,12 @@ function readStateServiceMachineIdValue(dbPath: string): string | null {
   try {
     db = new Database(dbPath, { readonly: true, fileMustExist: true });
     db.pragma('busy_timeout = 3000');
-    const row = db
-      .prepare("SELECT value FROM ItemTable WHERE key = 'storage.serviceMachineId' LIMIT 1")
-      .get() as { value?: unknown } | undefined;
+    const row = drizzle(db)
+      .select({ value: itemTable.value })
+      .from(itemTable)
+      .where(eq(itemTable.key, STORAGE_SERVICE_MACHINE_ID_KEY))
+      .limit(1)
+      .get();
     if (!row || !isString(row.value) || row.value.length === 0) {
       return null;
     }
@@ -267,20 +273,16 @@ function ensureStateServiceMachineIdApplied(serviceMachineId: string, dbPath: st
   }
 }
 
-function writeStateStorageServiceMachineIdValue(
+function writeStateServiceMachineIdValue(
   db: Database.Database,
+  key: typeof STORAGE_SERVICE_MACHINE_ID_KEY | typeof TELEMETRY_SERVICE_MACHINE_ID_KEY,
   serviceMachineId: string,
 ): void {
-  const statement = db.prepare('INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)');
-  statement.run(STORAGE_SERVICE_MACHINE_ID_KEY, serviceMachineId);
-}
-
-function writeStateTelemetryServiceMachineIdValue(
-  db: Database.Database,
-  serviceMachineId: string,
-): void {
-  const statement = db.prepare('INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)');
-  statement.run(TELEMETRY_SERVICE_MACHINE_ID_KEY, serviceMachineId);
+  drizzle(db)
+    .insert(itemTable)
+    .values({ key, value: serviceMachineId })
+    .onConflictDoUpdate({ target: itemTable.key, set: { value: serviceMachineId } })
+    .run();
 }
 
 function cleanupPathIfExists(targetPath: string): void {
@@ -657,7 +659,7 @@ export function syncStateServiceMachineIdValue(
       db = new Database(targetDbPath);
       db.pragma('busy_timeout = 3000');
       db.exec('CREATE TABLE IF NOT EXISTS ItemTable (key TEXT PRIMARY KEY, value TEXT);');
-      writeStateStorageServiceMachineIdValue(db, serviceMachineId);
+      writeStateServiceMachineIdValue(db, STORAGE_SERVICE_MACHINE_ID_KEY, serviceMachineId);
       return;
     } catch (error) {
       if (isSqliteBusyError(error) && attempt < SQLITE_RETRY_COUNT) {
@@ -697,7 +699,7 @@ export function syncTelemetryServiceMachineIdValue(
       db = new Database(targetDbPath);
       db.pragma('busy_timeout = 3000');
       db.exec('CREATE TABLE IF NOT EXISTS ItemTable (key TEXT PRIMARY KEY, value TEXT);');
-      writeStateTelemetryServiceMachineIdValue(db, serviceMachineId);
+      writeStateServiceMachineIdValue(db, TELEMETRY_SERVICE_MACHINE_ID_KEY, serviceMachineId);
       return;
     } catch (error) {
       if (isSqliteBusyError(error) && attempt < SQLITE_RETRY_COUNT) {

@@ -1,11 +1,16 @@
 import { createHash } from 'node:crypto';
 
 import Database from 'better-sqlite3';
-import { and, desc, eq, exists, like, sql } from 'drizzle-orm';
-import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import { and, count, desc, eq, exists, like, sql } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { alias } from 'drizzle-orm/sqlite-core';
 
-import { thinkingRecords, thinkingSessions, thoughtStoreSchema } from './thought-store.schema';
+import {
+  thinkingRecords,
+  thinkingSessions,
+  thoughtStoreSchema,
+  type ThoughtStoreDatabase,
+} from './thought-store.schema';
 import {
   findExistingThoughtRecordIndex,
   isStrongerThoughtRecord,
@@ -30,7 +35,6 @@ import { queryThoughtCandidates } from './thought-candidate-query';
 import { ThoughtReadBudgetError } from './thought-read-budget';
 import { ThoughtToolLinks } from './thought-tool-links';
 
-type ThoughtStoreDatabase = BetterSQLite3Database<typeof thoughtStoreSchema>;
 const MAX_THOUGHT_MATCH_CANDIDATES = 200;
 
 export class ThoughtStoreRepository {
@@ -49,8 +53,8 @@ export class ThoughtStoreRepository {
       this.orm = drizzle(this.raw, { schema: thoughtStoreSchema });
       this.reads = new ThoughtStoreReads(this.orm);
       this.diskBudget = new SqliteWriteBudget(databasePath, this.raw);
-      this.maintenance = new ThoughtStoreMaintenance(this.raw, databasePath);
-      this.toolLinks = new ThoughtToolLinks(this.raw);
+      this.maintenance = new ThoughtStoreMaintenance(this.raw, this.orm, databasePath);
+      this.toolLinks = new ThoughtToolLinks(this.orm);
     } catch (error) {
       this.raw.close();
       throw error;
@@ -90,7 +94,11 @@ export class ThoughtStoreRepository {
           queryThoughtCandidates(this.orm, this.reads, command.payload),
         );
       case 'toolRecoverySnapshot':
-        return this.toolLinks.snapshot(command.payload.sessionKey, command.payload.operationIds, command.payload.layouts);
+        return this.toolLinks.snapshot(
+          command.payload.sessionKey,
+          command.payload.operationIds,
+          command.payload.layouts,
+        );
       case 'getRecord':
         return this.reads.getRecord(command.payload.sessionKey, command.payload.id);
       case 'touch':
@@ -212,12 +220,9 @@ export class ThoughtStoreRepository {
         .from(thinkingSessions)
         .where(eq(thinkingSessions.sessionKey, payload.sessionKey))
         .get();
-      const count =
-        this.orm
-          .select({ count: sql<number>`count(*)` })
-          .from(thinkingSessions)
-          .get()?.count ?? 0;
-      if (!known && count >= payload.maxSessions) {
+      const sessionCount =
+        this.orm.select({ count: count() }).from(thinkingSessions).get()?.count ?? 0;
+      if (!known && sessionCount >= payload.maxSessions) {
         throw new Error('Thought Store write rejected: session_capacity');
       }
       this.orm
@@ -437,7 +442,7 @@ export class ThoughtStoreRepository {
         bytes: sql<number>`coalesce(sum(${thinkingRecords.thoughtBytes} + ${thinkingRecords.signatureBytes}), 0)`,
         endedAt: thinkingSessions.endedAt,
         lastAccessed: thinkingSessions.lastAccessed,
-        recordCount: sql<number>`count(${thinkingRecords.id})`,
+        recordCount: count(thinkingRecords.id),
         sessionKey: thinkingSessions.sessionKey,
       })
       .from(thinkingSessions)
@@ -453,15 +458,8 @@ export class ThoughtStoreRepository {
   }
 
   private stats() {
-    const row = this.orm
-      .select({ sessions: sql<number>`count(*)` })
-      .from(thinkingSessions)
-      .get();
-    const records =
-      this.orm
-        .select({ count: sql<number>`count(*)` })
-        .from(thinkingRecords)
-        .get()?.count ?? 0;
+    const row = this.orm.select({ sessions: count() }).from(thinkingSessions).get();
+    const records = this.orm.select({ count: count() }).from(thinkingRecords).get()?.count ?? 0;
     return {
       databaseBytes: sqliteFilesBytes(this.databasePath),
       sessions: row?.sessions ?? 0,
@@ -473,7 +471,7 @@ export class ThoughtStoreRepository {
   private recordCount(sessionKey?: string): number {
     return (
       this.orm
-        .select({ count: sql<number>`count(*)` })
+        .select({ count: count() })
         .from(thinkingRecords)
         .where(sessionKey === undefined ? undefined : eq(thinkingRecords.sessionKey, sessionKey))
         .get()?.count ?? 0

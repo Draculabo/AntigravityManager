@@ -37,7 +37,7 @@ When adding a new sensitive field, update the central masking behavior and its t
 
 ## Persistence
 
-- Use prepared statements or Drizzle query construction for variable data.
+- Bind SQLite query values through Drizzle. See the [persistence instructions](../src/shared/persistence/AGENTS.md#database-safety) for SQLite expression and driver boundaries.
 - Validate rows and serialized payloads when reading them from storage.
 - On-disk format changes require an explicit version, migration or rejection policy.
 - Backup and restore paths must preserve transactional safety and must not silently produce partially restored state.

@@ -187,6 +187,11 @@ export const auditAdminEvents = sqliteTable('audit_admin_events', {
   error: text('error'),
 });
 
+export const auditSchemaMeta = sqliteTable('schema_meta', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+});
+
 export const trafficAuditSchema = {
   attemptBodyRefs,
   auditAdminEvents,

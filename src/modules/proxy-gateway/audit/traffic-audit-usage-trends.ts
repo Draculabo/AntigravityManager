@@ -1,7 +1,12 @@
 import type Database from 'better-sqlite3';
 import {
   and,
+  asc,
+  between,
+  count,
+  desc,
   eq,
+  gt,
   gte,
   isNotNull,
   isNull,
@@ -10,6 +15,7 @@ import {
   notExists,
   or,
   sql,
+  type SQLWrapper,
 } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { alias } from 'drizzle-orm/sqlite-core';
@@ -28,7 +34,51 @@ import {
 const MAX_TOTAL_VARIANTS = 256;
 
 type AuditDatabase = BetterSQLite3Database<typeof trafficAuditSchema>;
-type TrendsQueryDatabase = Pick<AuditDatabase, 'all' | 'select'>;
+type TrendsQueryDatabase = Pick<AuditDatabase, '$with' | 'select' | 'with'>;
+
+function requestMetrics({
+  attemptId,
+  input,
+  output,
+}: {
+  attemptId: SQLWrapper;
+  input: SQLWrapper;
+  output: SQLWrapper;
+}) {
+  return {
+    attempts: count(attemptId).as('request_attempts'),
+    missingInput: sql<number>`max(${isNull(input)})`.as('missing_input'),
+    missingOutput: sql<number>`max(${isNull(output)})`.as('missing_output'),
+    incomplete: sql<number>`max(${isNull(input)} or ${isNull(output)})`.as('incomplete'),
+    input: sql<number>`sum(coalesce(${input}, 0))`.as('request_input'),
+    output: sql<number>`sum(coalesce(${output}, 0))`.as('request_output'),
+  };
+}
+
+function usageMetrics({
+  attempts,
+  missingInput,
+  missingOutput,
+  incomplete,
+  input,
+  output,
+}: ReturnType<typeof requestMetrics>) {
+  const absentInput = sql`sum(${missingInput}) > 0`;
+  const absentOutput = sql`sum(${missingOutput}) > 0`;
+  return {
+    requests: count().as('requests'),
+    attempts: sql<number>`sum(${attempts})`.as('attempts'),
+    inputTokens: sql<number | null>`case when ${absentInput} then null else sum(${input}) end`.as(
+      'input_tokens',
+    ),
+    outputTokens: sql<
+      number | null
+    >`case when ${absentOutput} then null else sum(${output}) end`.as('output_tokens'),
+    totalTokens: sql<number | null>`case when ${absentInput} or ${absentOutput} then null
+      else sum(${input}) + sum(${output}) end`.as('total_tokens'),
+    incompleteRequests: sql<number>`sum(${incomplete})`.as('incomplete_requests'),
+  };
+}
 
 export function readUsageTrends(
   raw: Database.Database,
@@ -73,77 +123,170 @@ function readSnapshot(db: TrendsQueryDatabase, input: UsageTrendsWorkerInput): U
     ne(upstreamAttempts.outcome, 'in_progress'),
     eq(upstreamAttempts.responsePartial, false),
   );
-  const candidates = db
-    .select({
-      id: sql`${requestLogs.id}`.as('id'),
-      timestamp: sql`${requestLogs.timestamp}`.as('timestamp'),
-      model: sql`${modelColumn}`.as('model'),
-      attemptId: sql`${upstreamAttempts.id}`.as('attempt_id'),
-      inputTokens: sql`${upstreamAttempts.inputTokens}`.as('input_tokens'),
-      outputTokens: sql`${upstreamAttempts.outputTokens}`.as('output_tokens'),
-      terminal: sql`CASE WHEN ${terminalAttempt} THEN 1 ELSE 0 END`.as('terminal'),
-    })
-    .from(requestLogs)
-    .leftJoin(upstreamAttempts, attemptJoin)
-    .where(and(gte(requestLogs.timestamp, from), matchingTraffic));
-  const measured = sql`WITH candidates AS (${candidates.getSQL()}), measured AS (
-    SELECT *, CASE WHEN terminal=1 AND typeof(input_tokens)='integer'
-      AND input_tokens BETWEEN 0 AND 9007199254740991 THEN 1 ELSE 0 END has_input,
-      CASE WHEN terminal=1 AND typeof(output_tokens)='integer'
-      AND output_tokens BETWEEN 0 AND 9007199254740991 THEN 1 ELSE 0 END has_output
-    FROM candidates
-  )`;
-  const metricSql = sql`COUNT(*) requests, SUM(attempts) attempts,
-    CASE WHEN SUM(missing_input)>0 THEN NULL ELSE SUM(input_tokens) END inputTokens,
-    CASE WHEN SUM(missing_output)>0 THEN NULL ELSE SUM(output_tokens) END outputTokens,
-    CASE WHEN SUM(missing_input)>0 OR SUM(missing_output)>0 THEN NULL
-      ELSE SUM(input_tokens)+SUM(output_tokens) END totalTokens,
-    SUM(incomplete) incompleteRequests`;
-  const requestGroups = {
-    total: { columns: sql`1`, source: sql`measured` },
-    minute: { columns: sql`timestamp`, source: sql`measured` },
-    family: { columns: sql`family`, source: sql`attributed` },
-    variant: { columns: sql`family, model`, source: sql`visible` },
-  };
-  const perRequest = (group: keyof typeof requestGroups) => {
-    const { columns, source } = requestGroups[group];
-    return sql`SELECT id, ${columns}, COUNT(attempt_id) attempts,
-    MAX(has_input=0) missing_input, MAX(has_output=0) missing_output,
-    MAX(has_input=0 OR has_output=0) incomplete,
-    SUM(CASE WHEN has_input=1 THEN input_tokens ELSE 0 END) input_tokens,
-    SUM(CASE WHEN has_output=1 THEN output_tokens ELSE 0 END) output_tokens
-    FROM ${source} GROUP BY id, ${columns}`;
-  };
-  const totalsRows = db.all(sql`${measured}, grouped AS (${perRequest('total')})
-    SELECT ${metricSql} FROM grouped HAVING COUNT(*)>0`);
-  const bucketRows = db.all(sql`${measured}, grouped AS (${perRequest('minute')})
-    SELECT (timestamp / 60000)*60000 timestamp, ${metricSql} FROM grouped
-    GROUP BY (timestamp / 60000) ORDER BY timestamp`);
-  const modelRows = db.all(sql`${measured}, attributed AS MATERIALIZED (
-      SELECT *, audit_model_family(model) family FROM measured
-    ), families AS (
-      SELECT family, ${metricSql} FROM (${perRequest('family')})
-      GROUP BY family ORDER BY requests DESC, family LIMIT ${USAGE_TRENDS_MODEL_LIMIT + 1}
-    ), visible AS (
-      SELECT attributed.* FROM attributed JOIN families ON attributed.family IS families.family
-    ), variant_totals AS (
-      SELECT family, model, ${metricSql} FROM (${perRequest('variant')})
-      GROUP BY family, model
-    ), variants AS (
-      SELECT *, ROW_NUMBER() OVER (PARTITION BY family ORDER BY requests DESC, model) variantRank
-      FROM variant_totals
-    ), variant_counts AS (
-      SELECT family, COUNT(*) variantCount FROM variant_totals GROUP BY family
+  const validTokens = (
+    column: typeof upstreamAttempts.inputTokens | typeof upstreamAttempts.outputTokens,
+  ) =>
+    sql<number | null>`case when ${terminalAttempt} and typeof(${column}) = 'integer'
+      and ${between(column, 0, Number.MAX_SAFE_INTEGER)} then ${column} end`;
+  const measured = db.$with('measured').as(
+    db
+      .select({
+        id: requestLogs.id,
+        timestamp: requestLogs.timestamp,
+        model: sql<string | null>`${modelColumn}`.as('candidate_model'),
+        attemptId: sql<string | null>`${upstreamAttempts.id}`.as('attempt_id'),
+        input: validTokens(upstreamAttempts.inputTokens).as('measured_input'),
+        output: validTokens(upstreamAttempts.outputTokens).as('measured_output'),
+      })
+      .from(requestLogs)
+      .leftJoin(upstreamAttempts, attemptJoin)
+      .where(and(gte(requestLogs.timestamp, from), matchingTraffic)),
+  );
+  const attributed = db.$with('attributed').as(
+    db
+      .select({
+        id: measured.id,
+        model: measured.model,
+        attemptId: measured.attemptId,
+        input: measured.input,
+        output: measured.output,
+        family: sql<string | null>`audit_model_family(${measured.model})`.as('candidate_family'),
+      })
+      .from(measured),
+  );
+  const shortGroups = db.$with('short_groups').as(
+    db
+      .select({
+        timestamp: measured.timestamp,
+        ...requestMetrics(measured),
+      })
+      .from(measured)
+      .groupBy(measured.id, measured.timestamp),
+  );
+  const totals = db
+    .with(measured, shortGroups)
+    .select(usageMetrics(shortGroups))
+    .from(shortGroups)
+    .having(gt(count(), 0))
+    .get();
+  const bucket = sql<number>`(${shortGroups.timestamp} / 60000) * 60000`;
+  const bucketRows = db
+    .with(measured, shortGroups)
+    .select({ timestamp: bucket, ...usageMetrics(shortGroups) })
+    .from(shortGroups)
+    .groupBy(bucket)
+    .orderBy(asc(bucket))
+    .all();
+  const familyRequests = db.$with('family_requests').as(
+    db
+      .select({ family: attributed.family, ...requestMetrics(attributed) })
+      .from(attributed)
+      .groupBy(attributed.id, sql`${attributed.family}`),
+  );
+  const families = db.$with('families').as(
+    db
+      .select({
+        family: sql<string | null>`${familyRequests.family}`.as('summary_family'),
+        ...usageMetrics(familyRequests),
+      })
+      .from(familyRequests)
+      .groupBy(sql`${familyRequests.family}`)
+      .orderBy(({ requests, family }) => [desc(requests), asc(family)])
+      .limit(USAGE_TRENDS_MODEL_LIMIT + 1),
+  );
+  const variantRequests = db.$with('variant_requests').as(
+    db
+      .select({ family: attributed.family, model: attributed.model, ...requestMetrics(attributed) })
+      .from(attributed)
+      .innerJoin(families, sql`${attributed.family} is ${families.family}`)
+      .groupBy(attributed.id, sql`${attributed.family}`, sql`${attributed.model}`),
+  );
+  const variantTotals = db.$with('variant_totals').as(
+    db
+      .select({
+        family: variantRequests.family,
+        model: variantRequests.model,
+        ...usageMetrics(variantRequests),
+      })
+      .from(variantRequests)
+      .groupBy(sql`${variantRequests.family}`, sql`${variantRequests.model}`),
+  );
+  const variants = db.$with('variants').as(
+    db
+      .select({
+        family: variantTotals.family,
+        model: variantTotals.model,
+        requests: variantTotals.requests,
+        attempts: variantTotals.attempts,
+        inputTokens: variantTotals.inputTokens,
+        outputTokens: variantTotals.outputTokens,
+        totalTokens: variantTotals.totalTokens,
+        incompleteRequests: variantTotals.incompleteRequests,
+        variantRank: sql<number>`row_number() over (
+          partition by ${variantTotals.family} order by ${desc(variantTotals.requests)}, ${variantTotals.model}
+        )`.as('variant_rank'),
+      })
+      .from(variantTotals),
+  );
+  const variantCounts = db.$with('variant_counts').as(
+    db
+      .select({
+        family: sql<string | null>`${variantTotals.family}`.as('count_family'),
+        count: count().as('variant_count'),
+      })
+      .from(variantTotals)
+      .groupBy(sql`${variantTotals.family}`),
+  );
+  const modelRows = db
+    .with(
+      measured,
+      attributed,
+      familyRequests,
+      families,
+      variantRequests,
+      variantTotals,
+      variantCounts,
+      variants,
     )
-    SELECT families.family, NULL model, 0 variantRank, variantCount, requests, attempts,
-      inputTokens, outputTokens, totalTokens, incompleteRequests
-    FROM families JOIN variant_counts ON families.family IS variant_counts.family
-    UNION ALL
-    SELECT family, model, variantRank, 0 variantCount, requests, attempts, inputTokens,
-    outputTokens, totalTokens, incompleteRequests FROM variants
-    WHERE variantRank<=${USAGE_TRENDS_MODEL_LIMIT}
-    ORDER BY variantRank, requests DESC, family, model
-    LIMIT (SELECT COUNT(*) + ${MAX_TOTAL_VARIANTS} FROM families)`);
+    .select({
+      family: families.family,
+      model: sql<string | null>`null`.as('model'),
+      variantRank: sql<number>`0`.as('rank'),
+      variantCount: variantCounts.count,
+      requests: families.requests,
+      attempts: families.attempts,
+      inputTokens: families.inputTokens,
+      outputTokens: families.outputTokens,
+      totalTokens: families.totalTokens,
+      incompleteRequests: families.incompleteRequests,
+    })
+    .from(families)
+    .innerJoin(variantCounts, sql`${families.family} is ${variantCounts.family}`)
+    .unionAll(
+      db
+        .select({
+          family: variants.family,
+          model: variants.model,
+          variantRank: variants.variantRank,
+          variantCount: sql<number>`0`,
+          requests: variants.requests,
+          attempts: variants.attempts,
+          inputTokens: variants.inputTokens,
+          outputTokens: variants.outputTokens,
+          totalTokens: variants.totalTokens,
+          incompleteRequests: variants.incompleteRequests,
+        })
+        .from(variants)
+        .where(lte(variants.variantRank, USAGE_TRENDS_MODEL_LIMIT)),
+    )
+    .orderBy(({ variantRank, requests, family, model }) => [
+      asc(variantRank),
+      desc(requests),
+      asc(family),
+      asc(model),
+    ])
+    .limit(USAGE_TRENDS_MODEL_LIMIT + 1 + MAX_TOTAL_VARIANTS)
+    .all();
   const empty = {
     requests: 0,
     attempts: 0,
@@ -171,11 +314,18 @@ function readSnapshot(db: TrendsQueryDatabase, input: UsageTrendsWorkerInput): U
     to,
     bucketMs: 60000,
     coverage: 'retained-local-records',
-    totals: totalsRows[0] ?? empty,
+    totals: totals ?? empty,
     buckets,
     ...groupModelRows(modelRowsSchema.parse(modelRows)),
     ...(input.includeActivity && {
-      activity: readActivityDays(db, to, input.prices, attemptJoin, matchingTraffic, terminalAttempt),
+      activity: readActivityDays(
+        db,
+        to,
+        input.prices,
+        attemptJoin,
+        matchingTraffic,
+        terminalAttempt,
+      ),
     }),
   });
 }
@@ -197,12 +347,17 @@ function groupModelRows(
     variantCount: number;
   };
   const families = new Map<string | null, FamilyRow>();
+  let variantTotal = 0;
   for (const { family, model, variantRank, variantCount, ...usage } of rows) {
     if (variantRank === 0) {
       families.set(family, { family, ...usage, variants: [], variantCount });
       continue;
     }
+    if (variantTotal === MAX_TOTAL_VARIANTS) {
+      break;
+    }
     families.get(family)?.variants.push({ model, ...usage });
+    variantTotal += 1;
   }
   return {
     modelFamilies: [...families.values()]

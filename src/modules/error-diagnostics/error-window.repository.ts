@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
+import { and, count, eq, gt, inArray, lte, max, sql } from 'drizzle-orm';
+import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { z } from 'zod';
 import {
   SqliteDiskAdmissionError,
@@ -9,6 +11,7 @@ import {
 } from '@/shared/persistence/database/sqlite-write-budget';
 import { decodeErrorRecord, MAX_ERROR_RECORD_BYTES } from './error-record';
 import { initializeErrorWindow, type ErrorDiagnosticRole } from './error-window.database';
+import { errorWindowMeta, errorWindowRecords as recordsTable } from './error-window.tables';
 import {
   ErrorAllocationSchema,
   ErrorWindowMetadataSchema,
@@ -18,7 +21,9 @@ import {
 
 const CountSchema = z.object({ count: z.number().int().safe().nonnegative() });
 const BytesSchema = z.object({ bytes: z.number().int().safe().nonnegative() });
-const HighWaterSchema = z.object({ sequence: z.number().int().safe().nonnegative() });
+const HighWaterSchema = z.number().int().safe().nonnegative();
+const CheckpointSchema = z.tuple([z.object({ busy: z.number().int().nonnegative() })]);
+const bodyBytes = sql<number>`length(cast(${recordsTable.body} as blob))`;
 const MAX_PAGE_BYTES = 512 * 1024;
 
 function isLinkedFile(filePath: string): boolean {
@@ -35,6 +40,7 @@ function isLinkedFile(filePath: string): boolean {
 /** One role owns this connection. Its allocation is supplied by deployment configuration. */
 export class ErrorWindowRepository {
   private readonly raw: Database.Database;
+  private readonly db: BetterSQLite3Database;
   private readonly disk: SqliteWriteBudget;
   private generation: string | null = null;
   private allocationBytes = 0;
@@ -52,6 +58,7 @@ export class ErrorWindowRepository {
       throw new Error('Local error diagnostic storage must not be a symbolic link');
     }
     this.raw = new Database(databasePath);
+    this.db = drizzle(this.raw);
     try {
       initializeErrorWindow(this.raw, role);
       this.disk = new SqliteWriteBudget(databasePath, this.raw);
@@ -72,9 +79,7 @@ export class ErrorWindowRepository {
       }
       this.generation = command.payload.generation;
       this.allocationBytes = command.payload.allocationBytes;
-      const storedCeiling = this.raw
-        .prepare("SELECT value FROM error_window_meta WHERE key='maintenance_ceiling'")
-        .get();
+      const storedCeiling = this.readMaintenanceCeiling();
       const previousCeiling = storedCeiling
         ? z
             .object({
@@ -112,12 +117,8 @@ export class ErrorWindowRepository {
       case 'clear': {
         // Revocation survives a failed DELETE; an old queued write cannot republish.
         this.generation = command.payload.generation;
-        const records = CountSchema.parse(
-          this.raw.prepare('SELECT count(*) AS count FROM error_window_records').get(),
-        ).count;
-        this.raw
-          .transaction(() => this.raw.prepare('DELETE FROM error_window_records').run())
-          .immediate();
+        const records = this.recordCount();
+        this.db.transaction((tx) => tx.delete(recordsTable).run(), { behavior: 'immediate' });
         return { generation: this.generation, records };
       }
       case 'maintain':
@@ -133,9 +134,11 @@ export class ErrorWindowRepository {
     if (record.role !== this.role) {
       throw new Error('Local error diagnostic role mismatch');
     }
-    const duplicate = this.raw
-      .prepare('SELECT body=? AS identical FROM error_window_records WHERE record_id=?')
-      .get(payload.body, record.id);
+    const duplicate = this.db
+      .select({ identical: eq(recordsTable.body, payload.body) })
+      .from(recordsTable)
+      .where(eq(recordsTable.id, record.id))
+      .get();
     if (duplicate) {
       if (z.object({ identical: z.literal(1) }).safeParse(duplicate).success === false) {
         throw new Error('Local error diagnostic identity conflict');
@@ -160,22 +163,21 @@ export class ErrorWindowRepository {
     if (last >= 0xd800 && last <= 0xdbff) {
       message = message.slice(0, -1);
     }
-    this.raw
-      .prepare(
-        'INSERT INTO error_window_records(record_id,created_at,source,category,request_id,attempt_id,status,message,body,bytes) VALUES(?,?,?,?,?,?,?,?,?,?)',
-      )
-      .run(
-        record.id,
-        record.createdAt,
-        record.source,
-        record.category,
-        record.requestId,
-        record.attemptId,
-        record.status,
+    this.db
+      .insert(recordsTable)
+      .values({
+        id: record.id,
+        createdAt: record.createdAt,
+        source: record.source,
+        category: record.category,
+        requestId: record.requestId,
+        attemptId: record.attemptId,
+        status: record.status,
         message,
-        payload.body,
+        body: payload.body,
         bytes,
-      );
+      })
+      .run();
     return { persisted: true, duplicate: false };
   }
 
@@ -183,31 +185,43 @@ export class ErrorWindowRepository {
     const throughSequence =
       input.throughSequence ??
       HighWaterSchema.parse(
-        this.raw
-          .prepare('SELECT coalesce(max(sequence),0) AS sequence FROM error_window_records')
-          .get(),
-      ).sequence;
-    const clauses = ['sequence>?', 'sequence<=?'];
-    const values: Array<string | number> = [input.afterSequence, throughSequence];
-    for (const [column, value] of [
-      ['source', input.source],
-      ['category', input.category],
-      ['request_id', input.requestId],
-    ] as const) {
-      if (value !== undefined) {
-        clauses.push(`${column}=?`);
-        values.push(value);
-      }
-    }
+        this.db
+          .select({ sequence: max(recordsTable.sequence) })
+          .from(recordsTable)
+          .get()?.sequence ?? 0,
+      );
     const records = z
       .array(ErrorWindowMetadataSchema)
       .max(201)
       .parse(
-        this.raw
-          .prepare(
-            `SELECT sequence,record_id AS id,created_at AS createdAt,source,category,request_id AS requestId,attempt_id AS attemptId,status,message,bytes FROM error_window_records WHERE ${clauses.join(' AND ')} ORDER BY sequence LIMIT ?`,
+        this.db
+          .select({
+            sequence: recordsTable.sequence,
+            id: recordsTable.id,
+            createdAt: recordsTable.createdAt,
+            source: recordsTable.source,
+            category: recordsTable.category,
+            requestId: recordsTable.requestId,
+            attemptId: recordsTable.attemptId,
+            status: recordsTable.status,
+            message: recordsTable.message,
+            bytes: recordsTable.bytes,
+          })
+          .from(recordsTable)
+          .where(
+            and(
+              gt(recordsTable.sequence, input.afterSequence),
+              lte(recordsTable.sequence, throughSequence),
+              input.source === undefined ? undefined : eq(recordsTable.source, input.source),
+              input.category === undefined ? undefined : eq(recordsTable.category, input.category),
+              input.requestId === undefined
+                ? undefined
+                : eq(recordsTable.requestId, input.requestId),
+            ),
           )
-          .all(...values, input.limit + 1),
+          .orderBy(recordsTable.sequence)
+          .limit(input.limit + 1)
+          .all(),
       );
     const complete = records.length <= input.limit;
     const selected = records.slice(0, input.limit);
@@ -225,11 +239,11 @@ export class ErrorWindowRepository {
   }
 
   private detail(id: string) {
-    const size = this.raw
-      .prepare(
-        'SELECT length(cast(body AS blob)) AS bytes FROM error_window_records WHERE record_id=?',
-      )
-      .get(id);
+    const size = this.db
+      .select({ bytes: bodyBytes })
+      .from(recordsTable)
+      .where(eq(recordsTable.id, id))
+      .get();
     if (!size) {
       return null;
     }
@@ -238,7 +252,13 @@ export class ErrorWindowRepository {
     }
     const row = z
       .object({ body: z.string() })
-      .parse(this.raw.prepare('SELECT body FROM error_window_records WHERE record_id=?').get(id));
+      .parse(
+        this.db
+          .select({ body: recordsTable.body })
+          .from(recordsTable)
+          .where(eq(recordsTable.id, id))
+          .get(),
+      );
     const record = decodeErrorRecord(row.body);
     if (record.role !== this.role || record.id !== id) {
       throw new Error('Local error diagnostic ownership mismatch');
@@ -254,16 +274,24 @@ export class ErrorWindowRepository {
       maintenanceCeiling: this.maintenanceCeiling,
       reclaiming: this.reclaiming,
       databaseBytes: sqliteFilesBytes(this.databasePath),
-      records: CountSchema.parse(
-        this.raw.prepare('SELECT count(*) AS count FROM error_window_records').get(),
-      ).count,
+      records: this.recordCount(),
     };
   }
 
-  private saveMaintenanceCeiling(): void {
-    const previous = this.raw
-      .prepare("SELECT value FROM error_window_meta WHERE key='maintenance_ceiling'")
+  private recordCount(): number {
+    return CountSchema.parse(this.db.select({ count: count() }).from(recordsTable).get()).count;
+  }
+
+  private readMaintenanceCeiling() {
+    return this.db
+      .select({ value: errorWindowMeta.value })
+      .from(errorWindowMeta)
+      .where(eq(errorWindowMeta.key, 'maintenance_ceiling'))
       .get();
+  }
+
+  private saveMaintenanceCeiling(): void {
+    const previous = this.readMaintenanceCeiling();
     if (
       previous &&
       z.object({ value: z.string() }).parse(previous).value === String(this.maintenanceCeiling)
@@ -271,11 +299,12 @@ export class ErrorWindowRepository {
       return;
     }
     this.disk.assertCanWrite(256, this.maintenanceCeiling, false);
-    this.raw
-      .prepare(
-        "INSERT INTO error_window_meta(key,value) VALUES('maintenance_ceiling',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-      )
-      .run(String(this.maintenanceCeiling));
+    const value = String(this.maintenanceCeiling);
+    this.db
+      .insert(errorWindowMeta)
+      .values({ key: 'maintenance_ceiling', value })
+      .onConflictDoUpdate({ target: errorWindowMeta.key, set: { value } })
+      .run();
   }
 
   private maintain() {
@@ -288,9 +317,7 @@ export class ErrorWindowRepository {
       return { removedRecords: 0, moreWorkPending: false, databaseBytes: before };
     }
     this.reclaiming = true;
-    const initialCheckpoint = z
-      .object({ busy: z.number().int().nonnegative() })
-      .parse(this.raw.prepare('PRAGMA wal_checkpoint(TRUNCATE)').get());
+    const [initialCheckpoint] = CheckpointSchema.parse(this.raw.pragma('wal_checkpoint(TRUNCATE)'));
     if (initialCheckpoint.busy !== 0) {
       return {
         removedRecords: 0,
@@ -306,7 +333,7 @@ export class ErrorWindowRepository {
       .nonnegative()
       .parse(this.raw.pragma('freelist_count', { simple: true }));
     this.raw.pragma('incremental_vacuum(128)');
-    this.raw.prepare('PRAGMA wal_checkpoint(TRUNCATE)').get();
+    this.raw.pragma('wal_checkpoint(TRUNCATE)');
     const compacted = sqliteFilesBytes(this.databasePath);
     if (compacted <= target) {
       this.reclaiming = false;
@@ -328,10 +355,11 @@ export class ErrorWindowRepository {
       )
       .max(32)
       .parse(
-        this.raw
-          .prepare(
-            'SELECT sequence,length(cast(body AS blob)) AS bytes FROM error_window_records ORDER BY created_at,sequence LIMIT 32',
-          )
+        this.db
+          .select({ sequence: recordsTable.sequence, bytes: bodyBytes })
+          .from(recordsTable)
+          .orderBy(recordsTable.createdAt, recordsTable.sequence)
+          .limit(32)
           .all(),
       );
     const ids: number[] = [];
@@ -369,24 +397,15 @@ export class ErrorWindowRepository {
           bytes = rows.slice(0, keep).reduce((total, row) => total + row.bytes, 0);
         }
       }
-      this.raw
-        .transaction(() =>
-          this.raw
-            .prepare(
-              `DELETE FROM error_window_records WHERE sequence IN (${ids.map(() => '?').join(',')})`,
-            )
-            .run(...ids),
-        )
-        .immediate();
+      this.db.transaction(
+        (tx) => tx.delete(recordsTable).where(inArray(recordsTable.sequence, ids)).run(),
+        { behavior: 'immediate' },
+      );
     }
-    let checkpoint = z
-      .object({ busy: z.number().int().nonnegative() })
-      .parse(this.raw.prepare('PRAGMA wal_checkpoint(TRUNCATE)').get());
+    let [checkpoint] = CheckpointSchema.parse(this.raw.pragma('wal_checkpoint(TRUNCATE)'));
     if (checkpoint.busy === 0) {
       this.raw.pragma('incremental_vacuum(128)');
-      checkpoint = z
-        .object({ busy: z.number().int().nonnegative() })
-        .parse(this.raw.prepare('PRAGMA wal_checkpoint(TRUNCATE)').get());
+      [checkpoint] = CheckpointSchema.parse(this.raw.pragma('wal_checkpoint(TRUNCATE)'));
     }
     const after = sqliteFilesBytes(this.databasePath);
     const freeAfter = z
@@ -396,9 +415,7 @@ export class ErrorWindowRepository {
       .nonnegative()
       .parse(this.raw.pragma('freelist_count', { simple: true }));
     const progress = ids.length > 0 || after < before || freeAfter < freeBefore;
-    const remaining = CountSchema.parse(
-      this.raw.prepare('SELECT count(*) AS count FROM error_window_records').get(),
-    ).count;
+    const remaining = this.recordCount();
     if (after <= target) {
       this.reclaiming = false;
       this.maintenanceCeiling = this.allocationBytes;

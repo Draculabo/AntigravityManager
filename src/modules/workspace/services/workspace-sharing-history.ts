@@ -2,11 +2,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { logger } from '@/shared/logging/logger';
 import Database from 'better-sqlite3';
+import { and, eq } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { itemTable } from '@/shared/persistence/database/schema';
+import { sqliteSchema } from '@/shared/persistence/database/sqlite-metadata';
 import {
   getAntigravityDbPaths,
   getAntigravityHostUserDir,
   type PathResolutionOptions,
 } from '@/shared/platform/paths';
+
+const RECENT_HISTORY_KEY = 'history.recentlyOpenedPathsList';
+
 export interface HistorySeedingOptions {
   profileUserDataDir: string;
   hostDbPath?: string;
@@ -82,15 +89,20 @@ export function seedRecentProjectHistory(options: HistorySeedingOptions): boolea
         fileMustExist: true,
         timeout: options.timeoutMs ?? 1500,
       });
-      const tableCheck = hostDb
-        .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'ItemTable'")
+      const orm = drizzle(hostDb);
+      const tableCheck = orm
+        .select({ name: sqliteSchema.name })
+        .from(sqliteSchema)
+        .where(and(eq(sqliteSchema.type, 'table'), eq(sqliteSchema.name, 'ItemTable')))
         .get();
       if (!tableCheck) {
         return true;
       }
-      const row = hostDb
-        .prepare("SELECT value FROM ItemTable WHERE key = 'history.recentlyOpenedPathsList'")
-        .get() as { value?: string } | undefined;
+      const row = orm
+        .select({ value: itemTable.value })
+        .from(itemTable)
+        .where(eq(itemTable.key, RECENT_HISTORY_KEY))
+        .get();
       if (row && typeof row.value === 'string' && row.value.trim().length > 0) {
         hostHistoryValue = row.value;
       }
@@ -130,16 +142,19 @@ export function seedRecentProjectHistory(options: HistorySeedingOptions): boolea
         );
       `);
 
-      const existing = profileDb
-        .prepare("SELECT value FROM ItemTable WHERE key = 'history.recentlyOpenedPathsList'")
-        .get() as { value?: string } | undefined;
+      const orm = drizzle(profileDb);
+      const existing = orm
+        .select({ value: itemTable.value })
+        .from(itemTable)
+        .where(eq(itemTable.key, RECENT_HISTORY_KEY))
+        .get();
 
       if (!existing || existing.value === null || existing.value === undefined) {
-        profileDb
-          .prepare(
-            "INSERT OR IGNORE INTO ItemTable (key, value) VALUES ('history.recentlyOpenedPathsList', ?)",
-          )
-          .run(hostHistoryValue);
+        orm
+          .insert(itemTable)
+          .values({ key: RECENT_HISTORY_KEY, value: hostHistoryValue })
+          .onConflictDoNothing()
+          .run();
         logger.info(`Seeded recent project history into profile state.vscdb (${profileDbPath})`);
       }
     } catch (err) {

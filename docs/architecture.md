@@ -872,6 +872,11 @@ and recovery behavior.
 
 Shared SQLite connection and schema utilities live under `src/shared/persistence/database`. Feature-specific repositories and codecs remain with their feature. Persisted rows are untrusted when read and must be narrowed through the owning schema or codec.
 
+Repositories use Drizzle table definitions and query builders. Workers that read large
+payloads stream the rows from a Drizzle-built query through the SQLite driver, so they
+can stop at the caller's byte limit. The driver also owns connection settings and database
+maintenance. See the [persistence instructions](../src/shared/persistence/AGENTS.md#database-safety).
+
 Cloud-account OAuth tokens are stored in the user's local SQLite database as plaintext JSON. Other credentials retain their owning keyring or encrypted-storage policy. Schema, on-disk payload and credential-location changes are high-risk decisions governed by [security.md](security.md).
 
 ## Routing and generated files

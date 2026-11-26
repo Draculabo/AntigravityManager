@@ -48,7 +48,7 @@
     "check:static": "node scripts/quality/run.mjs static",
     "check:ci": "node scripts/quality/run.mjs",
     "check:quality": "node scripts/quality/contracts.mjs",
-    "test:quality": "node --test scripts/quality/contracts.test.mjs scripts/quality/runner.test.mjs scripts/quality/profile.test.mjs",
+    "test:quality": "node --test scripts/quality/contracts.test.mjs scripts/quality/runner.test.mjs scripts/quality/profile.test.mjs scripts/quality/no-handwritten-sql.test.mjs",
     "check:automation": "node scripts/github/workflow-contracts.mjs",
     "test:automation": "node --test scripts/github/triage.test.mjs",
     "review:eval": "node scripts/review-eval/run.mjs",

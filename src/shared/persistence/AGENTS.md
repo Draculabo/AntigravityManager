@@ -10,7 +10,10 @@ These instructions supplement the repository root `AGENTS.md` for `src/shared/pe
 
 ## Database safety
 
-- Use prepared statements or Drizzle query construction for variable data.
+- Build SQLite reads, writes, and data migrations with the Drizzle query builder and typed table definitions.
+- Use Drizzle's parameterized `sql` tag only for individual SQLite expressions the query builder cannot represent. Bind values and interpolate typed columns. Keep complete queries and `sql.raw` out of application code.
+- Keep historical audit DDL in the audit module's versioned migration files. Use the native driver for SQLite operations such as PRAGMAs, vacuum, and backup. Use the shared SQLite iterator when you need to stream a Drizzle-built query.
+- The SQL lint rule applies to application code, scripts, and tests. The [existing SQL inventory](../../../scripts/quality/existing-sql.json) records specific legacy call sites and occurrence counts. Use Drizzle for new reads and writes in these files, and remove inventory entries as you migrate existing calls.
 - Validate rows and serialized payloads when reading from SQLite; keep schemas close to the owning data contract.
 - Make transaction and commit points explicit for multi-step writes. Do not publish derived state before the durable write succeeds.
 - Preserve backup and restore recoverability. A failed restore must not silently leave a partially accepted result.

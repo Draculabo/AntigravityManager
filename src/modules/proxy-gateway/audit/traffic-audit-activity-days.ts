@@ -1,7 +1,22 @@
-import { and, eq, isNull, lte, ne, or, sql, type SQL } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  between,
+  count,
+  countDistinct,
+  eq,
+  gte,
+  isNull,
+  lt,
+  lte,
+  ne,
+  or,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { requestLogs, upstreamAttempts, type trafficAuditSchema } from './traffic-audit.schema';
-import { auditUsageCostSql } from './audit-usage-cost-sql';
+import { auditUsageCost } from './audit-usage-cost-sql';
 import { resolveUsagePrices } from './audit-usage-default-prices';
 import type { UsagePrice } from './usage-overview.schema';
 import {
@@ -38,12 +53,17 @@ export function readRequestActivity(
     eq(upstreamAttempts.responsePartial, false),
   );
   return readActivityDays(
-    db, to, resolveUsagePrices(prices ?? [], asOf), attemptJoin, where, terminalAttempt,
+    db,
+    to,
+    resolveUsagePrices(prices ?? [], asOf),
+    attemptJoin,
+    where,
+    terminalAttempt,
   );
 }
 
 export function readActivityDays(
-  db: Pick<AuditDatabase, 'all'>,
+  db: Pick<AuditDatabase, '$with' | 'select' | 'with'>,
   through: number,
   prices: UsagePrice[] | undefined,
   attemptJoin: SQL | undefined,
@@ -67,9 +87,25 @@ export function readActivityDays(
       end: new Date(year, month, day + 1).getTime(),
     };
   });
-  const values = sql.join(
-    days.map(({ date, start, end }) => sql`(${date}, ${start}, ${end})`),
-    sql`, `,
+  const calendarDays = db.$with('days').as(
+    db
+      .select({
+        date: sql<string>`json_extract(value, '$.date')`.as('calendar_date'),
+        start: sql<number>`json_extract(value, '$.start')`.as('starts_at'),
+        end: sql<number>`json_extract(value, '$.end')`.as('ends_at'),
+      })
+      .from(sql`json_each(${JSON.stringify(days)})`),
+  );
+  const rates = db.$with('prices').as(
+    db
+      .select({
+        model: sql<string>`json_extract(value, '$.model')`.as('price_model'),
+        input: sql<number>`json_extract(value, '$.inputPerMillion')`.as('input_rate'),
+        output: sql<number>`json_extract(value, '$.outputPerMillion')`.as('output_rate'),
+        cache: sql<number | null>`json_extract(value, '$.cachedPerMillion')`.as('cached_rate'),
+      })
+      .from(sql`json_each(${JSON.stringify(prices ?? [])})`)
+      .limit(prices?.length ?? 0),
   );
   const measured = (
     column:
@@ -77,39 +113,78 @@ export function readActivityDays(
       | typeof upstreamAttempts.cachedTokens
       | typeof upstreamAttempts.outputTokens,
   ) =>
-    sql`CASE WHEN ${terminalAttempt} AND typeof(${column})='integer'
-      AND ${column} BETWEEN 0 AND 9007199254740991 THEN ${column} END`;
+    sql<number | null>`case when ${terminalAttempt} and typeof(${column}) = 'integer'
+      and ${between(column, 0, Number.MAX_SAFE_INTEGER)} then ${column} end`;
+  const measurements = db.$with('measured').as(
+    db
+      .select({
+        date: calendarDays.date,
+        id: requestLogs.id,
+        attemptId: sql<string | null>`${upstreamAttempts.id}`.as('attempt_id'),
+        model: sql<string | null>`${upstreamAttempts.model}`.as('attempt_model'),
+        input: measured(upstreamAttempts.inputTokens).as('input'),
+        output: measured(upstreamAttempts.outputTokens).as('output'),
+        cache: measured(upstreamAttempts.cachedTokens).as('cache'),
+        cachedTokens: upstreamAttempts.cachedTokens,
+      })
+      .from(calendarDays)
+      .innerJoin(
+        requestLogs,
+        and(
+          gte(requestLogs.timestamp, calendarDays.start),
+          lt(requestLogs.timestamp, calendarDays.end),
+        ),
+      )
+      .leftJoin(upstreamAttempts, attemptJoin)
+      .where(matchingTraffic),
+  );
+  const cost = auditUsageCost({
+    input: measurements.input,
+    output: measurements.output,
+    cache: measurements.cache,
+    cachedTokens: measurements.cachedTokens,
+    model: rates.model,
+    inputRate: rates.input,
+    outputRate: rates.output,
+    cachedRate: rates.cache,
+  });
+  const perDay = db.$with('per_day').as(
+    db
+      .select({
+        date: sql<string>`${measurements.date}`.as('activity_date'),
+        requests: countDistinct(measurements.id).as('requests'),
+        attempts: count(measurements.attemptId).as('attempts'),
+        incompleteRequests: countDistinct(
+          sql`case when ${isNull(measurements.input)} or ${isNull(measurements.output)}
+            then ${measurements.id} end`,
+        ).as('incomplete_requests'),
+        observedTokens: sql<number | null>`case
+          when ${count(measurements.input)} + ${count(measurements.output)} > 0 then
+          sum(coalesce(${measurements.input}, 0)) + sum(coalesce(${measurements.output}, 0)) end`.as(
+          'observed_tokens',
+        ),
+        estimatedCostUsd: sql<number | null>`sum(${cost})`.as('estimated_cost'),
+        pricedAttempts: count(cost).as('priced_attempts'),
+      })
+      .from(measurements)
+      .leftJoin(rates, eq(rates.model, measurements.model))
+      .groupBy(sql`${measurements.date}`),
+  );
   return UsageActivityDaysSchema.parse(
-    db.all(sql`
-    WITH days(date, starts_at, ends_at) AS (VALUES ${values}),
-    prices AS MATERIALIZED (
-      SELECT json_extract(value,'$.model') model,
-        json_extract(value,'$.inputPerMillion') input_rate,
-        json_extract(value,'$.outputPerMillion') output_rate,
-        json_extract(value,'$.cachedPerMillion') cached_rate
-      FROM json_each(${JSON.stringify(prices ?? [])})
-    ), measured AS (
-      SELECT days.date, ${requestLogs.id} id, ${upstreamAttempts.id} attempt_id,
-        ${upstreamAttempts.model} model, ${measured(upstreamAttempts.inputTokens)} input,
-        ${measured(upstreamAttempts.outputTokens)} output, ${measured(upstreamAttempts.cachedTokens)} cache,
-        ${upstreamAttempts.cachedTokens} cached_tokens
-      FROM days JOIN ${requestLogs}
-        ON ${requestLogs.timestamp}>=days.starts_at AND ${requestLogs.timestamp}<days.ends_at
-      LEFT JOIN ${upstreamAttempts} ON ${attemptJoin}
-      WHERE ${matchingTraffic}
-    ), per_day AS (
-      SELECT date, COUNT(DISTINCT id) requests, COUNT(attempt_id) attempts,
-        COUNT(DISTINCT CASE WHEN input IS NULL OR output IS NULL THEN id END) incompleteRequests,
-        CASE WHEN COUNT(input)+COUNT(output)>0 THEN
-          SUM(COALESCE(input,0))+SUM(COALESCE(output,0)) END observedTokens,
-        SUM(${sql.raw(auditUsageCostSql)}) estimatedCostUsd,
-        COUNT(${sql.raw(auditUsageCostSql)}) pricedAttempts
-      FROM measured LEFT JOIN prices ON prices.model=measured.model GROUP BY date
-    )
-    SELECT days.date, COALESCE(requests,0) requests, COALESCE(attempts,0) attempts,
-      COALESCE(incompleteRequests,0) incompleteRequests, observedTokens, estimatedCostUsd,
-      COALESCE(pricedAttempts,0) pricedAttempts
-    FROM days LEFT JOIN per_day USING(date) ORDER BY days.date
-  `),
+    db
+      .with(calendarDays, rates, measurements, perDay)
+      .select({
+        date: calendarDays.date,
+        requests: sql<number>`coalesce(${perDay.requests}, 0)`,
+        attempts: sql<number>`coalesce(${perDay.attempts}, 0)`,
+        incompleteRequests: sql<number>`coalesce(${perDay.incompleteRequests}, 0)`,
+        observedTokens: perDay.observedTokens,
+        estimatedCostUsd: perDay.estimatedCostUsd,
+        pricedAttempts: sql<number>`coalesce(${perDay.pricedAttempts}, 0)`,
+      })
+      .from(calendarDays)
+      .leftJoin(perDay, eq(calendarDays.date, perDay.date))
+      .orderBy(asc(calendarDays.date))
+      .all(),
   );
 }

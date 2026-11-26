@@ -1,27 +1,48 @@
 import type Database from 'better-sqlite3';
+import { and, count, eq, isNull, lt, sql, sum } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
+import {
+  auditPayloadChunks,
+  auditPayloads,
+  requestLogs,
+  upstreamAttempts,
+} from './traffic-audit.schema';
 
 /** Reconcile capture lifetime, without claiming the provider completed or failed. */
 export function recoverInterruptedAudit(database: Database.Database, ownerStartedAt: number): void {
-  database.transaction(() => {
+  const orm = drizzle(database);
+  orm.transaction((tx) => {
     const recoveredAt = Date.now();
-    for (const table of ['request_logs', 'upstream_attempts'] as const) {
-      database
-        .prepare(
-          `UPDATE ${table} SET completed_at=?,response_partial=1 ` +
-            "WHERE outcome='in_progress' AND completed_at IS NULL AND timestamp<?",
+    for (const table of [requestLogs, upstreamAttempts]) {
+      tx.update(table)
+        .set({ completedAt: recoveredAt, responsePartial: true })
+        .where(
+          and(
+            eq(table.outcome, 'in_progress'),
+            isNull(table.completedAt),
+            lt(table.timestamp, ownerStartedAt),
+          ),
         )
-        .run(recoveredAt, ownerStartedAt);
+        .run();
     }
-    database
-      .prepare(
-        "UPDATE audit_payloads SET state='incomplete',partial=1," +
-          "dropped_reason=COALESCE(dropped_reason,'worker_restart')," +
-          'stored_bytes=COALESCE((SELECT SUM(byte_length) FROM audit_payload_chunks ' +
-          'WHERE payload_id=audit_payloads.id),0),chunk_count=(SELECT COUNT(*) FROM ' +
-          "audit_payload_chunks WHERE payload_id=audit_payloads.id),completed_at=? WHERE state='writing' AND created_at<?",
-      )
-      .run(recoveredAt, ownerStartedAt);
-  })();
+    const matchesPayload = eq(auditPayloadChunks.payloadId, auditPayloads.id);
+    const storedBytes = tx
+      .select({ value: sum(auditPayloadChunks.byteLength) })
+      .from(auditPayloadChunks)
+      .where(matchesPayload);
+    const chunkCount = tx.select({ value: count() }).from(auditPayloadChunks).where(matchesPayload);
+    tx.update(auditPayloads)
+      .set({
+        state: 'incomplete',
+        partial: true,
+        droppedReason: sql`coalesce(${auditPayloads.droppedReason}, ${'worker_restart'})`,
+        storedBytes: sql`coalesce(${storedBytes}, 0)`,
+        chunkCount: sql`${chunkCount}`,
+        completedAt: recoveredAt,
+      })
+      .where(and(eq(auditPayloads.state, 'writing'), lt(auditPayloads.createdAt, ownerStartedAt)))
+      .run();
+  });
 }
 
 export function auditCaptureOutcome(outcome: string, completedAt: number | null): string {

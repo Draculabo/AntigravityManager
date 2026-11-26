@@ -1,7 +1,11 @@
 import type Database from 'better-sqlite3';
+import { and, asc, eq, lte, sql } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { z } from 'zod';
 import { redactDiagnosticText } from '@/shared/observability/sentryPrivacy';
+import { iterateSqliteQuery } from '@/shared/persistence/database/iterate-sqlite-query';
 import { auditJsonObject, parseAuditJsonBody } from './audit-json-object';
+import { auditPayloadChunks } from './traffic-audit.schema';
 
 export const AUDIT_CONVERSATION_BODY_LIMIT = 1024 * 1024;
 export const AUDIT_CONVERSATION_CHUNK_LIMIT = 128;
@@ -17,16 +21,24 @@ export function normalizeAuditConversationText(text: string) {
 }
 
 export function prepareAuditConversationBodyReader(db: Database.Database) {
-  const readChunks = db.prepare<[string, number, number], { seq: number; payload: unknown }>(`
-    SELECT seq,payload FROM audit_payload_chunks
-    WHERE payload_id=? AND length(payload)<=? ORDER BY seq LIMIT ?`);
+  const orm = drizzle(db);
   return ({ id, storedBytes, chunkCount }: z.infer<typeof AuditConversationBodySchema>) => {
+    const query = orm
+      .select({ seq: auditPayloadChunks.sequence, payload: auditPayloadChunks.payload })
+      .from(auditPayloadChunks)
+      .where(
+        and(
+          eq(auditPayloadChunks.payloadId, id),
+          lte(sql<number>`length(${auditPayloadChunks.payload})`, AUDIT_CONVERSATION_BODY_LIMIT),
+        ),
+      )
+      .orderBy(asc(auditPayloadChunks.sequence))
+      .limit(chunkCount + 1);
     const chunks: Buffer[] = [];
     let bytes = 0;
-    for (const { seq, payload } of readChunks.iterate(
-      id,
-      AUDIT_CONVERSATION_BODY_LIMIT,
-      chunkCount + 1,
+    for (const { seq, payload } of iterateSqliteQuery<{ seq: number; payload: unknown }>(
+      db,
+      query,
     )) {
       if (
         seq !== chunks.length ||

@@ -1,4 +1,6 @@
 import type Database from 'better-sqlite3';
+import { and, asc, between, desc, eq, gt, lt, lte, max, or, sql } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
 import {
   AUDIT_SESSION_OPTIONS_LIMIT,
   AuditSessionOptionSchema,
@@ -6,21 +8,27 @@ import {
   type AuditSessionOptionsWorkerInput,
 } from './audit-session-options.schema';
 import { readAuditSessionTitles } from './audit-session-titles';
+import { requestLogs } from './traffic-audit.schema';
 
 export function readAuditSessionOptions(
   db: Database.Database,
   input: AuditSessionOptionsWorkerInput,
 ) {
-  return db.transaction(() => {
+  return drizzle(db).transaction((tx) => {
+    const lastSeen = max(requestLogs.timestamp);
     if (input.kind === 'selected') {
-      const row = db
-        .prepare(
-          `
-        SELECT session_id sessionId, MAX(timestamp) lastSeen FROM request_logs
-        WHERE session_id=? AND traffic_class='model' AND timestamp<=?
-        GROUP BY session_id`,
+      const row = tx
+        .select({ sessionId: requestLogs.sessionId, lastSeen })
+        .from(requestLogs)
+        .where(
+          and(
+            eq(requestLogs.sessionId, input.sessionId),
+            eq(requestLogs.trafficClass, 'model'),
+            lte(requestLogs.timestamp, input.asOf),
+          ),
         )
-        .get(input.sessionId, input.asOf);
+        .groupBy(requestLogs.sessionId)
+        .get();
       if (!row) {
         return { rows: [] };
       }
@@ -36,24 +44,30 @@ export function readAuditSessionOptions(
       input.cursor?.through ?? input.to ?? input.asOf,
       input.to ?? input.asOf,
     );
+    const { cursor } = input;
     const options = AuditSessionOptionSchema.array().parse(
-      db
-        .prepare(
-          `
-      SELECT session_id sessionId, MAX(timestamp) lastSeen FROM request_logs
-      WHERE traffic_class='model' AND timestamp BETWEEN @from AND @through
-        AND length(CAST(session_id AS BLOB)) BETWEEN 1 AND 512
-      GROUP BY session_id
-      HAVING @lastSeen IS NULL OR lastSeen<@lastSeen OR (lastSeen=@lastSeen AND session_id>@sessionId)
-      ORDER BY lastSeen DESC, session_id ASC LIMIT @limit`,
+      tx
+        .select({ sessionId: requestLogs.sessionId, lastSeen })
+        .from(requestLogs)
+        .where(
+          and(
+            eq(requestLogs.trafficClass, 'model'),
+            between(requestLogs.timestamp, input.from ?? 0, through),
+            between(sql<number>`length(cast(${requestLogs.sessionId} as blob))`, 1, 512),
+          ),
         )
-        .all({
-          from: input.from ?? 0,
-          through,
-          lastSeen: input.cursor?.lastSeen ?? null,
-          sessionId: input.cursor?.sessionId ?? null,
-          limit: AUDIT_SESSION_OPTIONS_LIMIT + 1,
-        }),
+        .groupBy(requestLogs.sessionId)
+        .having(
+          cursor
+            ? or(
+                lt(lastSeen, cursor.lastSeen),
+                and(eq(lastSeen, cursor.lastSeen), gt(requestLogs.sessionId, cursor.sessionId)),
+              )
+            : undefined,
+        )
+        .orderBy(desc(lastSeen), asc(requestLogs.sessionId))
+        .limit(AUDIT_SESSION_OPTIONS_LIMIT + 1)
+        .all(),
     );
     const page = options.slice(0, AUDIT_SESSION_OPTIONS_LIMIT);
     const titles = readAuditSessionTitles(
@@ -76,5 +90,5 @@ export function readAuditSessionOptions(
     const last = page.at(-1);
     const next = options.length > page.length && last ? { ...last, through } : undefined;
     return AuditSessionOptionsResultSchema.parse({ rows, next });
-  })();
+  });
 }

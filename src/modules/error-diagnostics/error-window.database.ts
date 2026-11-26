@@ -1,5 +1,9 @@
 import type Database from 'better-sqlite3';
+import { and, eq, inArray, notLike } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { z } from 'zod';
+import { sqliteSchema } from '@/shared/persistence/database/sqlite-metadata';
+import { errorWindowMeta, errorWindowRecords } from './error-window.tables';
 
 export type ErrorDiagnosticRole = 'app' | 'core';
 const ObjectsSchema = z.array(z.object({ name: z.string(), type: z.string() })).max(3);
@@ -11,15 +15,22 @@ export function initializeErrorWindow(
   database: Database.Database,
   role: ErrorDiagnosticRole,
 ): void {
+  const orm = drizzle(database);
   const version = database.pragma('user_version', { simple: true });
   if (version !== 0 && version !== 1) {
     throw new Error('Unsupported local error diagnostic schema');
   }
   const objects = ObjectsSchema.parse(
-    database
-      .prepare(
-        "SELECT name,type FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND type IN ('table','view','trigger') LIMIT 3",
+    orm
+      .select({ name: sqliteSchema.name, type: sqliteSchema.type })
+      .from(sqliteSchema)
+      .where(
+        and(
+          notLike(sqliteSchema.name, 'sqlite_%'),
+          inArray(sqliteSchema.type, ['table', 'view', 'trigger']),
+        ),
       )
+      .limit(3)
       .all(),
   );
   if (
@@ -31,16 +42,16 @@ export function initializeErrorWindow(
   }
   if (version === 1) {
     const savedRole = RoleSchema.parse(
-      database.prepare("SELECT value FROM error_window_meta WHERE key='role'").get(),
+      orm
+        .select({ value: errorWindowMeta.value })
+        .from(errorWindowMeta)
+        .where(eq(errorWindowMeta.key, 'role'))
+        .get(),
     );
     if (savedRole.value !== role) {
       throw new Error('Local error diagnostic role mismatch');
     }
-    database
-      .prepare(
-        'SELECT sequence,record_id,created_at,source,category,request_id,attempt_id,status,message,body,bytes FROM error_window_records LIMIT 0',
-      )
-      .all();
+    orm.select().from(errorWindowRecords).limit(0).all();
   } else {
     database.pragma('auto_vacuum = INCREMENTAL');
     database
@@ -56,7 +67,7 @@ export function initializeErrorWindow(
             'CREATE INDEX idx_error_window_request ON error_window_records(request_id,sequence);' +
             'CREATE INDEX idx_error_window_sizes ON error_window_records(bytes);',
         );
-        database.prepare('INSERT INTO error_window_meta(key,value) VALUES(?,?)').run('role', role);
+        orm.insert(errorWindowMeta).values({ key: 'role', value: role }).run();
         database.pragma('user_version = 1');
       })
       .immediate();

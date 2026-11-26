@@ -1,10 +1,13 @@
 import type Database from 'better-sqlite3';
+import { and, asc, between, eq, lte, placeholder } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
 import {
   AuditConversationBodySchema,
   firstAuditUserText,
   prepareAuditConversationBodyReader,
 } from './audit-conversation-text';
 import { AUDIT_SESSION_TITLE_LIMIT } from './usage-overview.schema';
+import { auditPayloads, requestBodyRefs, requestLogs } from './traffic-audit.schema';
 
 const TITLE_BODY_LIMIT = 128 * 1024;
 const TITLE_CHUNK_LIMIT = 64;
@@ -22,25 +25,54 @@ export function readAuditSessionTitles(db: Database.Database, keys: string[], to
   if (!keys.length) {
     return titles;
   }
-  const findCandidates = db.prepare(`
-    WITH initial AS MATERIALIZED (
-      SELECT id,timestamp FROM request_logs WHERE session_id=? AND timestamp<=?
-      AND traffic_class='model' ORDER BY timestamp,id LIMIT 32
+  const orm = drizzle(db);
+  const initial = orm
+    .select({ id: requestLogs.id, timestamp: requestLogs.timestamp })
+    .from(requestLogs)
+    .where(
+      and(
+        eq(requestLogs.sessionId, placeholder('key')),
+        lte(requestLogs.timestamp, to),
+        eq(requestLogs.trafficClass, 'model'),
+      ),
     )
-    SELECT p.id, p.stored_bytes AS storedBytes, p.chunk_count AS chunkCount
-    FROM initial r
-    JOIN request_body_refs ref ON ref.request_id=r.id AND ref.direction='request'
-    JOIN audit_payloads p ON p.id=ref.payload_id AND p.request_id=r.id
-    WHERE p.completed_at<=? AND p.kind='json' AND p.representation='sanitized_json'
-      AND p.state='complete' AND p.partial=0 AND p.oversized=0
-      AND p.stored_bytes BETWEEN 1 AND ? AND p.chunk_count BETWEEN 1 AND ?
-    ORDER BY r.timestamp, r.id LIMIT 4`);
+    .orderBy(asc(requestLogs.timestamp), asc(requestLogs.id))
+    .limit(32)
+    .as('initial');
+  const findCandidates = orm
+    .select({
+      id: auditPayloads.id,
+      storedBytes: auditPayloads.storedBytes,
+      chunkCount: auditPayloads.chunkCount,
+    })
+    .from(initial)
+    .innerJoin(
+      requestBodyRefs,
+      and(eq(requestBodyRefs.requestId, initial.id), eq(requestBodyRefs.direction, 'request')),
+    )
+    .innerJoin(
+      auditPayloads,
+      and(eq(auditPayloads.id, requestBodyRefs.payloadId), eq(auditPayloads.requestId, initial.id)),
+    )
+    .where(
+      and(
+        lte(auditPayloads.completedAt, to),
+        eq(auditPayloads.kind, 'json'),
+        eq(auditPayloads.representation, 'sanitized_json'),
+        eq(auditPayloads.state, 'complete'),
+        eq(auditPayloads.partial, false),
+        eq(auditPayloads.oversized, false),
+        between(auditPayloads.storedBytes, 1, TITLE_BODY_LIMIT),
+        between(auditPayloads.chunkCount, 1, TITLE_CHUNK_LIMIT),
+      ),
+    )
+    .orderBy(asc(initial.timestamp), asc(initial.id))
+    .limit(4)
+    .prepare();
   const readBody = prepareAuditConversationBodyReader(db);
   const candidates = AuditConversationBodySchema.array();
   for (const key of keys) {
-    const bodies = candidates.parse(
-      findCandidates.all(key, to, to, TITLE_BODY_LIMIT, TITLE_CHUNK_LIMIT),
-    );
+    const bodies = candidates.parse(findCandidates.all({ key }));
     for (const body of bodies) {
       const root = readBody(body);
       const title = root && firstAuditUserText(root);

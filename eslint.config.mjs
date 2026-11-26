@@ -9,6 +9,7 @@ import path from 'node:path';
 import { includeIgnoreFile } from '@eslint/compat';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'eslint/config';
+import { noHandwrittenSql } from './scripts/quality/no-handwritten-sql.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -75,5 +76,11 @@ export default defineConfig([
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['src/tests/**', '**/*.{test,spec}.{ts,tsx}', '**/*.gen.ts'],
     rules: { '@typescript-eslint/no-explicit-any': 'error' },
+  },
+  {
+    files: ['{src,scripts,tests}/**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
+    ignores: ['**/*.gen.ts'],
+    plugins: { agm: { rules: { 'no-handwritten-sql': noHandwrittenSql } } },
+    rules: { 'agm/no-handwritten-sql': 'error' },
   },
 ]);

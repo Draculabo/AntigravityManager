@@ -1,4 +1,8 @@
 import type Database from 'better-sqlite3';
+import { and, inArray, notLike } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { sqliteSchema } from '@/shared/persistence/database/sqlite-metadata';
+import { thinkingMeta, thinkingRecords } from './thought-store.schema';
 
 const SCHEMA_VERSION = 3;
 const OWNED_TABLES = new Set([
@@ -16,24 +20,22 @@ export function initializeThoughtStoreSchema(database: Database.Database): void 
   }
   // Never reset a database containing another feature's data, even if a caller
   // accidentally supplies its path. SQLite owns WAL/SHM and transaction rollback.
-  const objects = database
-    .prepare(
-      "SELECT name, type FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND type IN ('table','view','trigger')",
+  const orm = drizzle(database);
+  const objects = orm
+    .select()
+    .from(sqliteSchema)
+    .where(
+      and(
+        notLike(sqliteSchema.name, 'sqlite_%'),
+        inArray(sqliteSchema.type, ['table', 'view', 'trigger']),
+      ),
     )
     .all();
-  if (
-    objects.some(
-      (entry) =>
-        !entry ||
-        typeof entry !== 'object' ||
-        Reflect.get(entry, 'type') !== 'table' ||
-        !OWNED_TABLES.has(String(Reflect.get(entry, 'name'))),
-    )
-  ) {
+  if (objects.some((entry) => entry.type !== 'table' || !OWNED_TABLES.has(entry.name))) {
     throw new Error('Thought Store database contains unowned objects; replacement refused');
   }
-  database
-    .transaction(() => {
+  orm.transaction(
+    (tx) => {
       if (version < 2) {
         database.exec(
           'DROP TABLE IF EXISTS thinking_tool_links; DROP TABLE IF EXISTS thinking_records; DROP TABLE IF EXISTS thinking_sessions; DROP TABLE IF EXISTS thinking_meta;',
@@ -67,18 +69,25 @@ export function initializeThoughtStoreSchema(database: Database.Database): void 
           'CREATE INDEX IF NOT EXISTS idx_thought_tool_expiry ON thinking_tool_links(completed_at,record_id,position);' +
           'CREATE INDEX IF NOT EXISTS idx_thought_accessed ON thinking_sessions(last_accessed ASC);',
       );
-      database
-        .prepare(
-          "INSERT INTO thinking_meta(key,value) VALUES('schema_version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-        )
-        .run(String(SCHEMA_VERSION));
+      const value = String(SCHEMA_VERSION);
+      tx.insert(thinkingMeta)
+        .values({ key: 'schema_version', value })
+        .onConflictDoUpdate({ target: thinkingMeta.key, set: { value } })
+        .run();
       // Readback belongs to the same transaction; failure rolls back the reset.
-      database
-        .prepare(
-          'SELECT part_signatures, signature_bytes, operation_id, causal_anchor, completed_at, capture_state FROM thinking_records LIMIT 0',
-        )
+      tx.select({
+        partSignatures: thinkingRecords.partSignatures,
+        signatureBytes: thinkingRecords.signatureBytes,
+        operationId: thinkingRecords.operationId,
+        causalAnchor: thinkingRecords.causalAnchor,
+        completedAt: thinkingRecords.completedAt,
+        captureState: thinkingRecords.captureState,
+      })
+        .from(thinkingRecords)
+        .limit(0)
         .all();
       database.pragma(`user_version = ${SCHEMA_VERSION}`);
-    })
-    .immediate();
+    },
+    { behavior: 'immediate' },
+  );
 }

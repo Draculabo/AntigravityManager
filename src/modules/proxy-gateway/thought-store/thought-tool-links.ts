@@ -1,13 +1,25 @@
-import type Database from 'better-sqlite3';
+import { and, asc, count, eq, gt, inArray, lte, sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 import type { ThoughtRecord, ThoughtRecordInput } from './thought-store.types';
-import { ThoughtToolRecoverySnapshotSchema } from './thought-tool-recovery.schema';
+import {
+  MAX_TOOL_RECOVERY_OPERATIONS,
+  ThoughtToolRecoverySnapshotSchema,
+} from './thought-tool-recovery.schema';
 import type { ThoughtToolRecoverySnapshot } from './thought-tool-recovery.schema';
 import type { ThoughtPartSignature } from './thought-part-signatures';
 import { replayableToolPositions } from './thought-tool-link-replay';
 import { thoughtToolLayoutDigest } from './thought-tool-layout';
 import { decodeThoughtPartSignatures } from './thought-part-signatures';
-import { MAX_THOUGHT_READ_BYTES, MAX_THOUGHT_METADATA_BYTES, ThoughtReadBudgetError } from './thought-read-budget';
+import {
+  MAX_THOUGHT_READ_BYTES,
+  MAX_THOUGHT_METADATA_BYTES,
+  ThoughtReadBudgetError,
+} from './thought-read-budget';
+import {
+  thinkingRecords,
+  thinkingToolLinks,
+  type ThoughtStoreDatabase,
+} from './thought-store.schema';
 
 export const THOUGHT_TOOL_LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_LINKS = 10_000;
@@ -38,7 +50,7 @@ export function expireThoughtToolSignatures<T extends ThoughtRecord>(
 
 /** References only: signed content remains in its original diagnostic record. */
 export class ThoughtToolLinks {
-  constructor(private readonly raw: Database.Database) {}
+  constructor(private readonly orm: ThoughtStoreDatabase) {}
 
   save(
     id: number,
@@ -63,40 +75,56 @@ export class ThoughtToolLinks {
             record.partSignatures,
             new Set(
               PositionsSchema.parse(
-                this.raw
-                  .prepare(
-                    'SELECT position FROM thinking_tool_links WHERE record_id=? AND completed_at>?',
+                this.orm
+                  .select({ position: thinkingToolLinks.position })
+                  .from(thinkingToolLinks)
+                  .where(
+                    and(
+                      eq(thinkingToolLinks.recordId, id),
+                      gt(thinkingToolLinks.completedAt, cutoff),
+                    ),
                   )
-                  .all(id, cutoff),
+                  .all(),
               ).map((row) => row.position),
             ),
           );
-    this.raw.prepare('DELETE FROM thinking_tool_links WHERE record_id=?').run(id);
-    if (record.completedAt > cutoff) {
-      const insert = this.raw.prepare(
-        'INSERT INTO thinking_tool_links(record_id,position,completed_at) VALUES(?,?,?)',
-      );
+    this.orm.delete(thinkingToolLinks).where(eq(thinkingToolLinks.recordId, id)).run();
+    const completedAt = record.completedAt;
+    if (completedAt > cutoff) {
+      const links: Array<typeof thinkingToolLinks.$inferInsert> = [];
       for (const part of record.partSignatures) {
         if (part.kind === 'tool' && part.signature && (!allowed || allowed.has(part.position))) {
-          insert.run(id, part.position, record.completedAt);
+          links.push({ recordId: id, position: part.position, completedAt });
         }
       }
+      if (links.length > 0) {
+        this.orm.insert(thinkingToolLinks).values(links).run();
+      }
     }
-    this.raw
-      .prepare(
-        'DELETE FROM thinking_tool_links WHERE (record_id,position) IN (SELECT record_id,position FROM thinking_tool_links WHERE completed_at<=? ORDER BY completed_at,record_id,position LIMIT 2000)',
-      )
-      .run(cutoff);
-    const count = CountSchema.parse(
-      this.raw.prepare('SELECT count(*) AS count FROM thinking_tool_links').get(),
+    this.deleteOldest(2000, lte(thinkingToolLinks.completedAt, cutoff));
+    const linkCount = CountSchema.parse(
+      this.orm.select({ count: count() }).from(thinkingToolLinks).get(),
     ).count;
-    if (count > MAX_LINKS) {
-      this.raw
-        .prepare(
-          'DELETE FROM thinking_tool_links WHERE (record_id,position) IN (SELECT record_id,position FROM thinking_tool_links ORDER BY completed_at,record_id,position LIMIT ?)',
-        )
-        .run(count - MAX_LINKS);
+    if (linkCount > MAX_LINKS) {
+      this.deleteOldest(linkCount - MAX_LINKS);
     }
+  }
+
+  private deleteOldest(limit: number, filter?: SQL): void {
+    const oldest = this.orm
+      .select({ recordId: thinkingToolLinks.recordId, position: thinkingToolLinks.position })
+      .from(thinkingToolLinks)
+      .where(filter)
+      .orderBy(
+        asc(thinkingToolLinks.completedAt),
+        asc(thinkingToolLinks.recordId),
+        asc(thinkingToolLinks.position),
+      )
+      .limit(limit);
+    this.orm
+      .delete(thinkingToolLinks)
+      .where(inArray(sql`(${thinkingToolLinks.recordId}, ${thinkingToolLinks.position})`, oldest))
+      .run();
   }
 
   recoverable<T extends ThoughtRecord>(sessionKey: string, records: T[]): T[] {
@@ -125,23 +153,44 @@ export class ThoughtToolLinks {
 
   count(): number {
     return CountSchema.parse(
-      this.raw
-        .prepare('SELECT count(*) AS count FROM thinking_tool_links WHERE completed_at>?')
-        .get(Date.now() - THOUGHT_TOOL_LINK_TTL_MS),
+      this.orm
+        .select({ count: count() })
+        .from(thinkingToolLinks)
+        .where(gt(thinkingToolLinks.completedAt, Date.now() - THOUGHT_TOOL_LINK_TTL_MS))
+        .get(),
     ).count;
   }
 
-  snapshot(sessionKey: string, operationIds: string[], layouts?: Array<{ operationId: string; digest: string }>): ThoughtToolRecoverySnapshot {
+  snapshot(
+    sessionKey: string,
+    operationIds: string[],
+    layouts?: Array<{ operationId: string; digest: string }>,
+  ): ThoughtToolRecoverySnapshot {
     if (operationIds.length === 0) {
       return [];
     }
+    const where = and(
+      eq(thinkingRecords.sessionKey, sessionKey),
+      eq(thinkingRecords.captureState, 'complete'),
+      inArray(thinkingRecords.operationId, operationIds),
+    );
     const mismatched = new Set<string>();
     if (layouts) {
-      const where = `session_key=? AND capture_state='complete' AND operation_id IN (${operationIds.map(() => '?').join(',')})`;
-      const sizes = z.array(z.object({ bytes: z.number().int().safe().nonnegative() })).max(10_256).parse(this.raw.prepare(
-        `SELECT length(cast(part_signatures AS blob)) AS bytes FROM thinking_records WHERE ${where} LIMIT 10257`,
-      ).all(sessionKey, ...operationIds));
-      if (sizes.some((row) => row.bytes > MAX_THOUGHT_METADATA_BYTES) || sizes.reduce((sum, row) => sum + row.bytes, 0) > MAX_THOUGHT_READ_BYTES) {
+      const sizes = z
+        .array(z.object({ bytes: z.number().int().safe().nonnegative() }))
+        .max(MAX_TOOL_RECOVERY_OPERATIONS)
+        .parse(
+          this.orm
+            .select({ bytes: sql<number>`length(cast(${thinkingRecords.partSignatures} as blob))` })
+            .from(thinkingRecords)
+            .where(where)
+            .limit(MAX_TOOL_RECOVERY_OPERATIONS + 1)
+            .all(),
+        );
+      if (
+        sizes.some((row) => row.bytes > MAX_THOUGHT_METADATA_BYTES) ||
+        sizes.reduce((sum, row) => sum + row.bytes, 0) > MAX_THOUGHT_READ_BYTES
+      ) {
         throw new ThoughtReadBudgetError();
       }
       const requested = new Map<string, Set<string>>();
@@ -150,12 +199,27 @@ export class ThoughtToolLinks {
         digests.add(layout.digest);
         requested.set(layout.operationId, digests);
       }
-      const stored = z.array(z.object({ operationId: z.string().min(1).max(128), parts: z.string() })).max(10_256).parse(this.raw.prepare(
-        `SELECT operation_id AS operationId,part_signatures AS parts FROM thinking_records WHERE ${where} LIMIT 10257`,
-      ).all(sessionKey, ...operationIds));
+      const stored = z
+        .array(z.object({ operationId: z.string().min(1).max(128), parts: z.string() }))
+        .max(MAX_TOOL_RECOVERY_OPERATIONS)
+        .parse(
+          this.orm
+            .select({
+              operationId: thinkingRecords.operationId,
+              parts: thinkingRecords.partSignatures,
+            })
+            .from(thinkingRecords)
+            .where(where)
+            .limit(MAX_TOOL_RECOVERY_OPERATIONS + 1)
+            .all(),
+        );
       for (const row of stored) {
         let value: unknown;
-        try { value = JSON.parse(row.parts); } catch { throw new Error('Thought Store contains invalid part signature metadata'); }
+        try {
+          value = JSON.parse(row.parts);
+        } catch {
+          throw new Error('Thought Store contains invalid part signature metadata');
+        }
         const digest = thoughtToolLayoutDigest(decodeThoughtPartSignatures(value));
         const expected = requested.get(row.operationId);
         if (expected?.size !== 1 || !expected.has(digest)) {
@@ -171,17 +235,26 @@ export class ThoughtToolLinks {
           position: z.number().int().nonnegative().nullable(),
         }),
       )
-      .max(20_256)
+      .max(MAX_TOOL_RECOVERY_OPERATIONS + MAX_LINKS)
       .parse(
-        this.raw
-          .prepare(
-            `SELECT r.id AS recordId,r.operation_id AS operationId, l.position FROM thinking_records r
-         LEFT JOIN thinking_tool_links l ON l.record_id=r.id AND l.completed_at>?
-         WHERE r.session_key=? AND r.capture_state='complete'
-         AND r.operation_id IN (${operationIds.map(() => '?').join(',')})
-         ORDER BY r.operation_id,l.position LIMIT 20257`,
+        this.orm
+          .select({
+            recordId: thinkingRecords.id,
+            operationId: thinkingRecords.operationId,
+            position: thinkingToolLinks.position,
+          })
+          .from(thinkingRecords)
+          .leftJoin(
+            thinkingToolLinks,
+            and(
+              eq(thinkingToolLinks.recordId, thinkingRecords.id),
+              gt(thinkingToolLinks.completedAt, Date.now() - THOUGHT_TOOL_LINK_TTL_MS),
+            ),
           )
-          .all(Date.now() - THOUGHT_TOOL_LINK_TTL_MS, sessionKey, ...operationIds),
+          .where(where)
+          .orderBy(asc(thinkingRecords.operationId), asc(thinkingToolLinks.position))
+          .limit(MAX_TOOL_RECOVERY_OPERATIONS + MAX_LINKS + 1)
+          .all(),
       );
     const entries = new Map<string, number[]>();
     const owners = new Map<string, number>();

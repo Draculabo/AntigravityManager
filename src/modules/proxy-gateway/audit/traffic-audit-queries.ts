@@ -1,10 +1,32 @@
-import Database from 'better-sqlite3';
-import { count, desc, eq, sql } from 'drizzle-orm';
+import type Database from 'better-sqlite3';
+import {
+  and,
+  count,
+  desc,
+  eq,
+  gt,
+  gte,
+  isNotNull,
+  isNull,
+  like,
+  lt,
+  lte,
+  ne,
+  notInArray,
+  or,
+  sql,
+} from 'drizzle-orm';
+import { unionAll } from 'drizzle-orm/sqlite-core';
+import { iterateSqliteQuery } from '@/shared/persistence/database/iterate-sqlite-query';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { omit } from 'lodash-es';
 
 import {
+  attemptBodyRefs,
   auditAdminEvents,
+  auditPayloadChunks,
+  auditPayloads,
+  requestBodyRefs,
   requestLogs,
   trafficAuditSchema,
   upstreamAttempts,
@@ -16,47 +38,65 @@ import { auditRequestListPredicate } from './audit-request-list-predicate';
 
 type TrafficAuditDatabase = BetterSQLite3Database<typeof trafficAuditSchema>;
 
-interface BodyDescriptorRow {
-  chunk_count: number;
-  completed_at: number | null;
-  direction: string;
-  dropped_reason: string | null;
-  error_summary: string | null;
-  id: string;
-  kind: string;
-  logical_bytes: number;
-  oversized: number;
-  owner_id: string;
-  owner_kind: string;
-  parse_error_offset: number | null;
-  partial: number;
-  representation: string;
-  sha256: string | null;
-  sha256_scope: string;
-  state: string;
-  stored_bytes: number;
-  terminal_status: string | null;
+type ListInput = Extract<TrafficAuditWorkerCommand, { operation: 'list' }>['payload'];
+
+function requestProjection(orm: TrafficAuditDatabase) {
+  const forRequest = eq(upstreamAttempts.parentId, requestLogs.id);
+  return {
+    id: requestLogs.id,
+    timestamp: requestLogs.timestamp,
+    completedAt: requestLogs.completedAt,
+    durationMs: requestLogs.durationMs,
+    method: requestLogs.method,
+    model: requestLogs.model,
+    mappedModel: requestLogs.mappedModel,
+    attributedAccountId: requestLogs.attributedAccountId,
+    physicalModel: requestLogs.physicalModel,
+    physicalModelFamily: requestLogs.physicalModelFamily,
+    hasTextOutput: requestLogs.hasTextOutput,
+    hasImageOutput: requestLogs.hasImageOutput,
+    inputTokens: requestLogs.inputTokens,
+    outputTokens: requestLogs.outputTokens,
+    outcome: requestLogs.outcome,
+    protocol: requestLogs.protocol,
+    recordKind: sql<'request'>`${'request'}`.as('record_kind'),
+    status: requestLogs.status,
+    trafficClass: requestLogs.trafficClass,
+    url: requestLogs.url,
+    attemptCount: orm.$count(upstreamAttempts, forRequest).as('attempt_count'),
+    failedAttemptCount: orm
+      .$count(
+        upstreamAttempts,
+        and(
+          forRequest,
+          or(
+            notInArray(upstreamAttempts.outcome, ['completed', 'in_progress']),
+            gte(upstreamAttempts.status, 400),
+          ),
+        ),
+      )
+      .as('failed_attempt_count'),
+  };
 }
 
-interface PayloadChunkRow {
-  byteLength: number;
-  payload: Buffer;
-  sequence: number;
-}
-
-interface SystemListRow {
-  outcome: string;
-  completedAt: number | null;
-  [key: string]: unknown;
-  hasImageOutput: number | null;
-  hasTextOutput: number | null;
-}
-
-const BODY_REFS_SQL =
-  "SELECT p.*,r.request_id owner_id,'parent' owner_kind,r.direction FROM audit_payloads p " +
-  'JOIN request_body_refs r ON r.payload_id=p.id WHERE r.request_id=? UNION ALL ' +
-  "SELECT p.*,r.attempt_id owner_id,'attempt' owner_kind,r.direction FROM audit_payloads p " +
-  'JOIN attempt_body_refs r ON r.payload_id=p.id JOIN upstream_attempts a ON a.id=r.attempt_id WHERE a.parent_id=?';
+const bodyProjection = {
+  chunkCount: auditPayloads.chunkCount,
+  completedAt: auditPayloads.completedAt,
+  droppedReason: auditPayloads.droppedReason,
+  errorSummary: auditPayloads.errorSummary,
+  id: auditPayloads.id,
+  kind: auditPayloads.kind,
+  logicalBytes: auditPayloads.logicalBytes,
+  oversized: auditPayloads.oversized,
+  parseErrorOffset: auditPayloads.parseErrorOffset,
+  partial: auditPayloads.partial,
+  representation: auditPayloads.representation,
+  sha256: auditPayloads.sha256,
+  sha256Scope: auditPayloads.sha256Scope,
+  state: auditPayloads.state,
+  storedBytes: auditPayloads.storedBytes,
+  terminalStatus: auditPayloads.terminalStatus,
+};
 
 export class TrafficAuditQueries {
   public constructor(
@@ -64,42 +104,16 @@ export class TrafficAuditQueries {
     private readonly orm: TrafficAuditDatabase,
   ) {}
 
-  public list(payload: Extract<TrafficAuditWorkerCommand, { operation: 'list' }>['payload']) {
+  public list(payload: ListInput) {
     if (payload.trafficClass === 'system') {
       return this.listSystem(payload);
     }
     const where = auditRequestListPredicate(payload);
-    const totalQuery = this.orm.select({ value: count() }).from(requestLogs);
-    const itemsQuery = this.orm
-      .select({
-        // Drizzle strips interpolated column qualifiers in single-table projections.
-        // Keep this outer reference explicit so SQLite cannot bind it to an attempt ID.
-        attemptCount: sql<number>`(SELECT COUNT(*) FROM upstream_attempts WHERE parent_id=request_logs.id)`,
-        failedAttemptCount: sql<number>`(SELECT COUNT(*) FROM upstream_attempts WHERE parent_id=request_logs.id AND (outcome NOT IN ('completed','in_progress') OR status>=400))`,
-        attributedAccountId: requestLogs.attributedAccountId,
-        completedAt: requestLogs.completedAt,
-        durationMs: requestLogs.durationMs,
-        id: requestLogs.id,
-        hasImageOutput: requestLogs.hasImageOutput,
-        hasTextOutput: requestLogs.hasTextOutput,
-        inputTokens: requestLogs.inputTokens,
-        mappedModel: requestLogs.mappedModel,
-        method: requestLogs.method,
-        model: requestLogs.model,
-        outcome: requestLogs.outcome,
-        outputTokens: requestLogs.outputTokens,
-        physicalModel: requestLogs.physicalModel,
-        physicalModelFamily: requestLogs.physicalModelFamily,
-        protocol: requestLogs.protocol,
-        recordKind: sql<'request'>`'request'`,
-        status: requestLogs.status,
-        timestamp: requestLogs.timestamp,
-        trafficClass: requestLogs.trafficClass,
-        url: requestLogs.url,
-      })
-      .from(requestLogs);
-    const total = where ? totalQuery.where(where).get()?.value : totalQuery.get()?.value;
-    const items = (where ? itemsQuery.where(where) : itemsQuery)
+    const total = this.orm.select({ value: count() }).from(requestLogs).where(where).get()?.value;
+    const items = this.orm
+      .select(requestProjection(this.orm))
+      .from(requestLogs)
+      .where(where)
       .orderBy(desc(requestLogs.timestamp), desc(requestLogs.id))
       .limit(payload.limit)
       .offset(payload.offset)
@@ -113,127 +127,134 @@ export class TrafficAuditQueries {
     };
   }
 
-  private listSystem(
-    payload: Extract<TrafficAuditWorkerCommand, { operation: 'list' }>['payload'],
-  ) {
-    const clauses = ["traffic_class='system'"];
-    const bindings: Record<string, number | string> = {};
-    if (payload.sessionId) {
-      clauses.push('session_id=@sessionId');
-      bindings.sessionId = payload.sessionId;
-    }
-    if (payload.from !== undefined) {
-      clauses.push('timestamp>=@from');
-      bindings.from = payload.from;
-    }
-    if (payload.to !== undefined) {
-      clauses.push('timestamp<=@to');
-      bindings.to = payload.to;
-    }
-    if (payload.status !== undefined) {
-      if (payload.statusMode === 'exact' || !payload.statusMode) {
-        clauses.push('status=@status');
-        bindings.status = payload.status;
-      }
-    }
-    if (payload.statusMode === 'exact' && payload.status === undefined) {
-      clauses.push('1=0');
-    }
-    if (payload.statusMode === 'unfinished') {
-      clauses.push("outcome='in_progress' AND completed_at IS NULL");
-    } else if (payload.statusMode === 'no-status') {
-      clauses.push('status IS NULL');
-    } else if (payload.statusMode && /^[1-5]xx$/u.test(payload.statusMode)) {
-      const lower = Number(payload.statusMode[0]) * 100;
-      clauses.push('status>=@statusLower AND status<@statusUpper');
-      bindings.statusLower = lower;
-      bindings.statusUpper = lower + 100;
-    }
-    if (payload.accountId || payload.modelFamily || payload.modality) {
-      clauses.push('1=0');
-    }
-    const requestWhere = clauses.join(' AND ');
-    const requestSearch = payload.search
-      ? ' AND (id LIKE @search OR url LIKE @search OR method LIKE @search OR protocol LIKE @search ' +
-        'OR operation LIKE @search OR model LIKE @search OR mapped_model LIKE @search ' +
-        'OR session_id LIKE @search OR username LIKE @search OR CAST(status AS TEXT) LIKE @search)'
-      : '';
-    const adminClauses: string[] = [];
-    if (payload.sessionId) {
-      adminClauses.push('1=0');
-    }
-    if (payload.from !== undefined) {
-      adminClauses.push('timestamp>=@from');
-    }
-    if (payload.to !== undefined) {
-      adminClauses.push('timestamp<=@to');
-    }
-    if (
-      payload.statusMode === 'unfinished' ||
+  private listSystem(payload: ListInput) {
+    const blockRequests =
+      payload.accountId ||
+      payload.modelFamily ||
+      payload.modality ||
+      (payload.statusMode === 'exact' && payload.status === undefined);
+    const statusFamily =
+      payload.statusMode && /^[1-5]xx$/u.test(payload.statusMode)
+        ? Number(payload.statusMode[0]) * 100
+        : undefined;
+    const status =
+      payload.statusMode === 'unfinished'
+        ? and(eq(requestLogs.outcome, 'in_progress'), isNull(requestLogs.completedAt))
+        : payload.statusMode === 'no-status'
+          ? isNull(requestLogs.status)
+          : statusFamily !== undefined
+            ? and(gte(requestLogs.status, statusFamily), lt(requestLogs.status, statusFamily + 100))
+            : payload.status === undefined || (payload.statusMode && payload.statusMode !== 'exact')
+              ? undefined
+              : eq(requestLogs.status, payload.status);
+    const search = payload.search ? `%${payload.search}%` : undefined;
+    const requestWhere = and(
+      eq(requestLogs.trafficClass, 'system'),
+      blockRequests ? sql`0` : undefined,
+      payload.sessionId ? eq(requestLogs.sessionId, payload.sessionId) : undefined,
+      payload.from === undefined ? undefined : gte(requestLogs.timestamp, payload.from),
+      payload.to === undefined ? undefined : lte(requestLogs.timestamp, payload.to),
+      status,
+      search
+        ? or(
+            ...[
+              requestLogs.id,
+              requestLogs.url,
+              requestLogs.method,
+              requestLogs.protocol,
+              requestLogs.operation,
+              requestLogs.model,
+              requestLogs.mappedModel,
+              requestLogs.sessionId,
+              requestLogs.username,
+            ].map((column) => like(column, search)),
+            like(sql`cast(${requestLogs.status} as text)`, search),
+          )
+        : undefined,
+    );
+    const blockEvents =
+      blockRequests ||
+      payload.sessionId ||
+      statusFamily !== undefined ||
       payload.statusMode === 'exact' ||
-      (payload.statusMode && /^[1-5]xx$/u.test(payload.statusMode)) ||
-      (payload.status !== undefined && !payload.statusMode)
-    ) {
-      adminClauses.push('1=0');
-    }
-    if (payload.accountId || payload.modelFamily || payload.modality) {
-      adminClauses.push('1=0');
-    }
-    if (payload.search) {
-      adminClauses.push('(operation LIKE @search OR outcome LIKE @search OR error LIKE @search)');
-    }
-    const adminWhere = adminClauses.length > 0 ? ` WHERE ${adminClauses.join(' AND ')}` : '';
-    if (payload.search) {
-      bindings.search = `%${payload.search}%`;
-    }
-    const union =
-      'SELECT id,timestamp,completed_at completedAt,duration_ms durationMs,method,model,' +
-      'mapped_model mappedModel,attributed_account_id attributedAccountId,' +
-      'physical_model physicalModel,physical_model_family physicalModelFamily,' +
-      'has_text_output hasTextOutput,has_image_output hasImageOutput,' +
-      'input_tokens inputTokens,output_tokens outputTokens,' +
-      "outcome,protocol,'request' recordKind,status,traffic_class trafficClass,url," +
-      '(SELECT COUNT(*) FROM upstream_attempts WHERE parent_id=request_logs.id) attemptCount,' +
-      '(SELECT COUNT(*) FROM upstream_attempts WHERE parent_id=request_logs.id ' +
-      "AND (outcome NOT IN ('completed','in_progress') OR status>=400)) failedAttemptCount " +
-      `FROM request_logs WHERE ${requestWhere}${requestSearch} UNION ALL ` +
-      "SELECT 'admin:'||id id,timestamp,NULL completedAt,NULL durationMs,'ADMIN' method,NULL model," +
-      'NULL mappedModel,NULL attributedAccountId,NULL physicalModel,NULL physicalModelFamily,' +
-      'NULL hasTextOutput,NULL hasImageOutput,NULL inputTokens,NULL outputTokens,' +
-      "outcome,'admin-event' protocol,'admin' recordKind,NULL status," +
-      "'system' trafficClass,'/admin/'||operation url,1 attemptCount,0 failedAttemptCount FROM audit_admin_events" +
-      adminWhere;
-    const items = this.raw
-      .prepare<Record<string, number | string>, SystemListRow>(
-        `${union} ORDER BY timestamp DESC LIMIT @limit OFFSET @offset`,
-      )
-      .all({ ...bindings, limit: payload.limit, offset: payload.offset })
-      .map((row) => ({
-        ...row,
-        attemptCount: typeof row.attemptCount === 'number' ? row.attemptCount : 1,
-        outcome: auditCaptureOutcome(row.outcome, row.completedAt),
-        hasImageOutput: row.hasImageOutput === null ? null : Boolean(row.hasImageOutput),
-        hasTextOutput: row.hasTextOutput === null ? null : Boolean(row.hasTextOutput),
-      }));
-    const total = this.raw.prepare(`SELECT COUNT(*) value FROM (${union})`).get(bindings) as
-      | { value: number }
-      | undefined;
-    return { items, total: total?.value ?? 0 };
+      payload.statusMode === 'unfinished' ||
+      (payload.status !== undefined && !payload.statusMode);
+    const adminWhere = and(
+      blockEvents ? sql`0` : undefined,
+      payload.from === undefined ? undefined : gte(auditAdminEvents.timestamp, payload.from),
+      payload.to === undefined ? undefined : lte(auditAdminEvents.timestamp, payload.to),
+      search
+        ? or(
+            like(auditAdminEvents.operation, search),
+            like(auditAdminEvents.outcome, search),
+            like(auditAdminEvents.error, search),
+          )
+        : undefined,
+    );
+    const requests = this.orm
+      .select({
+        ...requestProjection(this.orm),
+        recordKind: sql<'request' | 'admin'>`${'request'}`.as('record_kind'),
+      })
+      .from(requestLogs)
+      .where(requestWhere);
+    const adminEvents = this.orm
+      .select({
+        id: sql<string>`${'admin:'} || ${auditAdminEvents.id}`,
+        timestamp: auditAdminEvents.timestamp,
+        completedAt: sql<null>`null`,
+        durationMs: sql<null>`null`,
+        method: sql<string>`${'ADMIN'}`,
+        model: sql<null>`null`,
+        mappedModel: sql<null>`null`,
+        attributedAccountId: sql<null>`null`,
+        physicalModel: sql<null>`null`,
+        physicalModelFamily: sql<null>`null`,
+        hasTextOutput: sql<null>`null`,
+        hasImageOutput: sql<null>`null`,
+        inputTokens: sql<null>`null`,
+        outputTokens: sql<null>`null`,
+        outcome: auditAdminEvents.outcome,
+        protocol: sql<string>`${'admin-event'}`,
+        recordKind: sql<'request' | 'admin'>`${'admin'}`,
+        status: sql<null>`null`,
+        trafficClass: sql<string>`${'system'}`,
+        url: sql<string>`${'/admin/'} || ${auditAdminEvents.operation}`,
+        attemptCount: sql<number>`1`,
+        failedAttemptCount: sql<number>`0`,
+      })
+      .from(auditAdminEvents)
+      .where(adminWhere);
+    const union = unionAll(requests, adminEvents).as('system_rows');
+    const items = this.orm
+      .select()
+      .from(union)
+      .orderBy(desc(union.timestamp))
+      .limit(payload.limit)
+      .offset(payload.offset)
+      .all()
+      .map((row) => ({ ...row, outcome: auditCaptureOutcome(row.outcome, row.completedAt) }));
+    const total = this.orm.select({ value: count() }).from(union).get()?.value ?? 0;
+    return { items, total };
   }
 
   public filterOptions() {
-    const accountIds = this.raw
-      .prepare<[], { id: string }>(
-        "SELECT DISTINCT account_id id FROM upstream_attempts WHERE account_id IS NOT NULL AND account_id<>'' ORDER BY account_id",
-      )
+    const accountIds = this.orm
+      .selectDistinct({ id: upstreamAttempts.accountId })
+      .from(upstreamAttempts)
+      .where(and(isNotNull(upstreamAttempts.accountId), ne(upstreamAttempts.accountId, '')))
+      .orderBy(upstreamAttempts.accountId)
       .all()
-      .map((row) => row.id);
-    const modelFamilies = this.raw
-      .prepare<[], { id: string }>(
-        "SELECT DISTINCT physical_model_family id FROM request_logs WHERE physical_model_family IS NOT NULL AND physical_model_family<>'' ORDER BY physical_model_family",
+      .flatMap(({ id }) => (id === null ? [] : [id]));
+    const modelFamilies = this.orm
+      .selectDistinct({ id: requestLogs.physicalModelFamily })
+      .from(requestLogs)
+      .where(
+        and(isNotNull(requestLogs.physicalModelFamily), ne(requestLogs.physicalModelFamily, '')),
       )
+      .orderBy(requestLogs.physicalModelFamily)
       .all()
-      .map((row) => row.id);
+      .flatMap(({ id }) => (id === null ? [] : [id]));
     return { accountIds, modelFamilies };
   }
 
@@ -260,10 +281,7 @@ export class TrafficAuditQueries {
       .where(eq(upstreamAttempts.parentId, id))
       .orderBy(upstreamAttempts.attemptIndex)
       .all();
-    const bodies = this.raw
-      .prepare<[string, string], BodyDescriptorRow>(BODY_REFS_SQL)
-      .all(id, id)
-      .map(normalizeBodyDescriptor);
+    const bodies = this.bodyReferences(id).all();
     return {
       attempts: attempts.map((attempt) => ({
         ...omit(attempt, 'accountSubjectHash', 'accountGrantHash', 'timingJson'),
@@ -276,14 +294,58 @@ export class TrafficAuditQueries {
     };
   }
 
+  private bodyReferences(id: string, byPayload = false) {
+    const parents = this.orm
+      .select({
+        ...bodyProjection,
+        ownerId: requestBodyRefs.requestId,
+        ownerKind: sql<'parent' | 'attempt'>`${'parent'}`,
+        direction: requestBodyRefs.direction,
+      })
+      .from(auditPayloads)
+      .innerJoin(requestBodyRefs, eq(requestBodyRefs.payloadId, auditPayloads.id))
+      .where(byPayload ? eq(auditPayloads.id, id) : eq(requestBodyRefs.requestId, id));
+    const attempts = this.orm
+      .select({
+        ...bodyProjection,
+        ownerId: attemptBodyRefs.attemptId,
+        ownerKind: sql<'parent' | 'attempt'>`${'attempt'}`,
+        direction: attemptBodyRefs.direction,
+      })
+      .from(auditPayloads)
+      .innerJoin(attemptBodyRefs, eq(attemptBodyRefs.payloadId, auditPayloads.id));
+    return unionAll(
+      parents,
+      byPayload
+        ? attempts.where(eq(auditPayloads.id, id))
+        : attempts
+            .innerJoin(upstreamAttempts, eq(upstreamAttempts.id, attemptBodyRefs.attemptId))
+            .where(eq(upstreamAttempts.parentId, id)),
+    );
+  }
+
   private descriptorForPayload(id: string) {
-    const row = this.raw
-      .prepare<
-        [string, string],
-        BodyDescriptorRow
-      >("SELECT p.*,r.request_id owner_id,'parent' owner_kind,r.direction FROM audit_payloads p " + 'JOIN request_body_refs r ON r.payload_id=p.id WHERE p.id=? UNION ALL ' + "SELECT p.*,r.attempt_id owner_id,'attempt' owner_kind,r.direction FROM audit_payloads p " + 'JOIN attempt_body_refs r ON r.payload_id=p.id WHERE p.id=? LIMIT 1')
-      .get(id, id);
-    return row ? normalizeBodyDescriptor(row) : null;
+    return this.bodyReferences(id, true).limit(1).get() ?? null;
+  }
+
+  private iterateChunks(id: string, cursor?: number) {
+    return iterateSqliteQuery<{ seq: number; payload: Buffer; byte_length: number }>(
+      this.raw,
+      this.orm
+        .select({
+          seq: auditPayloadChunks.sequence,
+          payload: auditPayloadChunks.payload,
+          byte_length: auditPayloadChunks.byteLength,
+        })
+        .from(auditPayloadChunks)
+        .where(
+          and(
+            eq(auditPayloadChunks.payloadId, id),
+            cursor === undefined ? undefined : gte(auditPayloadChunks.sequence, cursor),
+          ),
+        )
+        .orderBy(auditPayloadChunks.sequence),
+    );
   }
 
   public bodyPage(
@@ -293,31 +355,32 @@ export class TrafficAuditQueries {
     if (!body) {
       return null;
     }
-    const rows = this.raw
-      .prepare<
-        [string, number],
-        PayloadChunkRow
-      >('SELECT seq sequence,payload,byte_length byteLength FROM audit_payload_chunks ' + 'WHERE payload_id=? AND seq>=? ORDER BY seq ASC')
-      .iterate(payload.bodyId, payload.cursor);
+    const rows = this.iterateChunks(payload.bodyId, payload.cursor);
     const chunks: Array<{ data: string; sequence: number }> = [];
     let bytes = 0;
     for (const row of rows) {
-      if (chunks.length > 0 && bytes + row.byteLength > payload.limitBytes) {
+      if (chunks.length > 0 && bytes + row.byte_length > payload.limitBytes) {
         break;
       }
-      chunks.push({ data: row.payload.toString('utf8'), sequence: row.sequence });
-      bytes += row.byteLength;
+      chunks.push({ data: row.payload.toString('utf8'), sequence: row.seq });
+      bytes += row.byte_length;
       if (bytes >= payload.limitBytes) {
         break;
       }
     }
     const last = chunks.at(-1)?.sequence ?? payload.cursor - 1;
-    const next = this.raw
-      .prepare<
-        [string, number],
-        { sequence: number }
-      >('SELECT seq sequence FROM audit_payload_chunks WHERE payload_id=? AND seq>? ' + 'ORDER BY seq ASC LIMIT 1')
-      .get(payload.bodyId, last);
+    const next = this.orm
+      .select({ sequence: auditPayloadChunks.sequence })
+      .from(auditPayloadChunks)
+      .where(
+        and(
+          eq(auditPayloadChunks.payloadId, payload.bodyId),
+          gt(auditPayloadChunks.sequence, last),
+        ),
+      )
+      .orderBy(auditPayloadChunks.sequence)
+      .limit(1)
+      .get();
     return {
       body,
       chunks,
@@ -329,12 +392,7 @@ export class TrafficAuditQueries {
   public bodySearch(
     payload: Extract<TrafficAuditWorkerCommand, { operation: 'bodySearch' }>['payload'],
   ) {
-    const rows = this.raw
-      .prepare<
-        [string],
-        PayloadChunkRow
-      >('SELECT seq sequence,payload,byte_length byteLength FROM audit_payload_chunks ' + 'WHERE payload_id=? ORDER BY seq ASC')
-      .iterate(payload.bodyId);
+    const rows = this.iterateChunks(payload.bodyId);
     const needle = payload.query.toLocaleLowerCase();
     const matches: Array<{
       chunkOffset: number;
@@ -364,7 +422,7 @@ export class TrafficAuditQueries {
               : index - carry.length,
             length: payload.query.length,
             offset,
-            sequence: startsInPreviousChunk ? previousSequence : row.sequence,
+            sequence: startsInPreviousChunk ? previousSequence : row.seq,
             snippet: combined.slice(Math.max(0, index - 80), index + payload.query.length + 80),
           });
           lastMatchOffset = offset;
@@ -377,33 +435,9 @@ export class TrafficAuditQueries {
       absoluteOffset += text.length;
       const overlap = Math.max(0, payload.query.length - 1);
       carry = overlap > 0 ? combined.slice(-overlap) : '';
-      previousSequence = row.sequence;
+      previousSequence = row.seq;
       previousLength = text.length;
     }
     return { matches, truncated: false };
   }
-}
-
-function normalizeBodyDescriptor(row: BodyDescriptorRow) {
-  return {
-    chunkCount: row.chunk_count,
-    completedAt: row.completed_at,
-    direction: row.direction,
-    droppedReason: row.dropped_reason,
-    errorSummary: row.error_summary,
-    id: row.id,
-    kind: row.kind,
-    logicalBytes: row.logical_bytes,
-    oversized: Boolean(row.oversized),
-    ownerId: row.owner_id,
-    ownerKind: row.owner_kind,
-    parseErrorOffset: row.parse_error_offset,
-    partial: Boolean(row.partial),
-    representation: row.representation,
-    sha256: row.sha256,
-    sha256Scope: row.sha256_scope,
-    state: row.state,
-    storedBytes: row.stored_bytes,
-    terminalStatus: row.terminal_status,
-  };
 }

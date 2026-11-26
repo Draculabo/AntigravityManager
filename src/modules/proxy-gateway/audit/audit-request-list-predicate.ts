@@ -1,5 +1,21 @@
-import { and, eq, gte, isNull, like, lt, lte, or, sql, type SQL } from 'drizzle-orm';
-import { requestLogs } from './traffic-audit.schema';
+import {
+  and,
+  eq,
+  exists,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  like,
+  lt,
+  lte,
+  notExists,
+  or,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
+import { QueryBuilder } from 'drizzle-orm/sqlite-core';
+import { requestLogs, upstreamAttempts } from './traffic-audit.schema';
 import { observedAuditClient } from './audit-client-identity';
 import type { TrafficAuditListInput } from './traffic-audit.types';
 
@@ -17,9 +33,7 @@ export function auditRequestListPredicate(
     conditions.push(eq(requestLogs.protocol, payload.protocol));
   }
   if (payload.client) {
-    conditions.push(
-      sql`(${sql.raw(observedAuditClient('request_logs.request_headers'))})=${payload.client}`,
-    );
+    conditions.push(eq(observedAuditClient(requestLogs.requestHeaders), payload.client));
   }
   if (payload.sessionId) {
     conditions.push(eq(requestLogs.sessionId, payload.sessionId));
@@ -29,26 +43,57 @@ export function auditRequestListPredicate(
   }
   if (payload.attemptAccountId || payload.attemptModel || payload.usageState) {
     const asOf = payload.usageAsOf ?? payload.to;
-    const anyAttempt = sql`SELECT 1 FROM upstream_attempts a WHERE a.parent_id=${requestLogs.id}
-      AND ${asOf === undefined ? sql`1=1` : sql`a.timestamp<=${asOf}`}`;
-    const generation = sql`${anyAttempt} AND
-      (a.usage_scope='generation' OR (a.usage_scope IS NULL AND ${requestLogs.trafficClass}='model'))`;
+    const attempts = new QueryBuilder();
+    const observed = and(
+      eq(upstreamAttempts.parentId, requestLogs.id),
+      asOf === undefined ? undefined : lte(upstreamAttempts.timestamp, asOf),
+    );
+    const generation = and(
+      observed,
+      or(
+        eq(upstreamAttempts.usageScope, 'generation'),
+        and(isNull(upstreamAttempts.usageScope), eq(requestLogs.trafficClass, 'model')),
+      ),
+    );
+    const query = () => attempts.select({ id: upstreamAttempts.id }).from(upstreamAttempts);
     if (payload.attemptAccountId || payload.attemptModel) {
-      conditions.push(sql`EXISTS (${generation}
-        AND ${payload.attemptAccountId ? sql`a.account_id=${payload.attemptAccountId}` : sql`1=1`}
-        AND ${payload.attemptModel ? sql`a.model=${payload.attemptModel}` : sql`1=1`}
-      )`);
+      conditions.push(
+        exists(
+          query().where(
+            and(
+              generation,
+              payload.attemptAccountId
+                ? eq(upstreamAttempts.accountId, payload.attemptAccountId)
+                : undefined,
+              payload.attemptModel ? eq(upstreamAttempts.model, payload.attemptModel) : undefined,
+            ),
+          ),
+        ),
+      );
     } else if (payload.usageState) {
-      conditions.push(sql`(EXISTS (${generation}) OR NOT EXISTS (${anyAttempt}))`);
+      const matching = or(exists(query().where(generation)), notExists(query().where(observed)));
+      if (matching) {
+        conditions.push(matching);
+      }
     }
     if (payload.usageState === 'retried') {
-      conditions.push(sql`EXISTS (${generation} LIMIT 1 OFFSET 1)`);
+      conditions.push(exists(query().where(generation).limit(1).offset(1)));
     } else if (payload.usageState === 'failed') {
-      conditions.push(sql`(${requestLogs.status}>=400 OR
-        ${requestLogs.outcome} IN ('upstream_error','internal_error','timeout','auth_failed'))`);
+      const failed = or(
+        gte(requestLogs.status, 400),
+        inArray(requestLogs.outcome, [
+          'upstream_error',
+          'internal_error',
+          'timeout',
+          'auth_failed',
+        ]),
+      );
+      if (failed) {
+        conditions.push(failed);
+      }
       conditions.push(
         asOf === undefined
-          ? sql`${requestLogs.completedAt} IS NOT NULL`
+          ? isNotNull(requestLogs.completedAt)
           : lte(requestLogs.completedAt, asOf),
       );
     }

@@ -1,14 +1,32 @@
 import { createHash } from 'node:crypto';
 import { StringDecoder } from 'node:string_decoder';
-import Database from 'better-sqlite3';
-import { eq } from 'drizzle-orm';
+import type Database from 'better-sqlite3';
+import {
+  and,
+  asc,
+  count,
+  eq,
+  inArray,
+  isNull,
+  ne,
+  notInArray,
+  or,
+  placeholder,
+  sql,
+  sum,
+} from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import { alias } from 'drizzle-orm/sqlite-core';
 
+import { iterateSqliteQuery } from '@/shared/persistence/database/iterate-sqlite-query';
 import {
   attemptBodyRefs,
+  auditPayloadChunks,
   auditPayloads,
   requestBodyRefs,
+  requestLogs,
   trafficAuditSchema,
+  upstreamAttempts,
 } from './traffic-audit.schema';
 import { reconstructAuditSseResponse } from './traffic-audit-sse-reconstruction';
 import type { TrafficAuditWorkerCommand } from './traffic-audit.worker-protocol';
@@ -27,55 +45,46 @@ type FinalizeSsePayload = Extract<
   { operation: 'finalizeSsePayload' }
 >['payload'];
 
-interface PayloadTotalsRow {
-  chunkCount: number;
-  storedBytes: number;
-}
-
-interface PayloadCandidateRow {
-  id: string;
-}
-
-interface PayloadDedupRow {
-  id: string;
-  kind: string;
-  logicalBytes: number;
-  oversized: number;
-  partial: number;
-  representation: string;
-  requestId: string;
-  sha256: string | null;
-  storedBytes: number;
-}
-
 export class TrafficAuditPayloads {
-  private readonly appendPayloadChunkStatement: Database.Statement<
-    [string, number, Buffer, number, string]
-  >;
+  private readonly appendPayloadChunkStatement;
 
   public constructor(
     private readonly raw: Database.Database,
     private readonly orm: TrafficAuditDatabase,
     private readonly admitReplacement: (bytes: number) => void,
   ) {
-    this.appendPayloadChunkStatement = this.raw.prepare(
-      'INSERT INTO audit_payload_chunks(payload_id,seq,payload,byte_length,encoding) ' +
-        "SELECT ?,?,?,?,'raw' WHERE EXISTS " +
-        "(SELECT 1 FROM audit_payloads WHERE id=? AND state='writing')",
-    );
+    this.appendPayloadChunkStatement = this.orm
+      .insert(auditPayloadChunks)
+      .select(
+        this.orm
+          .select({
+            payloadId: auditPayloads.id,
+            sequence: sql<number>`${placeholder('sequence')}`.as('seq'),
+            payload: sql<Buffer>`${placeholder('payload')}`.as('payload'),
+            byteLength: sql<number>`${placeholder('byteLength')}`.as('byte_length'),
+            encoding: sql<string>`${'raw'}`.as('encoding'),
+          })
+          .from(auditPayloads)
+          .where(
+            and(eq(auditPayloads.id, placeholder('payloadId')), eq(auditPayloads.state, 'writing')),
+          ),
+      )
+      .prepare();
   }
 
   public appendPayloadChunk(
     payload: Extract<TrafficAuditWorkerCommand, { operation: 'appendPayloadChunk' }>['payload'],
   ): number {
-    const bytes = Buffer.from(payload.data, 'utf8');
-    return this.appendPayloadChunkStatement.run(
-      payload.payloadId,
-      payload.sequence,
-      bytes,
-      bytes.byteLength,
-      payload.payloadId,
-    ).changes;
+    return this.appendChunk(payload.payloadId, payload.sequence, Buffer.from(payload.data, 'utf8'));
+  }
+
+  private appendChunk(payloadId: string, sequence: number, payload: Buffer): number {
+    return this.appendPayloadChunkStatement.run({
+      payloadId,
+      sequence,
+      payload,
+      byteLength: payload.byteLength,
+    }).changes;
   }
 
   public markIncomplete(id: string, reason: string): void {
@@ -83,36 +92,47 @@ export class TrafficAuditPayloads {
       return;
     }
     const stored = this.hashStoredPayload(id);
-    this.raw
-      .prepare(
-        "UPDATE audit_payloads SET state='incomplete',partial=1,dropped_reason=?,stored_bytes=?,chunk_count=(SELECT COUNT(*) FROM audit_payload_chunks WHERE payload_id=?),completed_at=?,logical_bytes=MAX(logical_bytes,?),sha256=?,sha256_scope=? WHERE id=? AND state='writing'",
-      )
-      .run(
-        reason,
-        stored.bytes,
-        id,
-        Date.now(),
-        stored.bytes,
-        stored.sha256,
-        stored.bytes > 0 ? 'stored_prefix' : 'unavailable',
-        id,
-      );
+    this.orm
+      .update(auditPayloads)
+      .set({
+        state: 'incomplete',
+        partial: true,
+        droppedReason: reason,
+        storedBytes: stored.bytes,
+        chunkCount: this.orm.$count(auditPayloadChunks, eq(auditPayloadChunks.payloadId, id)),
+        completedAt: Date.now(),
+        logicalBytes: sql`max(${auditPayloads.logicalBytes}, ${stored.bytes})`,
+        sha256: stored.sha256,
+        sha256Scope: stored.bytes > 0 ? 'stored_prefix' : 'unavailable',
+      })
+      .where(and(eq(auditPayloads.id, id), eq(auditPayloads.state, 'writing')))
+      .run();
   }
 
   public beginPayload(payload: BeginPayload): number {
-    return this.raw.transaction(() => {
+    return this.orm.transaction((tx) => {
       const exists =
         payload.ownerKind === 'parent'
           ? payload.ownerId === payload.parentId &&
-            this.raw.prepare('SELECT 1 FROM request_logs WHERE id=?').get(payload.parentId)
-          : this.raw
-              .prepare('SELECT 1 FROM upstream_attempts WHERE id=? AND parent_id=?')
-              .get(payload.ownerId, payload.parentId);
+            tx
+              .select({ id: requestLogs.id })
+              .from(requestLogs)
+              .where(eq(requestLogs.id, payload.parentId))
+              .get()
+          : tx
+              .select({ id: upstreamAttempts.id })
+              .from(upstreamAttempts)
+              .where(
+                and(
+                  eq(upstreamAttempts.id, payload.ownerId),
+                  eq(upstreamAttempts.parentId, payload.parentId),
+                ),
+              )
+              .get();
       if (!exists) {
         return 0;
       }
-      this.orm
-        .insert(auditPayloads)
+      tx.insert(auditPayloads)
         .values({
           createdAt: payload.createdAt,
           id: payload.id,
@@ -123,8 +143,7 @@ export class TrafficAuditPayloads {
         })
         .run();
       if (payload.ownerKind === 'parent') {
-        this.orm
-          .insert(requestBodyRefs)
+        tx.insert(requestBodyRefs)
           .values({
             direction: payload.direction,
             payloadId: payload.id,
@@ -136,8 +155,7 @@ export class TrafficAuditPayloads {
           })
           .run();
       } else {
-        this.orm
-          .insert(attemptBodyRefs)
+        tx.insert(attemptBodyRefs)
           .values({
             attemptId: payload.ownerId,
             direction: payload.direction,
@@ -150,24 +168,25 @@ export class TrafficAuditPayloads {
           .run();
       }
       return 1;
-    })();
+    });
   }
 
   public finalizePayload(payload: FinalizePayload): string {
-    return this.raw.transaction(() => {
+    return this.orm.transaction((tx) => {
       if (!this.isWriting(payload.id)) {
         return payload.id;
       }
-      const totals = this.raw
-        .prepare<
-          [string],
-          PayloadTotalsRow
-        >('SELECT COUNT(*) chunkCount,COALESCE(SUM(byte_length),0) storedBytes ' + 'FROM audit_payload_chunks WHERE payload_id=?')
-        .get(payload.id) ?? { chunkCount: 0, storedBytes: 0 };
-      this.orm
-        .update(auditPayloads)
+      const totals = tx
+        .select({
+          chunkCount: count(),
+          storedBytes: sum(auditPayloadChunks.byteLength).mapWith(Number),
+        })
+        .from(auditPayloadChunks)
+        .where(eq(auditPayloadChunks.payloadId, payload.id))
+        .get();
+      tx.update(auditPayloads)
         .set({
-          chunkCount: totals.chunkCount,
+          chunkCount: totals?.chunkCount ?? 0,
           completedAt: payload.completedAt,
           droppedReason: payload.droppedReason,
           errorSummary: payload.errorSummary,
@@ -179,7 +198,7 @@ export class TrafficAuditPayloads {
           sha256: payload.sha256,
           sha256Scope: payload.sha256Scope,
           state: payload.state,
-          storedBytes: totals.storedBytes,
+          storedBytes: totals?.storedBytes ?? 0,
           terminalStatus: payload.terminalStatus,
         })
         .where(eq(auditPayloads.id, payload.id))
@@ -188,73 +207,100 @@ export class TrafficAuditPayloads {
       if (!payload.sha256 || payload.sha256Scope !== 'full') {
         return payload.id;
       }
-      const current = this.raw
-        .prepare<
-          [string],
-          PayloadDedupRow
-        >('SELECT id,request_id requestId,kind,representation,logical_bytes logicalBytes,' + 'stored_bytes storedBytes,sha256,oversized,partial FROM audit_payloads WHERE id=?')
-        .get(payload.id);
+      const current = tx
+        .select({
+          id: auditPayloads.id,
+          kind: auditPayloads.kind,
+          logicalBytes: auditPayloads.logicalBytes,
+          oversized: auditPayloads.oversized,
+          partial: auditPayloads.partial,
+          representation: auditPayloads.representation,
+          requestId: auditPayloads.requestId,
+          storedBytes: auditPayloads.storedBytes,
+        })
+        .from(auditPayloads)
+        .where(eq(auditPayloads.id, payload.id))
+        .get();
       if (!current) {
         return payload.id;
       }
-      const candidates = this.raw
-        .prepare<
-          {
-            id: string;
-            kind: string;
-            logicalBytes: number;
-            oversized: number;
-            partial: number;
-            representation: string;
-            requestId: string;
-            sha256: string;
-            storedBytes: number;
-          },
-          PayloadCandidateRow
-        >(
-          "SELECT id FROM audit_payloads WHERE request_id=@requestId AND id<>@id AND state IN ('complete','incomplete') " +
-            'AND representation=@representation AND kind=@kind AND logical_bytes=@logicalBytes ' +
-            "AND stored_bytes=@storedBytes AND sha256=@sha256 AND sha256_scope='full' " +
-            'AND oversized=@oversized AND partial=@partial ORDER BY created_at ASC',
+      const candidates = tx
+        .select({ id: auditPayloads.id })
+        .from(auditPayloads)
+        .where(
+          and(
+            eq(auditPayloads.requestId, current.requestId),
+            ne(auditPayloads.id, current.id),
+            inArray(auditPayloads.state, ['complete', 'incomplete']),
+            eq(auditPayloads.representation, current.representation),
+            eq(auditPayloads.kind, current.kind),
+            eq(auditPayloads.logicalBytes, current.logicalBytes),
+            eq(auditPayloads.storedBytes, current.storedBytes),
+            eq(auditPayloads.sha256, payload.sha256),
+            eq(auditPayloads.sha256Scope, 'full'),
+            eq(auditPayloads.oversized, current.oversized),
+            eq(auditPayloads.partial, current.partial),
+          ),
         )
-        .all({
-          id: current.id,
-          kind: current.kind,
-          logicalBytes: current.logicalBytes,
-          oversized: current.oversized,
-          partial: current.partial,
-          representation: current.representation,
-          requestId: current.requestId,
-          sha256: payload.sha256,
-          storedBytes: current.storedBytes,
-        });
+        .orderBy(asc(auditPayloads.createdAt))
+        .all();
 
+      const matchingChunks = alias(auditPayloadChunks, 'matching_chunks');
       for (const candidate of candidates) {
-        const difference = this.raw
-          .prepare<
-            [string, string],
-            { value: number }
-          >('SELECT 1 value FROM audit_payload_chunks a LEFT JOIN audit_payload_chunks b ' + 'ON b.payload_id=? AND b.seq=a.seq WHERE a.payload_id=? AND ' + '(b.seq IS NULL OR b.byte_length<>a.byte_length OR b.payload<>a.payload) LIMIT 1')
-          .get(candidate.id, payload.id);
-        const reverseDifference = this.raw
-          .prepare<
-            [string, string],
-            { value: number }
-          >('SELECT 1 value FROM audit_payload_chunks WHERE payload_id=? AND seq NOT IN ' + '(SELECT seq FROM audit_payload_chunks WHERE payload_id=?) LIMIT 1')
-          .get(candidate.id, payload.id);
+        const difference = tx
+          .select({ sequence: auditPayloadChunks.sequence })
+          .from(auditPayloadChunks)
+          .leftJoin(
+            matchingChunks,
+            and(
+              eq(matchingChunks.payloadId, candidate.id),
+              eq(matchingChunks.sequence, auditPayloadChunks.sequence),
+            ),
+          )
+          .where(
+            and(
+              eq(auditPayloadChunks.payloadId, payload.id),
+              or(
+                isNull(matchingChunks.sequence),
+                ne(matchingChunks.byteLength, auditPayloadChunks.byteLength),
+                ne(matchingChunks.payload, auditPayloadChunks.payload),
+              ),
+            ),
+          )
+          .limit(1)
+          .get();
+        const reverseDifference = tx
+          .select({ sequence: auditPayloadChunks.sequence })
+          .from(auditPayloadChunks)
+          .where(
+            and(
+              eq(auditPayloadChunks.payloadId, candidate.id),
+              notInArray(
+                auditPayloadChunks.sequence,
+                tx
+                  .select({ sequence: matchingChunks.sequence })
+                  .from(matchingChunks)
+                  .where(eq(matchingChunks.payloadId, payload.id)),
+              ),
+            ),
+          )
+          .limit(1)
+          .get();
         if (!difference && !reverseDifference) {
-          this.raw
-            .prepare('UPDATE request_body_refs SET payload_id=? WHERE payload_id=?')
-            .run(candidate.id, payload.id);
-          this.raw
-            .prepare('UPDATE attempt_body_refs SET payload_id=? WHERE payload_id=?')
-            .run(candidate.id, payload.id);
-          this.orm.delete(auditPayloads).where(eq(auditPayloads.id, payload.id)).run();
+          tx.update(requestBodyRefs)
+            .set({ payloadId: candidate.id })
+            .where(eq(requestBodyRefs.payloadId, payload.id))
+            .run();
+          tx.update(attemptBodyRefs)
+            .set({ payloadId: candidate.id })
+            .where(eq(attemptBodyRefs.payloadId, payload.id))
+            .run();
+          tx.delete(auditPayloads).where(eq(auditPayloads.id, payload.id)).run();
           return candidate.id;
         }
       }
       return payload.id;
-    })();
+    });
   }
 
   public finalizeSsePayload(payload: FinalizeSsePayload): string {
@@ -336,19 +382,18 @@ export class TrafficAuditPayloads {
 
   private isWriting(id: string): boolean {
     return Boolean(
-      this.raw
-        .prepare<
-          [string],
-          { writing: number }
-        >("SELECT 1 writing FROM audit_payloads WHERE id=? AND state='writing'")
-        .get(id),
+      this.orm
+        .select({ id: auditPayloads.id })
+        .from(auditPayloads)
+        .where(and(eq(auditPayloads.id, id), eq(auditPayloads.state, 'writing')))
+        .get(),
     );
   }
 
   private replacePayloadChunksFromString(id: string, value: string, maxBytes: number): void {
     this.admitReplacement(Math.min(Buffer.byteLength(value, 'utf8'), maxBytes));
-    this.raw.transaction(() => {
-      this.raw.prepare('DELETE FROM audit_payload_chunks WHERE payload_id=?').run(id);
+    this.orm.transaction((tx) => {
+      tx.delete(auditPayloadChunks).where(eq(auditPayloadChunks.payloadId, id)).run();
       let bufferedBytes = 0;
       let sourceOffset = 0;
       let storedBytes = 0;
@@ -359,7 +404,7 @@ export class TrafficAuditPayloads {
           return;
         }
         const chunk = Buffer.concat(parts, bufferedBytes);
-        this.appendPayloadChunkStatement.run(id, sequence, chunk, chunk.byteLength, id);
+        this.appendChunk(id, sequence, chunk);
         parts.length = 0;
         bufferedBytes = 0;
         storedBytes += chunk.byteLength;
@@ -404,7 +449,18 @@ export class TrafficAuditPayloads {
         }
       }
       flush();
-    })();
+    });
+  }
+
+  private iterateChunks(id: string): IterableIterator<{ payload: Buffer }> {
+    return iterateSqliteQuery(
+      this.raw,
+      this.orm
+        .select({ payload: auditPayloadChunks.payload })
+        .from(auditPayloadChunks)
+        .where(eq(auditPayloadChunks.payloadId, id))
+        .orderBy(asc(auditPayloadChunks.sequence)),
+    );
   }
 
   private parseSsePayload(id: string): unknown[] {
@@ -433,13 +489,7 @@ export class TrafficAuditPayloads {
         consumeLine(line);
       }
     };
-    const rows = this.raw
-      .prepare<
-        [string],
-        { payload: Buffer }
-      >('SELECT payload FROM audit_payload_chunks WHERE payload_id=? ORDER BY seq ASC')
-      .iterate(id);
-    for (const row of rows) {
+    for (const row of this.iterateChunks(id)) {
       consumeText(decoder.write(row.payload));
     }
     consumeText(decoder.end());
@@ -455,13 +505,7 @@ export class TrafficAuditPayloads {
   private hashStoredPayload(id: string): { bytes: number; sha256: string | null } {
     const hash = createHash('sha256');
     let bytes = 0;
-    const rows = this.raw
-      .prepare<
-        [string],
-        { payload: Buffer }
-      >('SELECT payload FROM audit_payload_chunks WHERE payload_id=? ORDER BY seq ASC')
-      .iterate(id);
-    for (const row of rows) {
+    for (const row of this.iterateChunks(id)) {
       hash.update(row.payload);
       bytes += row.payload.byteLength;
     }
