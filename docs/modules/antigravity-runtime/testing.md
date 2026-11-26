@@ -162,7 +162,15 @@ key, while encrypted recovery verifies and reuses its existing pair. Linux runs 
 directories and `0600` files. A scoped isolated-source mutation that omits preservation must fail
 the pre-replacement backup assertion; an unchanged passing run does not establish that control.
 
-`node scripts/test-client-account-write.integration.mjs` exercises real SQLite under Electron on Windows and Node on Linux/macOS with isolated synthetic credentials. Windows and Linux verify WAL-aware backups, repeated writes to one captured destination, A-to-B-to-A restoration, unchanged client recovery files and full transaction rollback on an injected primary-write failure. The Mac branch verifies sequential writes, root-level ID-token input, unchanged unrelated cache/auth rows, project removal and retained earlier statements after a later failure; it does not invoke Keychain. Windows additionally exercises the production Win32 credential adapter with exact-target A-to-B-to-A writes, the IDE Agent identity envelope, independent keytar enumeration and repeated nondestructive reads. The credential target is redirected to a unique synthetic target and deleted during cleanup. Mocked CLI and Google destinations verify that an Agy switch does not change that host credential on Windows and Linux. For Linux validation from Windows, install Linux native dependencies in an isolated directory and set `AGM_CLIENT_NATIVE_DEPS` to that directory; Windows native modules cannot validate the Linux path.
+`node scripts/test-client-account-write.integration.mjs` exercises real SQLite under Electron on Windows and Node on Linux/macOS with isolated synthetic credentials. Windows and Linux verify WAL-aware backups, repeated writes to one captured destination, A-to-B-to-A restoration, unchanged client recovery files and full transaction rollback on an injected primary-write failure. The Mac branch verifies sequential writes, root-level ID-token input, unchanged unrelated cache/auth rows, project removal and retained earlier statements after a later failure; it does not invoke Keychain. For Linux validation from Windows, install Linux native dependencies in an isolated directory and set `AGM_CLIENT_NATIVE_DEPS` to that directory; Windows native modules cannot validate the Linux path.
+
+Windows additionally exercises the production Win32 credential adapter with exact-target
+A-to-B-to-A writes, the Agent identity envelope, independent keytar enumeration and repeated
+nondestructive reads. It redirects the Windows credential to a temporary item that it deletes on
+cleanup. The CLI switch checks that the native item and both CLI file destinations receive the
+selected account. Unit tests also cover native write rejection, stale native readback and Linux
+file-only switching. These fixtures verify stored credentials. See the
+[account switching tutorial](account-switch-acceptance.md) for live client checks.
 
 `macos-client-account-chain.test.ts` compares complete command arguments, three cache files
 and SQLite protobuf bytes against synthetic contract fixtures. It covers deletion/create

@@ -14,11 +14,11 @@ import { createClientSqliteWriter, validateClientSqliteDestination } from './cli
 import {
   readAntigravityCredentialStoreToken,
   writeAntigravityCredentialStoreToken,
-  writeWindowsIdeCredentialPayload,
+  writeVerifiedWindowsAntigravityCredential,
 } from './antigravityCredentialStore';
 import {
   buildAntigravityCredentialPayload,
-  buildWindowsIdeCredentialPayload,
+  buildWindowsAgentCredentialPayload,
 } from './antigravityCredentialPayload';
 import { writeAgyCliToken } from './agyCliTokenStore';
 import { writeGoogleOAuthCredentials } from './googleOAuthCredentialStore';
@@ -52,7 +52,9 @@ export async function resolveClientAccountStorage(
 ): Promise<ClientAccountStorage> {
   const target = resolveAntigravityAppTarget(appTarget);
   if (target === 'agy') {
-    return process.platform === 'darwin' ? 'credential-store' : 'cli-session';
+    return process.platform === 'win32' || process.platform === 'darwin'
+      ? 'credential-store'
+      : 'cli-session';
   }
   if (target === 'ide') {
     if (['win32', 'linux', 'darwin'].includes(process.platform)) {
@@ -105,11 +107,17 @@ export async function prepareClientAccountWrite(
   const credentials = prepareClientAccountCredentials(input);
   if (target === 'agy') {
     const payload = buildAntigravityCredentialPayload(credentials.token);
+    const windowsPayload =
+      process.platform === 'win32' ? buildWindowsAgentCredentialPayload(credentials) : undefined;
     return {
       storage,
       write: async () => {
         writeAgyCliToken(payload);
         writeGoogleOAuthCredentials({ ...credentials.token, email: credentials.email });
+        // Commit the shared credential only after the CLI fallback files have been updated.
+        if (windowsPayload !== undefined) {
+          await writeVerifiedWindowsAntigravityCredential(windowsPayload);
+        }
       },
     };
   }
@@ -181,8 +189,8 @@ export async function prepareClientAccountWrite(
           return;
         }
         if (syncIde && process.platform === 'win32') {
-          const payload = buildWindowsIdeCredentialPayload(credentials);
-          await writeWindowsIdeCredentialPayload(payload);
+          const payload = buildWindowsAgentCredentialPayload(credentials);
+          await writeVerifiedWindowsAntigravityCredential(payload);
           writeIdeStandaloneCredentialPayload(payload);
           return;
         }

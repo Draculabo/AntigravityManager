@@ -248,11 +248,12 @@ try {
     if (nativeWindows) {
       const {
         readAntigravityCredentialStoreToken,
+        readClientAccountToken,
         writeAntigravityCredentialStoreToken,
-        writeWindowsIdeCredentialPayload,
+        writeVerifiedWindowsAntigravityCredential,
       } = require('../src/modules/antigravity-runtime/credentials/antigravityCredentialStore.ts');
       const {
-        buildWindowsIdeCredentialPayload,
+        buildWindowsAgentCredentialPayload,
       } = require('../src/modules/antigravity-runtime/credentials/antigravityCredentialPayload.ts');
       const {
         readWindowsCredential,
@@ -268,7 +269,9 @@ try {
         };
         assert.deepEqual(await readAntigravityCredentialStoreToken(), expected);
         assert.deepEqual(await readAntigravityCredentialStoreToken(), expected);
-        await writeWindowsIdeCredentialPayload(buildWindowsIdeCredentialPayload(selected));
+        await writeVerifiedWindowsAntigravityCredential(
+          buildWindowsAgentCredentialPayload(selected),
+        );
         const payload = JSON.parse(await readWindowsCredential(credentialTarget));
         assert.equal(payload.id_token_email, selected.email);
         assert.equal(payload.id_token, selected.token.id_token);
@@ -317,10 +320,11 @@ try {
       await (await prepareClientAccountWrite(a, 'ide', { userDataDir: profileB })).write();
       assert.equal(profileAToken().refreshToken, a.token.refresh_token);
       assert.deepEqual(await readAntigravityCredentialStoreToken(), hostCredential);
-      for (const selected of [b, a]) {
+      for (const selected of [b, a, b]) {
         agyCliPayload = null;
         googleOAuthInput = null;
         const writer = await prepareClientAccountWrite(selected, 'agy');
+        assert.equal(writer.storage, 'credential-store');
         await writer.write();
         const cliToken = JSON.parse(agyCliPayload).token;
         assert.equal(cliToken.access_token, selected.token.access_token);
@@ -330,7 +334,16 @@ try {
           project_id: selected.token.project_id,
           email: selected.email,
         });
-        assert.deepEqual(await readAntigravityCredentialStoreToken(), hostCredential);
+        const nativePayload = JSON.parse(await readWindowsCredential(credentialTarget));
+        assert.equal(nativePayload.id_token_email, selected.email);
+        assert.equal(nativePayload.id_token, selected.token.id_token);
+        assert.deepEqual(await readClientAccountToken('agy'), {
+          accessToken: selected.token.access_token,
+          refreshToken: selected.token.refresh_token,
+          expiryTimestamp: selected.token.expiry_timestamp,
+          idToken: selected.token.id_token,
+          ...(selected.token.project_id ? { projectId: selected.token.project_id } : {}),
+        });
       }
     }
     const rowsBeforeFailure = database.prepare('SELECT * FROM ItemTable ORDER BY key').all();
@@ -360,7 +373,7 @@ try {
             ? [
                 'native Windows exact-target A-B-A, independent enumeration and nondestructive reads',
                 'Windows IDE identity envelope round-trips through the native store',
-                'Agy CLI writes preserve the host credential target',
+                'Agy CLI switches update the Windows credential and preserve file mirrors',
                 'IDE profile writes preserve peer SQLite and host credentials',
               ]
             : []),

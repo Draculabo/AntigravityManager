@@ -23,12 +23,62 @@ describe('client account destination', () => {
     });
     expect(await resolveClientAccountStorage('ide')).toBe('credential-store');
   });
-  it('keeps an explicit CLI switch out of the host credential store', async () => {
+  it('updates the Windows credential used by a fresh CLI session', async () => {
+    const prepared = await prepareClientAccountWrite(credentials, 'agy');
+
+    expect(prepared.storage).toBe('credential-store');
+    await prepared.write();
+
+    const payload = state.writeNativeWindows.mock.lastCall?.[2];
+    expect(payload && JSON.parse(payload)).toEqual({
+      token: {
+        access_token: 'access',
+        token_type: 'Bearer',
+        refresh_token: 'refresh',
+        expiry: '2027-01-15T08:00:00.000000Z',
+        expires_in: 3599,
+        project_id: 'project-a',
+      },
+      auth_method: 'consumer',
+      id_token_email: 'fixture@example.org',
+      id_token: 'id-token',
+    });
+    expect(state.writeNativeWindows).toHaveBeenCalledExactlyOnceWith(
+      'gemini:antigravity',
+      'antigravity',
+      payload,
+    );
+    expect(state.readNativeWindows).toHaveBeenCalledWith('gemini:antigravity');
+    expect(state.writeAgyCliToken).toHaveBeenCalledExactlyOnceWith(expect.any(String));
+    expect(state.writeGoogleOAuthCredentials).toHaveBeenCalledExactlyOnceWith({
+      ...credentials.token,
+      email: credentials.email,
+    });
+  });
+
+  it('fails the Windows CLI switch when its native credential readback is stale', async () => {
+    state.readNativeWindows.mockResolvedValueOnce('previous-account-payload');
+    const prepared = await prepareClientAccountWrite(credentials, 'agy');
+
+    await expect(prepared.write()).rejects.toThrow('could not be confirmed');
+  });
+
+  it('fails the Windows CLI switch if the native write is rejected', async () => {
+    state.writeNativeWindows.mockRejectedValueOnce(new Error('credential write failed'));
+    const prepared = await prepareClientAccountWrite(credentials, 'agy');
+
+    await expect(prepared.write()).rejects.toThrow('credential write failed');
+    expect(state.readNativeWindows).not.toHaveBeenCalled();
+  });
+
+  it('keeps an explicit Linux CLI switch out of the host credential store', async () => {
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'linux' });
     const prepared = await prepareClientAccountWrite(credentials, 'agy');
 
     expect(prepared.storage).toBe('cli-session');
     await prepared.write();
 
+    expect(state.writeNativeWindows).not.toHaveBeenCalled();
     expect(writeAntigravityCredentialStoreToken).not.toHaveBeenCalled();
     expect(state.writeAgyCliToken).toHaveBeenCalledExactlyOnceWith(expect.any(String));
     expect(state.writeGoogleOAuthCredentials).toHaveBeenCalledExactlyOnceWith({
@@ -45,6 +95,7 @@ describe('client account destination', () => {
 
     await expect(prepared.write()).rejects.toThrow('file sync failed');
 
+    expect(state.writeNativeWindows).not.toHaveBeenCalled();
     expect(writeAntigravityCredentialStoreToken).not.toHaveBeenCalled();
   });
 
@@ -191,7 +242,7 @@ describe('client account destination', () => {
       bundleVersion: '2.6.0',
     });
     expect(await resolveClientAccountStorage('ide')).toBe('credential-store');
-    expect(await resolveClientAccountStorage('agy')).toBe('cli-session');
+    expect(await resolveClientAccountStorage('agy')).toBe('credential-store');
     vi.mocked(getAntigravityVersion).mockResolvedValue({
       shortVersion: '2.18.1',
       bundleVersion: '2.18.1',

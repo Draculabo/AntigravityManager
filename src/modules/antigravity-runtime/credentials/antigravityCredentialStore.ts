@@ -172,6 +172,12 @@ export async function readClientAccountToken(
   if (target !== 'agy') {
     return readAntigravityCredentialStoreToken();
   }
+  if (process.platform === 'win32') {
+    const token = await readAntigravityCredentialStoreToken();
+    if (token) {
+      return token;
+    }
+  }
   return readAgyCredentialFile();
 }
 
@@ -355,11 +361,14 @@ export interface CredentialStoreWriteOptions {
   syncClassicOAuthFile?: true;
 }
 
-/** Confirm the entire IDE envelope, including identity metadata omitted by token reads. */
-export async function writeWindowsIdeCredentialPayload(payload: string): Promise<void> {
+/** Confirm the whole Windows credential, including identity metadata omitted by token reads. */
+export async function writeVerifiedWindowsAntigravityCredential(payload: string): Promise<void> {
   await writeWindowsCredential(WINDOWS_CREDENTIAL_TARGET, 'antigravity', payload);
   if ((await readWindowsCredential(WINDOWS_CREDENTIAL_TARGET)) !== payload) {
-    throw new CredentialReadbackError('Windows IDE credential write could not be confirmed', {});
+    throw new CredentialReadbackError(
+      'Windows Antigravity credential write could not be confirmed',
+      {},
+    );
   }
 }
 

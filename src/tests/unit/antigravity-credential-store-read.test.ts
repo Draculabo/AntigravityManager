@@ -1,3 +1,4 @@
+import fs from 'node:fs/promises';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -69,6 +70,28 @@ describe('readAntigravityCredentialStoreToken', () => {
 
   afterEach(() => {
     setPlatform(originalPlatform);
+    vi.restoreAllMocks();
+  });
+
+  it('prefers the Windows system credential when the CLI file belongs to another account', async () => {
+    const { readClientAccountToken } =
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    const readFile = vi.spyOn(fs, 'readFile').mockResolvedValue('{"refresh_token":"file-account"}');
+    mocks.readWindowsCredential.mockResolvedValueOnce('{"refresh_token":"system-account"}');
+
+    await expect(readClientAccountToken('agy')).resolves.toEqual({
+      refreshToken: 'system-account',
+    });
+    expect(readFile).not.toHaveBeenCalled();
+  });
+
+  it('reads an existing Windows CLI file when the system credential is absent', async () => {
+    const { readClientAccountToken } =
+      await import('@/modules/antigravity-runtime/credentials/antigravityCredentialStore');
+    vi.spyOn(fs, 'readFile').mockResolvedValue('{"refresh_token":"file-account"}');
+    mocks.readWindowsCredential.mockResolvedValueOnce(null);
+
+    await expect(readClientAccountToken('agy')).resolves.toEqual({ refreshToken: 'file-account' });
   });
 
   it('parses the nested credential payload from native keyring bytes', async () => {

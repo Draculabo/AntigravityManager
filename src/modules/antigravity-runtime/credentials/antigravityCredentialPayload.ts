@@ -25,8 +25,8 @@ export function buildAntigravityCredentialPayload(token: CredentialStoreTokenInp
   });
 }
 
-/** Windows IDE 2.6+ Agent identity fields belong to the credential envelope. */
-export function buildWindowsIdeCredentialPayload(credentials: ClientAccountCredentials): string {
+/** Windows Agent identity fields belong to the credential envelope. */
+export function buildWindowsAgentCredentialPayload(credentials: ClientAccountCredentials): string {
   const { email, token } = credentials;
   return JSON.stringify({
     token: {

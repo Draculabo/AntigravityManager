@@ -24,6 +24,11 @@ installed desktop clients do not use the store. The badge probe uses the actual 
 excludes the macOS file fallback. The read does not mutate the saved selection, start the CLI or
 change the existing list refresh schedule.
 
+Windows `agy` switches use the same exact Windows credential target and Agent identity envelope
+as the IDE. The runtime updates the existing CLI files first and requires native write and exact
+readback before account finalization. Current-account and snapshot reads use that native item
+when present. The dedicated file remains a separate import source.
+
 ## Alternatives considered
 
 - Unconditionally preferring shared Keyring or generic Gemini OAuth credentials would let an
@@ -31,6 +36,8 @@ change the existing list refresh schedule.
 - Matching on an email hint would make the unverified hint authoritative.
 - Persisting observed status would turn a read into a mutation and could overwrite a concurrent
   switch. Projection needs only the observed match.
+- Windows file-only switches can report success even though a new CLI process authenticates from
+  an older system credential. Existing client logs record successful authentication via keyring.
 
 ## Consequences
 
@@ -38,6 +45,12 @@ The new source expands the strict local import preview contract. Desktop and Cor
 compatibility `13` and upgrade together. Existing import sources and saved account data continue
 to use their current formats. The badge reflects the saved CLI credential at refresh time and
 does not guarantee that an already-running CLI process has reloaded it.
+
+The Windows account is shared with clients that use `gemini:antigravity`. Manager serializes its
+own switches. Other processes can refresh or replace the item independently. A readback failure
+stops finalization and does not restore an older shared item over a possible concurrent update.
+Fallback files can already contain the new account. Existing sessions should be closed before
+retrying the selection or signing in through the official client.
 
 ## Verification
 
@@ -47,3 +60,6 @@ does not guarantee that an already-running CLI process has reloaded it.
   remains separate from the automated fixtures.
 - List regression fixtures exercise a system-keyring login with only the CLI using it, a shared
   store with each desktop target and a newer credential that does not match the saved selection.
+- The Windows account-write fixture exercises repeated CLI switches against a temporary native
+  item. Unit checks cover a rejected native write and a stale native readback. These checks
+  establish stored credentials. Fresh CLI authentication is a separate live check.

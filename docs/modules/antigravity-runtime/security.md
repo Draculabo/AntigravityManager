@@ -71,7 +71,18 @@ The runtime closes the captured IDE tree before required writes, verifies each d
 
 Workspace provisioning explicitly selects the existing workspace writer behavior: this ordinary-switch change does not add SQLite/cache synchronization or identity confirmation to workspace launch. Windows IDE 2.6 workspace credentials still use the shared Windows item. Separate profiles and HOME directories do not isolate it; concurrent account isolation remains unresolved. The standalone fallback added here belongs to the current ordinary-switch OS environment, not to managed workspace homes. No accepted-terms records are manufactured.
 
-Explicit Agy switches update the current operating-system environment's local CLI session and generic Google OAuth files without writing the host system credential or sessions in WSL distributions. The local CLI session is written and read back before the switch can succeed.
+Windows `agy` account switches update the local CLI session and Google OAuth files, then write and
+read back the shared `gemini:antigravity` credential used by new CLI processes. The local CLI
+session also requires readback. A failed system write or readback fails the switch. The files may
+already contain the selected account when the system write fails. Manager verifies the exact
+credential it wrote and leaves any subsequent updates by other processes in place.
+
+On Windows, current-account and local snapshot reads check the system credential first and use the
+CLI session file when the system entry is absent. This system item is shared with desktop clients
+that use the same credential target. Existing `agy` sessions can keep their old login and may write
+it back on refresh. Finish those sessions before switching and start a fresh session afterward.
+If the switch fails, close the previous sessions and retry the selected account or sign in through
+the official client.
 
 ### Mac IDE 2.6 ordinary account switches
 
