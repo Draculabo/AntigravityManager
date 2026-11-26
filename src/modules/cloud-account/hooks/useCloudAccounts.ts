@@ -25,6 +25,7 @@ import {
 } from '@/modules/cloud-account/actions/cloud';
 import type { WeeklyWarmupConfig } from '@/modules/cloud-account/services/weekly-warmup-contract';
 import { exportCloudAccounts, importCloudAccounts } from '@/modules/cloud-account/actions/cloud';
+import { useWeeklyResetQuotaRefresh } from './use-weekly-reset-quota-refresh';
 
 type SetAccountProxyInput = Parameters<typeof setAccountProxy>[0];
 type SetAccountProxyResult = Awaited<ReturnType<typeof setAccountProxy>>;
@@ -89,10 +90,10 @@ export function useDeleteCloudAccount() {
   });
 }
 
-export function useRefreshQuota() {
+export function useRefreshQuota(accounts?: readonly CloudAccountView[]) {
   const queryClient = useQueryClient();
 
-  return useMutation({
+  const mutation = useMutation({
     mutationFn: refreshAccountQuota,
     onSuccess: (updatedAccount: CloudAccountView) => {
       // Optimistically update
@@ -106,6 +107,8 @@ export function useRefreshQuota() {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.cloudAccounts });
     },
   });
+  useWeeklyResetQuotaRefresh(accounts, queryClient, mutation.mutate, mutation.isPending);
+  return mutation;
 }
 
 export function useSwitchCloudAccount() {

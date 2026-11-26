@@ -11,14 +11,9 @@ const tr = {
     'invalid-data': 'Kota verileri geçersiz; doğrulamak için yenileyin.',
     'reset-unknown': 'Sıfırlama zamanı bilinmiyor.',
     'exhausted-unknown-reset': 'Dönem kotası tükendi; sıfırlama zamanı bilinmiyor.',
-    'recheck-required': 'Kotası tükenen dönem sona erdi; düzelmeyi doğrulamak için yenileyin.',
-    'window-ended': 'Dönem sona erdi; bakiye henüz yeniden doğrulanmadı.',
     'weekly-exhausted':
       'Haftalık dönem kotası tükendi; başka bir dönemin bakiyesi bu kısıtlamayı kaldırmaz.',
     'window-exhausted': 'Dönem kotası tükendi.',
-    'group-restrictions': 'Kota grubu kısıtlamaları',
-    'group-limited':
-      'Dönem kotası tükendi. Bilinen en geç sıfırlama: {{time}}; düzelmenin doğrulanması gerekiyor.',
     'subscription-failed': 'Abonelik yenilemesi başarısız veya eksik; önceki kayıt gösteriliyor.',
     'subscription-unrecognized': 'Abonelik düzeyi tanınmadı; Free temel düzeyi kullanılıyor.',
     'subscription-missing': 'Abonelik bilgisi dönmedi; Free temel düzeyi kullanılıyor.',

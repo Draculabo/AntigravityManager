@@ -12,15 +12,9 @@ const fr = {
     'invalid-data': 'Données de quota invalides ; actualisez pour vérifier.',
     'reset-unknown': 'Date de réinitialisation inconnue.',
     'exhausted-unknown-reset': 'Fenêtre épuisée ; date de réinitialisation inconnue.',
-    'recheck-required':
-      'La fenêtre épuisée est terminée ; actualisez pour confirmer la récupération.',
-    'window-ended': 'Fenêtre terminée ; le solde n’a pas été reconfirmé.',
     'weekly-exhausted':
       'Fenêtre hebdomadaire épuisée ; le solde d’une autre fenêtre ne lève pas cette restriction.',
     'window-exhausted': 'Fenêtre de quota épuisée.',
-    'group-restrictions': 'Restrictions des groupes de quotas',
-    'group-limited':
-      'Fenêtre épuisée. Dernière réinitialisation connue : {{time}} ; la récupération reste à confirmer.',
     'subscription-failed':
       'Actualisation de l’abonnement échouée ou incomplète ; affichage de l’enregistrement précédent.',
     'subscription-unrecognized':

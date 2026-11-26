@@ -350,7 +350,6 @@ export function CloudAccountCard({
     models: mergedModelQuotas,
     providerModels,
     groups: detailedGroups,
-    restrictionGroups,
     weeklyItems: weeklyQuotaItems,
     fiveHourHidden,
     weeklyHidden,
@@ -860,9 +859,6 @@ export function CloudAccountCard({
         ) : (
           <div className="space-y-2">
             <AccountQuotaWindowSections
-              restrictionGroups={
-                isMinimalMode ? restrictionGroups.filter(isGeminiQuotaGroup) : restrictionGroups
-              }
               quotaWindow={quotaWindow}
               weeklyItems={
                 isMinimalMode
@@ -1107,7 +1103,6 @@ export function CompactCloudAccountCard({
     models: mergedModelQuotas,
     groups: detailedGroups,
     weeklyItems: weeklyQuotaItems,
-    restrictionGroups,
     fiveHourHidden,
     weeklyHidden,
   } = getVisibleAccountQuota(account.quota, config?.model_visibility ?? {}, quotaGroupVisibility);
@@ -1272,9 +1267,6 @@ export function CompactCloudAccountCard({
         ) : (
           <>
             <AccountQuotaWindowSections
-              restrictionGroups={
-                isMinimalMode ? restrictionGroups.filter(isGeminiQuotaGroup) : restrictionGroups
-              }
               quotaWindow={quotaWindow}
               weeklyItems={
                 isMinimalMode

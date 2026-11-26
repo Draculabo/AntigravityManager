@@ -143,7 +143,6 @@ describe('account observation and restriction UI', () => {
     show(
       createElement(AccountQuotaWindowSections, {
         quotaWindow: 'both',
-        restrictionGroups: groups,
         weeklyItems: selectWeeklyQuotaItems(groups),
         hasQuotaSummary: true,
         fiveHourContent: createElement(DetailedQuotaDisplay, { groups }),
@@ -152,24 +151,20 @@ describe('account observation and restriction UI', () => {
     expect(screen.getByText('80%')).toBeTruthy();
     expect(screen.getByText('0%')).toBeTruthy();
     expect(screen.getByText(/Weekly window depleted/)).toBeTruthy();
-    expect(screen.getByRole('list', { name: 'Quota group restrictions' }).textContent).toContain(
-      new Date('2026-10-20T00:00:00Z').toLocaleString(),
-    );
+    expect(screen.queryByRole('list', { name: 'Quota group restrictions' })).toBeNull();
     expect(screen.getAllByText(/Last observed:/)).toHaveLength(2);
   });
-  it('keeps group restrictions visible in a five-hour-only view', () => {
+  it('shows only five-hour quota in the five-hour-only view', () => {
     show(
       createElement(AccountQuotaWindowSections, {
         quotaWindow: '5h',
-        restrictionGroups: groups,
         weeklyItems: selectWeeklyQuotaItems(groups),
         hasQuotaSummary: true,
         fiveHourContent: createElement('span', null, '80%'),
       }),
     );
-    expect(screen.getByRole('list', { name: 'Quota group restrictions' }).textContent).toContain(
-      'Claude Models',
-    );
+    expect(screen.getByText('80%')).toBeTruthy();
+    expect(screen.queryByRole('list', { name: 'Quota group restrictions' })).toBeNull();
     expect(screen.queryByText('0%')).toBeNull();
   });
   it('distinguishes a small positive balance displayed as zero from exhaustion', () => {
@@ -186,7 +181,7 @@ describe('account observation and restriction UI', () => {
     expect(screen.getByText('Small positive balance; this window is not depleted.')).toBeTruthy();
     expect(screen.queryByText(/Weekly window depleted/)).toBeNull();
   });
-  it('shows observations and recheck status through compact keyboard focus', async () => {
+  it('shows the observation without a refresh prompt through compact keyboard focus', async () => {
     const expired = [
       {
         ...groups[0],
@@ -205,7 +200,7 @@ describe('account observation and restriction UI', () => {
     fireEvent.focus(screen.getByRole('progressbar'));
     const tooltip = await screen.findByRole('tooltip');
     expect(tooltip.textContent).toContain('Last observed: Not recorded');
-    expect(tooltip.textContent).toContain('refresh is required to confirm recovery');
+    expect(tooltip.textContent).not.toContain('refresh is required to confirm recovery');
   });
   it('includes Chinese copy and matching evidence keys in every supported language', async () => {
     const keys = Object.keys(en['account-evidence']).sort();
@@ -219,7 +214,7 @@ describe('account observation and restriction UI', () => {
     show(createElement(AccountTierBadge, { account, unknownLabel: '未知' }));
     expect(screen.getByRole('note').getAttribute('aria-label')).toContain('正在显示此前记录');
   });
-  it('changes depletion to recheck at the reset boundary without claiming recovery', () => {
+  it('clears the depletion note at the reset boundary while retaining the observed balance', () => {
     vi.restoreAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(now);
@@ -232,7 +227,6 @@ describe('account observation and restriction UI', () => {
     show(
       createElement(AccountQuotaWindowSections, {
         quotaWindow: 'weekly',
-        restrictionGroups: depleted,
         weeklyItems: selectWeeklyQuotaItems(depleted),
         hasQuotaSummary: true,
         fiveHourContent: null,
@@ -241,7 +235,7 @@ describe('account observation and restriction UI', () => {
     expect(screen.getByText(/Weekly window depleted/)).toBeTruthy();
     act(() => vi.advanceTimersByTime(1000));
     expect(screen.queryByText(/Weekly window depleted/)).toBeNull();
-    expect(screen.getAllByText(/refresh is required to confirm recovery/)).toHaveLength(2);
+    expect(screen.queryByText(/refresh is required to confirm recovery/)).toBeNull();
     expect(screen.getByText('0%')).toBeTruthy();
     cleanup();
     expect(vi.getTimerCount()).toBe(0);

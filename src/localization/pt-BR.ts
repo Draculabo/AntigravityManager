@@ -2448,13 +2448,8 @@ const ptBR = {
     'invalid-data': 'Quota data is invalid; refresh to verify.',
     'reset-unknown': 'Reset time is unknown.',
     'exhausted-unknown-reset': 'Window depleted; reset time is unknown.',
-    'recheck-required': 'Depleted window has ended; refresh is required to confirm recovery.',
-    'window-ended': 'Window ended; the balance has not been reconfirmed.',
     'weekly-exhausted': 'Weekly window depleted; another window cannot release this restriction.',
     'window-exhausted': 'Quota window depleted.',
-    'group-restrictions': 'Quota group restrictions',
-    'group-limited':
-      'Depleted window. Latest known reset: {{time}}; recovery still needs confirmation.',
     'subscription-failed':
       'Subscription refresh failed or was incomplete; showing the previous record.',
     'subscription-unrecognized': 'Subscription tier was not recognized; using the Free baseline.',

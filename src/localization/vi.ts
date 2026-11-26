@@ -12,13 +12,8 @@ const vi = {
     'invalid-data': 'Dữ liệu hạn mức không hợp lệ; hãy làm mới để kiểm tra.',
     'reset-unknown': 'Chưa rõ thời gian đặt lại.',
     'exhausted-unknown-reset': 'Hạn mức cửa sổ đã hết; chưa rõ thời gian đặt lại.',
-    'recheck-required': 'Cửa sổ đã hết hạn mức và kết thúc; cần làm mới để xác nhận khôi phục.',
-    'window-ended': 'Cửa sổ đã kết thúc; số dư chưa được xác nhận lại.',
     'weekly-exhausted': 'Hạn mức tuần đã hết; số dư của cửa sổ khác không gỡ bỏ giới hạn này.',
     'window-exhausted': 'Hạn mức cửa sổ đã hết.',
-    'group-restrictions': 'Giới hạn theo nhóm hạn mức',
-    'group-limited':
-      'Cửa sổ đã hết hạn mức. Lần đặt lại muộn nhất đã biết: {{time}}; vẫn cần xác nhận khôi phục.',
     'subscription-failed':
       'Làm mới gói đăng ký thất bại hoặc thiếu thông tin; đang hiển thị bản ghi trước.',
     'subscription-unrecognized': 'Không nhận diện được cấp đăng ký; đang dùng mức cơ sở Free.',

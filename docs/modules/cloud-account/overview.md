@@ -176,25 +176,21 @@ not an automatic freshness TTL or proof that a complete quota refresh succeeded.
 
 Detailed non-weekly rows and weekly rows show their own observation time. Compact
 weekly bars expose the same information on hover or keyboard focus. Missing times
-remain unknown. Reasons distinguish weekly/window exhaustion, missing resets,
-elapsed windows requiring recheck, invalid fractions and small positive values that
-round to zero. Raw fractions use the same exhaustion helper as account scheduling.
+remain unknown. Reasons distinguish exhaustion before a reset, missing resets,
+invalid fractions and small positive values that round to zero. Raw fractions use
+the same exhaustion helper as account scheduling.
 
-A group restriction summary remains visible when the selected window omits an
-exhausted window, provided that family is enabled in at least one display preference.
-Fully hidden families remain hidden; controls still affect presentation only. The
-summary considers depleted windows independently per group, showing the latest known
-future depleted reset. Positive windows do not extend that wait. Expired depletion
-requires refresh confirmation rather than implying recovery; unknown resets remain
-unknown. This summary describes stored windows, not every runtime cooldown or
-account/model eligibility decision. Authoritative group/model membership remains D08
-joint work.
+While the Accounts page is open, it requests a quota refresh after a known weekly
+reset if the latest snapshot predates that reset. Opening the page also catches up
+on known weekly resets that have already passed. Simultaneous resets for the same
+account share a refresh. Each reset gets one automatic attempt per renderer session,
+including across page navigation. Five-hour resets only update the display.
 
 Each rendered quota section owns at most one cancellable reset timer, shared by its
 rows. It wakes at known reset boundaries, handles distant deadlines and clock rollback,
-and cancels on unmount or boundary replacement. It never fetches data, retries a
-request, changes a balance or creates a new provider cycle. The UI uses the existing
-six languages and local timestamp formatting.
+and cancels on unmount or boundary replacement. Display timers update the displayed
+reset state. Quota balances update from the refresh result. The UI uses local timestamp
+formatting.
 
 ## Current official-cycle usage foundation
 

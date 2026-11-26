@@ -73,7 +73,7 @@ function CloudAccountListContent() {
     refetch,
   } = useCloudAccounts(warmupConfig?.enabled ? 60_000 : false);
   const { config, saveConfig } = useAppConfig();
-  const refreshMutation = useRefreshQuota();
+  const refreshMutation = useRefreshQuota(accounts);
   const deleteMutation = useDeleteCloudAccount();
   const switchMutation = useSwitchCloudAccount();
 

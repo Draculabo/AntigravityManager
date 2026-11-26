@@ -76,7 +76,6 @@ describe('quota group display preferences', () => {
       models: {},
       providerModels: {},
       groups: [],
-      restrictionGroups: [],
       weeklyItems: [],
       fiveHourHidden: false,
       weeklyHidden: false,
