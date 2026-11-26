@@ -9,6 +9,7 @@ import ru from './ru';
 import fr from './fr';
 import ptBr from './pt-BR';
 import ja from './ja';
+import { mergeLocaleCatalog } from './locale-catalog';
 
 import { DESKTOP_LANGUAGES } from '@/modules/app-shell/desktop-appearance';
 import { LOCAL_STORAGE_KEYS } from '@/shared/constants';
@@ -30,25 +31,25 @@ i18n
         translation: en,
       },
       vi: {
-        translation: vi,
+        translation: mergeLocaleCatalog(en, vi),
       },
       tr: {
-        translation: tr,
+        translation: mergeLocaleCatalog(en, tr),
       },
       'zh-CN': {
-        translation: zhCn,
+        translation: mergeLocaleCatalog(en, zhCn),
       },
       ru: {
-        translation: ru,
+        translation: mergeLocaleCatalog(en, ru),
       },
       fr: {
-        translation: fr,
+        translation: mergeLocaleCatalog(en, fr),
       },
       'pt-BR': {
-        translation: ptBr,
+        translation: mergeLocaleCatalog(en, ptBr),
       },
       ja: {
-        translation: ja,
+        translation: mergeLocaleCatalog(en, ja),
       },
     },
   });

@@ -1619,8 +1619,6 @@ const ja = {
       dropped:
         '{{count}} 件のレコードを保存できませんでした ({{reason}})。モデルリクエストは通常通り続行されました。',
       'disk-gib': 'ディスク制限 (GiB)',
-      'body-hours': '完全内容の保持 (時間)',
-      'summary-days': 'サマリー保持 (日)',
       'max-rows': '最大行数',
       'no-audit': 'まだトラフィックレコードはありません。',
       'audit-metadata': 'リクエスト詳細とモデルサービスの試行',
