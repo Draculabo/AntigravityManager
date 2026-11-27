@@ -328,11 +328,27 @@ The first desktop proxy start requires acknowledgment of the risk warning. Cance
 
 Confirm the downloaded package matches the OS and CPU architecture, and record the application version and exact error. For source builds, follow the [development prerequisites](docs/development.md#prerequisites). For packaged applications, include installer type and whether the failure occurs during installation or launch when reporting it.
 
+If macOS says the app is damaged and can't be opened, check the installer package's SHA-256 checksum first. If it matches, try the [macOS workaround below](#macos-launch-or-keychain-errors).
+
 ### Login or account switching fails
 
 Open **Details** on the error notification when available. Keep the diagnostic reference and note the target client, platform and action that failed. Check network/proxy settings and any official-client setup still awaiting confirmation. Back up the profile before resetting application data.
 
-On macOS, distinguish an application launch warning from an OAuth save failure or a client-switch failure. These involve different steps; capture the exact error before changing credentials or application signing.
+### macOS launch or Keychain errors
+
+If macOS blocks the app from opening, or if OAuth succeeds in the browser but the app reports a Keychain or credential error, you can try this temporary workaround on a personal Mac. Use it only with a package downloaded from this project's GitHub Releases whose SHA-256 matches the checksum file on the release page.
+
+1. Quit Antigravity Manager and move `Antigravity Manager.app` to Applications (`/Applications`).
+2. Open Terminal and re-sign the app with an ad hoc signature. The second command removes the app's download quarantine flag only if signing succeeds.
+
+   ```bash
+   codesign --force --deep --sign - "/Applications/Antigravity Manager.app" &&
+     sudo xattr -dr com.apple.quarantine "/Applications/Antigravity Manager.app"
+   ```
+
+3. Reopen the app. If the app previously failed to save an OAuth account, authorize it again. If the error persists, [report the exact error](#report-a-problem).
+
+If the same issue returns after an update, verify the new package's checksum before repeating these steps.
 
 ### The coding tool cannot reach a model
 

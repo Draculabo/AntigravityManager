@@ -303,11 +303,27 @@ Home Manager 用户请使用 `home.packages`，并在对应的 nixpkgs 实例上
 
 确认安装包与操作系统、CPU 架构匹配，并记录应用版本和具体错误。源码运行请检查[开发前置要求](docs/development.md#prerequisites)。安装包用户反馈时，请说明安装包类型，以及错误发生在安装阶段还是启动阶段。
 
+如果 macOS 提示应用「已损坏，无法打开」，先核对安装包 SHA-256。校验值一致时，可以按下方的 [macOS 临时处理步骤](#macos-启动或钥匙串错误)排查。
+
 ### 登录或账号切换失败
 
 错误通知提供**详情**入口时，先查看其中内容，保留诊断编号，并记录目标客户端、平台和失败操作。检查网络、代理设置，以及官方客户端是否仍有待完成的首次设置。重置应用数据前请先备份数据目录。
 
-macOS 用户应区分应用启动警告、OAuth 保存失败和客户端切换失败。这些问题发生在不同环节，修改凭据或应用签名前应先记录具体错误。
+### macOS 启动或钥匙串错误
+
+如果 macOS 拦截应用启动，或 OAuth 已在浏览器中授权成功、应用却报告钥匙串或凭据错误，可以在个人 Mac 上尝试以下临时步骤。仅对从本项目 GitHub Releases 下载且 SHA-256 与发布页校验文件一致的安装包执行。
+
+1. 退出 Antigravity Manager，并将 `Antigravity Manager.app` 拖到「应用程序」（`/Applications`）。
+2. 打开「终端」，为应用重新添加本地临时签名。签名成功后，移除该应用的下载隔离标记。
+
+   ```bash
+   codesign --force --deep --sign - "/Applications/Antigravity Manager.app" &&
+     sudo xattr -dr com.apple.quarantine "/Applications/Antigravity Manager.app"
+   ```
+
+3. 重新打开应用。如果刚才是 OAuth 保存失败，再试一次授权。如果错误仍然出现，请按下文的[反馈步骤](#反馈问题)提供具体错误。
+
+应用更新后如果再次遇到同样的问题，请核对新安装包的校验值，再重复上述步骤。
 
 ### 编程工具无法访问模型
 
