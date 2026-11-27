@@ -52,7 +52,7 @@ describe('secondary SSE producer ownership', () => {
         });
       } else if (protocol === 'messages') {
         const pending = gateway.anthropicService.handleAnthropicMessages({
-          model: 'claude-sonnet-4-5',
+          model: 'claude-sonnet-4-6-thinking',
           stream: true,
           max_tokens: 32,
           messages: [{ role: 'user', content: 'fixture' }],
@@ -75,18 +75,32 @@ describe('secondary SSE producer ownership', () => {
       }
       const chunks: string[] = [];
       const completed = vi.fn();
+      const errored = vi.fn();
       const subscription = stream.subscribe({
         next: (text) => chunks.push(String(text)),
         complete: completed,
+        error: errored,
       });
       try {
         const fragment = Buffer.from('x'.repeat(8 * 1024 * 1024));
         for (let i = 0; i < 9 && !source.destroyed; i++) {
           source.write(fragment);
         }
-        expect(completed).toHaveBeenCalledOnce();
-        expect(chunks.join('')).toContain('Upstream SSE line exceeds decode budget.');
-        expect(chunks.join('')).not.toContain('[DONE]');
+        const limitMessage = 'Upstream SSE line exceeds decode budget.';
+        if (protocol === 'gemini') {
+          await vi.waitFor(() =>
+            expect(errored).toHaveBeenCalledExactlyOnceWith(new Error(limitMessage)),
+          );
+          expect(completed).not.toHaveBeenCalled();
+        } else {
+          await vi.waitFor(() => expect(completed).toHaveBeenCalledOnce());
+          expect(errored).not.toHaveBeenCalled();
+          const output = chunks.join('');
+          expect(output).toContain(
+            protocol === 'messages' ? limitMessage : '"code":"upstream_stream_error"',
+          );
+          expect(output).not.toMatch(/\[DONE\]|event: response\.completed|event: message_stop/);
+        }
         expect(source.destroyed).toBe(true);
       } finally {
         subscription.unsubscribe();

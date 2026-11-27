@@ -163,7 +163,7 @@ it.each(cases)(
       );
       await app.listen(0, '127.0.0.1');
       const origin = await app.getUrl();
-      const model = protocol === 'messages' ? 'claude-sonnet-4-5' : 'gemini-3-flash';
+      const model = protocol === 'messages' ? 'claude-sonnet-4-6-thinking' : 'gemini-3-flash';
       const route =
         protocol === 'gemini'
           ? `/v1beta/models/${model}:streamGenerateContent`

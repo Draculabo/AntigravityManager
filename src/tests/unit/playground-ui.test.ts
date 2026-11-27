@@ -8,7 +8,6 @@ import en from '@/localization/en';
 import zhCN from '@/localization/zh-CN';
 import { buildBenchmarkReport } from '@/modules/proxy-gateway/playground/components/benchmark/benchmark-export';
 import { BenchmarkResults } from '@/modules/proxy-gateway/playground/components/benchmark/BenchmarkResults';
-import { FALLBACK_PROXY_EXAMPLE_MODELS } from '@/modules/proxy-gateway/components/proxy-example-models';
 import type { PlaygroundExecuteResult } from '@/modules/proxy-gateway/playground/playground.schema';
 import type { CloudAccountView } from '@/modules/cloud-account/services/cloud-account-view';
 
@@ -497,15 +496,14 @@ describe('Playground lifecycle', () => {
       quota: {
         models: {
           'gemini-3-flash': { percentage: 100, resetTime: '' },
-          'claude-sonnet-4-6': { percentage: 100, resetTime: '' },
+          'claude-sonnet-4-6-thinking': { percentage: 100, resetTime: '' },
         },
       },
     };
     const allHiddenConfig = {
       model_visibility: {
-        ...Object.fromEntries(FALLBACK_PROXY_EXAMPLE_MODELS.map((model) => [model.id, false])),
         'gemini-3-flash': false,
-        'claude-sonnet-4-6': false,
+        'claude-sonnet-4-6-thinking': false,
       },
       proxy: { port: 8045 },
     };
@@ -523,7 +521,7 @@ describe('Playground lifecycle', () => {
 
     mount(createElement(QueryClientProvider, { client }, createElement(PlaygroundPage)));
 
-    expect(await screen.findByText(`0/${FALLBACK_PROXY_EXAMPLE_MODELS.length}`)).toBeTruthy();
+    expect(await screen.findByText('0/2')).toBeTruthy();
     expect(screen.getByRole('button', { name: en.playground.send }).hasAttribute('disabled')).toBe(
       true,
     );

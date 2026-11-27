@@ -171,27 +171,22 @@ async function closeDesktop() {
 
 async function checkLoginFeedback(page, mode) {
   await page.getByRole('button', { name: 'Add Account', exact: true }).click();
-  const authorization = page.getByRole('dialog', { name: 'Add Google Account', exact: true });
-  await authorization.getByRole('button', { name: 'Open Login Page', exact: true }).click();
-  await page.getByText('Failed to add account', { exact: true }).waitFor({ state: 'visible' });
-  await authorization.getByRole('button', { name: 'Close', exact: true }).last().click();
-  await page.getByRole('button', { name: 'Details', exact: true }).last().click();
-  const details = page.getByRole('dialog', { name: 'Error details', exact: true });
+  const authorization = page.getByRole('dialog', { name: 'Add Account', exact: true });
+  await authorization
+    .getByText('Check the upstream proxy settings, then retry.', { exact: true })
+    .waitFor({ state: 'visible' });
+  await authorization.getByText('Details', { exact: true }).click();
+  const details = authorization.locator('details[open] pre');
   await details.waitFor({ state: 'visible' });
-  const text = [
-    await details.innerText(),
-    ...(await details
-      .getByRole('textbox')
-      .evaluateAll((inputs) => inputs.map((input) => input.value))),
-  ].join('\n');
+  const text = await details.innerText();
   assert(text.includes('google-login'));
   assert(text.includes('proxy-configuration-invalid'));
   const reference = text.match(
     /[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}/,
   )?.[0];
-  assert(reference, 'The real notification details lost the operation reference');
+  assert(reference, 'The authorization details lost the operation reference');
   await page.screenshot({ path: path.join(directory, `${mode}-details.png`) });
-  await details.press('Escape');
+  await authorization.press('Escape');
   return reference;
 }
 

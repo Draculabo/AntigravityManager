@@ -27,13 +27,10 @@ import {
  * upstream client.
  */
 
-vi.mock(
-  '@/server/gateway/common/utils/request-user-agent',
-  async (importOriginal) => ({
-    ...(await importOriginal<Record<string, unknown>>()),
-    resolveRequestUserAgent: async () => 'antigravity-parity-harness/0.0.0',
-  }),
-);
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  resolveRequestUserAgent: async () => 'antigravity-parity-harness/0.0.0',
+}));
 
 describe('real request path, Anthropic messages surface', () => {
   afterEach(() => {
@@ -52,7 +49,7 @@ describe('real request path, Anthropic messages surface', () => {
       {
         max_tokens: 128,
         messages: [{ content: 'What is the weather?', role: 'user' }],
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-6-thinking',
         system: 'Use terse phrasing.',
         stream: false,
       } as never,
@@ -87,7 +84,7 @@ describe('real request path, Anthropic messages surface', () => {
       {
         max_tokens: 16,
         messages: [{ content: 'hello', role: 'user' }],
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-6-thinking',
         stream: false,
       } as never,
       reply as never,
@@ -231,7 +228,7 @@ describe('real request path, Anthropic messages surface', () => {
     const response = await anthropicService.handleAnthropicMessages({
       max_tokens: 32,
       messages: [{ content: 'read it', role: 'user' }],
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6-thinking',
       stream: false,
       tools: [{ name: 'Read', input_schema: { type: 'object' } }],
     } as never);
@@ -389,7 +386,7 @@ describe('real request path, Anthropic messages surface', () => {
       {
         max_tokens: 16,
         messages: [{ content: '.', role: 'user' }],
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-6-thinking',
         stream: false,
       } as never,
       reply as never,
@@ -425,7 +422,7 @@ describe('real request path, Anthropic messages surface', () => {
     const result = await anthropicService.handleAnthropicMessages({
       max_tokens: 128,
       messages: [{ content: 'stream please', role: 'user' }],
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6-thinking',
       stream: true,
     } as never);
     const payload = await collect(result as Observable<string>);
@@ -462,7 +459,7 @@ describe('real request path, Anthropic messages surface', () => {
     const result = await anthropicService.handleAnthropicMessages({
       max_tokens: 32,
       messages: [{ content: 'read it', role: 'user' }],
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6-thinking',
       stream: true,
       tools: [{ name: 'Read', input_schema: { type: 'object' } }],
     } as never);
@@ -499,7 +496,7 @@ describe('real request path, Anthropic messages surface', () => {
       {
         max_tokens: 16,
         messages: [{ content: 'hello', role: 'user' }],
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-6-thinking',
         stream: false,
       } as never,
       reply as never,
@@ -606,7 +603,7 @@ describe('real request path, Anthropic messages surface', () => {
     const result = await anthropicService.handleAnthropicMessages({
       max_tokens: 16,
       messages: [{ content: 'hello', role: 'user' }],
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6-thinking',
       stream: true,
     } as never);
     const completion = collect(result as Observable<string>);
@@ -632,7 +629,7 @@ describe('real request path, Anthropic messages surface', () => {
       {
         max_tokens: 16,
         messages: [{ content: 'hello', role: 'user' }],
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-6-thinking',
         stream: false,
       } as never,
       reply as never,

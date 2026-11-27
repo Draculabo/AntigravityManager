@@ -44,6 +44,7 @@ export class CloudAccountRefreshWriteback {
   }
 
   async updateToken(token: CloudTokenData): Promise<void> {
+    const { replaceNestServerAccountLeaseToken } = await import('@/server/main');
     if (
       !(await CloudAccountRepo.compareAndUpdateToken(
         this.account.id,
@@ -58,10 +59,16 @@ export class CloudAccountRefreshWriteback {
     this.account.token = token;
     this.context = captureRefreshContext(this.account);
     this.accessToken = token.access_token;
-    await this.assertCurrent();
+    CloudAccountRepo.assertCurrentAccount(this.account.id, (stored) => {
+      this.assertAccount(stored);
+      replaceNestServerAccountLeaseToken(stored);
+    });
   }
 
-  private assertAccount(current: CloudAccount | undefined, cause?: unknown): void {
+  private assertAccount(
+    current: CloudAccount | undefined,
+    cause?: unknown,
+  ): asserts current is CloudAccount {
     this.observation?.assertCurrent(cause);
     this.context.assertCurrent(current, cause);
     if (current?.token.access_token !== this.accessToken) {

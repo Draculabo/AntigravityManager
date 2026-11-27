@@ -66,16 +66,46 @@ export function createCommand(environment) {
 
 export async function connectBrowser(port, startupError) {
   const deadline = Date.now() + 60000;
+  const endpoint = `http://127.0.0.1:${port}`;
+  let debuggerReady = false;
+  let failureCategories;
   while (Date.now() < deadline) {
     const error = startupError();
     if (error) {
       throw error;
     }
     try {
-      return await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { timeout: 1000 });
-    } catch {
-      await delay(500);
+      const response = await fetch(`${endpoint}/json/version`, {
+        signal: AbortSignal.timeout(Math.min(1500, Math.max(1, deadline - Date.now()))),
+      });
+      if (response.ok) {
+        debuggerReady = true;
+        const { webSocketDebuggerUrl } = await response.json();
+        const debuggerUrl = new URL(webSocketDebuggerUrl);
+        if (
+          debuggerUrl.origin !== `ws://127.0.0.1:${port}` ||
+          !debuggerUrl.pathname.startsWith('/devtools/browser/') ||
+          debuggerUrl.username ||
+          debuggerUrl.password
+        ) {
+          throw new Error('Unexpected loopback debugger endpoint');
+        }
+        return await chromium.connectOverCDP(debuggerUrl.href, {
+          timeout: Math.min(15000, Math.max(1, deadline - Date.now())),
+        });
+      }
+    } catch (error) {
+      // The owned browser can open its port before DevTools accepts a session.
+      failureCategories = String(error).match(
+        /ENOENT|EACCES|EPERM|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ERR_INVALID_ARG_TYPE|Browser closed|Target closed|timeout|unexpected server response/gi,
+      );
     }
+    await delay(500);
   }
-  throw new Error('Client window did not become ready');
+  throw Object.assign(new Error('Client window did not become ready'), {
+    code: debuggerReady
+      ? 'acceptance-devtools-session-timeout'
+      : 'acceptance-devtools-http-timeout',
+    failureCategories: failureCategories ? [...new Set(failureCategories)] : undefined,
+  });
 }

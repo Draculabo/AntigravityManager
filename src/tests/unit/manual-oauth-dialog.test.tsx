@@ -1,9 +1,10 @@
 /** @vitest-environment happy-dom */
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { createInstance } from 'i18next';
 import { I18nextProvider } from 'react-i18next';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CloudAccountOAuthPanel } from '@/modules/cloud-account/components/CloudAccountOAuthPanel';
+import { prepareOAuthSession } from '@/modules/cloud-account/actions/cloud';
 import { mergeLocaleCatalog } from '@/localization/locale-catalog';
 import en from '@/localization/en';
 import zhCn from '@/localization/zh-CN';
@@ -15,11 +16,14 @@ import tr from '@/localization/tr';
 import viCatalog from '@/localization/vi';
 
 vi.mock('@/modules/cloud-account/hooks/useCloudAccounts', () => ({
-  useOAuthClients: () => ({ isPending: false }),
+  useOAuthClients: () => ({
+    isPending: false,
+    data: [{ key: 'test-client', label: 'Test', is_active: true }],
+  }),
   useSetActiveOAuthClient: () => ({ isPending: false }),
 }));
 vi.mock('@/modules/cloud-account/actions/cloud', () => ({
-  prepareOAuthSession: () => Promise.resolve({ sessionId: 'synthetic-session' }),
+  prepareOAuthSession: vi.fn(() => Promise.resolve({ sessionId: 'synthetic-session' })),
   waitForOAuthSession: () => new Promise(() => {}),
   cancelOAuthSession: () => Promise.resolve(),
 }));
@@ -38,6 +42,37 @@ const catalogs = [
 afterEach(cleanup);
 
 describe('manual OAuth input copy', () => {
+  it('offers the safe diagnostic reference when preparing authorization fails', async () => {
+    const diagnosticId = '11111111-1111-4111-8111-111111111111';
+    vi.mocked(prepareOAuthSession).mockRejectedValueOnce({
+      diagnostic: {
+        schemaVersion: 1,
+        diagnosticId,
+        operation: 'google-login',
+        stage: 'authorization-url',
+        reason: 'proxy-configuration-invalid',
+        accountCommit: 'not-attempted',
+        reporting: { state: 'not-reported', reason: 'disabled' },
+      },
+    });
+    const i18n = createInstance();
+    await i18n.init({ lng: 'en', resources: { en: { translation: en } } });
+    render(
+      <I18nextProvider i18n={i18n}>
+        <CloudAccountOAuthPanel
+          sessionQueueRef={{ current: Promise.resolve() }}
+          onAuthorized={vi.fn()}
+        />
+      </I18nextProvider>,
+    );
+    await screen.findByText('Check the upstream proxy settings, then retry.');
+    const details = screen.getByText('Details').closest('details')!;
+    expect(details.open).toBe(false);
+    fireEvent.click(screen.getByText('Details'));
+    expect(details.textContent).toContain(`Diagnostic ID: ${diagnosticId}`);
+    expect(details.textContent).toContain('Reason: proxy-configuration-invalid');
+  });
+
   it.each(catalogs)('renders callback guidance in $language', async ({ language, catalog }) => {
     const i18n = createInstance();
     await i18n.init({

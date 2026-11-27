@@ -16,11 +16,15 @@ import { AutoSwitchService } from '@/modules/cloud-account/services/AutoSwitchSe
 import { WeeklyWarmupService } from '@/modules/cloud-account/services/WeeklyWarmupService';
 import { cloudAccountWeeklyWarmupRunner } from '@/modules/cloud-account/services/cloud-account-weekly-warmup-runner';
 import { AccountLeaseService } from '@/server/gateway/modules/account-lease/account-lease.service';
-import { cloudAccountStoreAdapter } from '@/server/gateway/modules/account-lease/interfaces/account-lease-adapters';
+import {
+  cloudAccountStoreAdapter,
+  googleAccountLeaseUpstreamAdapter,
+} from '@/server/gateway/modules/account-lease/interfaces/account-lease-adapters';
 import { ProxyRetryService } from '@/server/gateway/shared/services/proxy-retry.service';
 import { ModelAvailabilityService } from '@/server/gateway/shared/services/model-availability.service';
 import { UpstreamRequestError } from '@/server/gateway/common/exceptions/upstream-request.exception';
 import type { CloudAccount } from '@/modules/cloud-account/types';
+import { replaceNestServerAccountLeaseToken } from '@/server/main';
 import { createAccount } from './proxy-real-path.harness';
 
 const state = vi.hoisted(() => ({ directory: '', autoSwitch: false }));
@@ -40,7 +44,10 @@ vi.mock('node:timers/promises', async (importOriginal) => ({
   setTimeout: vi.fn(async () => {}),
 }));
 vi.mock('@/modules/identity-profile/public', () => ({ prepareDesktopIdentityStorage: vi.fn() }));
-vi.mock('@/server/main', () => ({ reloadNestServerAccountLeaseCache: vi.fn(async () => true) }));
+vi.mock('@/server/main', () => ({
+  reloadNestServerAccountLeaseCache: vi.fn(async () => true),
+  replaceNestServerAccountLeaseToken: vi.fn(),
+}));
 vi.mock('@/modules/antigravity-runtime/binary-patch/agyCliPathDetection', () => ({
   detectAgyCliExecutablePath: () => null,
 }));
@@ -70,11 +77,8 @@ function blockQuota() {
 async function seed() {
   return CloudAccountRepo.insertAccount({ ...createAccount('quota-order'), quota: quota(10) });
 }
-type Owner = 'manual' | 'monitor' | 'warmup' | 'gateway';
+type Owner = 'monitor' | 'warmup' | 'gateway';
 async function run(owner: Owner, account: CloudAccount): Promise<unknown> {
-  if (owner === 'manual') {
-    return refreshAccountQuotaCore(account.id);
-  }
   if (owner === 'monitor') {
     return CloudMonitorService.poll();
   }
@@ -112,6 +116,7 @@ async function run(owner: Owner, account: CloudAccount): Promise<unknown> {
 }
 
 beforeEach(() => {
+  vi.mocked(replaceNestServerAccountLeaseToken).mockReset();
   state.directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agm-quota-order-'));
   state.autoSwitch = false;
   CloudMonitorService.resetStateForTesting();
@@ -138,6 +143,38 @@ beforeEach(() => {
     picture: '',
   });
 });
+
+it('leases a newly refreshed credential from an already-running gateway', async () => {
+  const initial = createAccount('quota-refresh-live-lease');
+  const account = await CloudAccountRepo.insertAccount({
+    ...initial,
+    token: { ...initial.token, expiry_timestamp: 1 },
+    quota: quota(50),
+  });
+  const lease = new AccountLeaseService(
+    cloudAccountStoreAdapter,
+    googleAccountLeaseUpstreamAdapter,
+  );
+  leases.push(lease);
+  expect(await lease.loadAccounts()).toBe(1);
+  vi.mocked(replaceNestServerAccountLeaseToken).mockImplementation((updated) => {
+    lease.replaceAccountToken(updated);
+  });
+  const exchange = vi.spyOn(GoogleAPIService, 'refreshAccessToken').mockResolvedValue({
+    access_token: 'refreshed-access',
+    refresh_token: 'refreshed-grant',
+    token_type: 'Bearer',
+    expires_in: 3600,
+  });
+
+  await refreshAccountQuotaCore(account.id);
+
+  expect(await lease.getNextToken()).toMatchObject({
+    id: account.id,
+    token: { access_token: 'refreshed-access', refresh_token: 'refreshed-grant' },
+  });
+  expect(exchange).toHaveBeenCalledTimes(1);
+});
 afterEach(async () => {
   CloudMonitorService.stop();
   await CloudMonitorService.drain();
@@ -151,7 +188,22 @@ afterEach(async () => {
 });
 
 describe('quota observations across owners with native SQLite', () => {
-  it.each(['manual', 'monitor', 'warmup', 'gateway'] as const)(
+  it('joins an in-flight manual refresh for the same account', async () => {
+    const account = await seed();
+    const blocked = blockQuota();
+    const first = observe(refreshAccountQuotaCore(account.id));
+    await blocked.entered;
+    const second = observe(refreshAccountQuotaCore(account.id));
+    blocked.response.resolve(quota(20));
+    const results = await Promise.all([first, second]);
+    expect(results).toEqual([
+      { value: expect.objectContaining({ quota: quota(20) }) },
+      { value: expect.objectContaining({ quota: quota(20) }) },
+    ]);
+    expect(GoogleAPIService.fetchQuota).toHaveBeenCalledOnce();
+  });
+
+  it.each(['monitor', 'warmup', 'gateway'] as const)(
     'discards an old %s result after a newer manual refresh has finished',
     async (owner) => {
       const account = await seed();
@@ -226,7 +278,7 @@ describe('quota observations across owners with native SQLite', () => {
       try {
         await blocked.entered;
         vi.mocked(GoogleAPIService.fetchQuota).mockRejectedValueOnce(new Error('FORBIDDEN'));
-        await refreshAccountQuotaCore(account.id);
+        await run('monitor', account);
         const expected = await CloudAccountRepo.getAccount(account.id);
         if (result === 'success') {
           blocked.response.resolve(quota(20));
@@ -249,7 +301,7 @@ describe('quota observations across owners with native SQLite', () => {
     const pending = observe(refreshAccountQuotaCore(account.id));
     try {
       await blocked.entered;
-      await refreshAccountQuotaCore(account.id);
+      await run('monitor', account);
       const expected = await CloudAccountRepo.getAccount(account.id);
       blocked.response.reject(new Error('FORBIDDEN'));
       expect(await pending).toMatchObject({
@@ -267,14 +319,15 @@ describe('quota observations across owners with native SQLite', () => {
     const first = observe(refreshAccountQuotaCore(account.id));
     await older.entered;
     const newer = blockQuota();
-    const second = observe(refreshAccountQuotaCore(account.id));
+    const second = run('monitor', account);
     try {
       await newer.entered;
       older.response.resolve(quota(20));
       expect(await first).toMatchObject({ value: { quota: quota(20) } });
       expect((await CloudAccountRepo.getAccount(account.id))?.quota).toEqual(quota(20));
       newer.response.resolve(quota(80));
-      expect(await second).toMatchObject({ value: { quota: quota(80) } });
+      await second;
+      expect((await CloudAccountRepo.getAccount(account.id))?.quota).toEqual(quota(80));
     } finally {
       older.response.resolve(quota(20));
       newer.response.resolve(quota(80));
@@ -294,7 +347,7 @@ describe('quota observations across owners with native SQLite', () => {
     const pending = observe(refreshAccountQuotaCore(account.id));
     try {
       await entered.promise;
-      await refreshAccountQuotaCore(account.id);
+      await run('monitor', account);
       const expected = await CloudAccountRepo.getAccount(account.id);
       resume.resolve();
       expect(await pending).toMatchObject({
@@ -320,7 +373,7 @@ describe('quota observations across owners with native SQLite', () => {
     const pending = observe(refreshAccountQuotaCore(account.id));
     try {
       await entered.promise;
-      await refreshAccountQuotaCore(account.id);
+      await run('monitor', account);
       const expected = await CloudAccountRepo.getAccount(account.id);
       resume.resolve();
       expect(await pending).toMatchObject({
@@ -344,7 +397,7 @@ describe('quota observations across owners with native SQLite', () => {
       await resume.promise;
       return null;
     });
-    const second = observe(refreshAccountQuotaCore(account.id));
+    const second = run('monitor', account);
     try {
       await entered.promise;
       old.response.resolve(quota(20));
@@ -353,7 +406,8 @@ describe('quota observations across owners with native SQLite', () => {
       });
       expect((await CloudAccountRepo.getAccount(account.id))?.quota).toEqual(quota(10));
       resume.resolve();
-      expect(await second).toMatchObject({ value: { quota: quota(80) } });
+      await second;
+      expect((await CloudAccountRepo.getAccount(account.id))?.quota).toEqual(quota(80));
     } finally {
       old.response.resolve(quota(20));
       resume.resolve();
@@ -456,7 +510,7 @@ describe('quota observations across owners with native SQLite', () => {
     try {
       await entered.promise;
       vi.mocked(GoogleAPIService.fetchQuota).mockRejectedValueOnce(new Error('FORBIDDEN'));
-      await refreshAccountQuotaCore(account.id);
+      await run('monitor', account);
       const expected = await CloudAccountRepo.getAccount(account.id);
       resume.resolve();
       expect(await pending).toMatchObject({

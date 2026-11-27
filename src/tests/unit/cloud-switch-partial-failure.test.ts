@@ -3,6 +3,7 @@ import { switchCloudAccountCore } from '@/modules/cloud-account/services/cloud-a
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import { accountOwnerEvents } from '@/modules/cloud-account/services/account-owner-events.service';
 import { logger } from '@/shared/logging/logger';
+import { WindowsAgyCredentialWriteError } from '@/modules/antigravity-runtime';
 import { account } from '../support/cloud-account-switch-owner-fixture';
 import { switchContext } from '../support/runtime-switch-fixture';
 
@@ -17,7 +18,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/modules/cloud-account/persistence/cloudHandler', () => ({
   CloudAccountRepo: { getAccount: vi.fn(), finalizeSwitch: vi.fn() },
 }));
-vi.mock('@/modules/antigravity-runtime', () => ({
+vi.mock('@/modules/antigravity-runtime', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/modules/antigravity-runtime')>()),
   prepareLaunchContext: mocks.prepare,
   prepareClientAccountWrite: vi.fn(async () => ({
     storage: 'credential-store',
@@ -64,6 +66,23 @@ afterEach(() => {
 });
 
 describe('cloud switch partial effects and recovery diagnostics', () => {
+  it('reports failed Windows agy recovery with its primary and recovery causes', async () => {
+    const primary = Object.assign(new Error('fixture write denied'), { code: 'EACCES' });
+    const recovery = Object.assign(new Error('fixture recovery failed'), { code: 'EIO' });
+    mocks.write.mockRejectedValueOnce(new WindowsAgyCredentialWriteError(primary, [recovery]));
+    await expect(switchCloudAccountCore(account.id, 'agy')).rejects.toMatchObject({
+      switchCode: 'target-write-failed',
+      diagnostic: {
+        rollback: 'failed',
+        causes: expect.arrayContaining([
+          { reason: 'permission-denied', nativeCode: 'EACCES' },
+          { reason: 'storage-failed', nativeCode: 'EIO' },
+        ]),
+      },
+    });
+    expect(CloudAccountRepo.finalizeSwitch).not.toHaveBeenCalled();
+  });
+
   it('stops after an uncertain credential write without rolling back untouched terms', async () => {
     const failure = Object.assign(new Error('private credential write detail'), { code: 'EACCES' });
     mocks.write.mockImplementationOnce(async () => {

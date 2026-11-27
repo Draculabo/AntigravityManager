@@ -103,7 +103,7 @@ describe('protocol upstream identity selection', () => {
       expect(options?.recoveryBudget).toEqual({
         attempted: false,
         deadlineAt: expect.any(Number),
-        thinkingOnlyEnabled: false,
+        thinkingOnlyEnabled: true,
       });
       expect(options?.canRecoverUpstreamSession?.()).toBe(true);
       lease.isLeaseEligible.mockReturnValue(false);

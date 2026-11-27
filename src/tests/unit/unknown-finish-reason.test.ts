@@ -14,15 +14,10 @@ import {
   createUpstream,
 } from './proxy-real-path.harness';
 
-vi.mock(
-  '@/server/gateway/common/utils/request-user-agent',
-  async (importOriginal) => ({
-    ...(await importOriginal<
-      typeof import('@/server/gateway/common/utils/request-user-agent')
-    >()),
-    resolveRequestUserAgent: async () => 'controlled-terminal-test/0.0.0',
-  }),
-);
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/server/gateway/common/utils/request-user-agent')>()),
+  resolveRequestUserAgent: async () => 'controlled-terminal-test/0.0.0',
+}));
 
 type Protocol = 'chat' | 'responses' | 'messages' | 'gemini';
 
@@ -47,7 +42,7 @@ function dispatch(gateway: ReturnType<typeof createGateway>, protocol: Protocol,
   }
   if (protocol === 'messages') {
     return gateway.anthropicService.handleAnthropicMessages({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6-thinking',
       max_tokens: 32,
       stream,
       messages: [{ role: 'user', content: 'controlled input' }],
@@ -174,7 +169,7 @@ describe.each(['chat', 'responses', 'messages', 'gemini'] as const)(
       } else if (protocol === 'messages') {
         await new AnthropicController(gateway.anthropicService).anthropicMessages(
           {
-            model: 'claude-sonnet-4-5',
+            model: 'claude-sonnet-4-6-thinking',
             max_tokens: 32,
             messages: [{ role: 'user', content: 'controlled input' }],
           },

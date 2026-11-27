@@ -52,6 +52,47 @@ export class CloudAccountSwitchContext {
     await this.assertCurrent();
   }
 
+  async updateRefreshedToken(token: CloudTokenData, nowSeconds: number): Promise<void> {
+    const previous = this.account.token;
+    try {
+      await this.updateToken(token);
+    } catch (error) {
+      if (
+        !(error instanceof CloudAccountRefreshContextChangedError) ||
+        this.account.token !== previous ||
+        token.refresh_token !== previous.refresh_token
+      ) {
+        throw error;
+      }
+      const stored = await CloudAccountRepo.getAccount(this.account.id);
+      if (
+        !stored ||
+        stored.health?.oauth?.refresh_blocked ||
+        stored.health?.service_disabled ||
+        (stored.health?.validation?.next_probe_at_ms ?? 0) > nowSeconds * 1000 ||
+        stored.token.expiry_timestamp <= Math.max(nowSeconds + 300, previous.expiry_timestamp) ||
+        !stored.token.access_token ||
+        stored.token.access_token === previous.access_token
+      ) {
+        throw error;
+      }
+      // A newer access token can win while the grant, routing and profile still belong to this switch.
+      this.guard({
+        ...stored,
+        token: {
+          ...stored.token,
+          access_token: previous.access_token,
+          id_token: previous.id_token,
+          expires_in: previous.expires_in,
+          expiry_timestamp: previous.expiry_timestamp,
+        },
+      });
+      this.account.token = stored.token;
+      this.expected = this.capture();
+      await this.assertCurrent();
+    }
+  }
+
   /** Called synchronously after this switch's own initial binding, without an intervening await. */
   acceptOwnProfile(): void {
     this.expected = this.capture();

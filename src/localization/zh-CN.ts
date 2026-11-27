@@ -517,7 +517,7 @@ const zhCn = {
     'session-title-search': '搜索会话标题',
     'session-title-no-matches': '此日期范围内没有匹配的会话',
     'session-title-more': '查看更多会话',
-    'usage-reasoning-in-output': '计入输出',
+    'usage-reasoning-source': '上游报告值',
     'usage-attempt-count': '{{value}} 次上游尝试',
     'usage-chart-style': '图表样式',
     'usage-chart-bars': '柱状图',

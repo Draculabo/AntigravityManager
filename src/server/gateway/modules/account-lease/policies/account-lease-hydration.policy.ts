@@ -12,6 +12,7 @@ import { OAuthTokenRefreshError } from '@/modules/cloud-account/services/GoogleA
 import type { OAuthRecoveryJournal } from '@/modules/cloud-account/persistence/oauth-recovery-journal';
 import { AccountLeaseProjectPolicy } from './account-lease-project.policy';
 import { captureLeaseWriteGuard, leaseStoredContext } from './account-lease-writeback';
+import { CloudAccountRefreshContextChangedError } from '@/modules/cloud-account/services/cloud-account-refresh-context';
 
 type AccountLeaseHydrationLogger = Pick<Logger, 'debug' | 'error' | 'log' | 'warn'>;
 
@@ -429,7 +430,14 @@ export class AccountLeaseHydrationPolicy {
   async retryFailedPersistence(): Promise<void> {
     await this.drainBackgroundPersistence();
     for (const [accountId, pending] of this.failedPersistence) {
-      await this.saveTokenState(accountId, pending.token, pending.expected, pending.recoveryName);
+      try {
+        await this.saveTokenState(accountId, pending.token, pending.expected, pending.recoveryName);
+      } catch (error) {
+        if (!(error instanceof CloudAccountRefreshContextChangedError)) {
+          throw error;
+        }
+        // Superseded work belongs to the recovery journal, not the lease reload queue.
+      }
       if (this.failedPersistence.get(accountId) === pending) {
         this.failedPersistence.delete(accountId);
       }
@@ -486,6 +494,9 @@ export class AccountLeaseHydrationPolicy {
         }
       });
     const task = write.catch((error: unknown) => {
+      if (!strict && error instanceof CloudAccountRefreshContextChangedError) {
+        return;
+      }
       if (!strict && (!isCurrent || isCurrent())) {
         const earlier = this.failedPersistence.get(accountId);
         const chained =

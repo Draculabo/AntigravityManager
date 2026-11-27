@@ -38,8 +38,11 @@ All retained history adapts its trend intervals to the saved time span. The hour
 activity grid covers the latest 31 days inside that span.
 
 Overview ranks accounts and actual models by observed input plus output tokens.
-Cache and reasoning detail is already included in the corresponding input or output
-counter. Observed totals sum known terminal physical attempts. Requests with missing
+Cache and reasoning are displayed separately as detail. For new Gemini observations,
+physical totals include separately reported tool prompts in input and thinking in
+output when the upstream total reconciles those counters. Historical counters retain their
+original values when the provider breakdown was not recorded. Observed totals sum
+known terminal physical attempts. Requests with missing
 input or output remain visible in the incomplete count. A request is counted once in
 the overall total and once per relevant account or model group. Requests with two or
 more generation attempts count as retried.
@@ -127,7 +130,11 @@ Audit schema 5 stores actual upstream input, output, cached and reasoning counte
 on each physical attempt. The selected lease snapshots its account incarnation as
 a SHA256 digest at send time. Unary responses and raw parsed stream frames supply
 the counters before semantic validation, retries or client cancellation can hide
-them. Existing once-only completion owns the terminal write. Partial or missing
+them. The audit merges raw counter updates across the attempt before it reconciles the
+latest Gemini total. When the total confirms separate tool prompts or thinking, it adds
+them to physical input or output respectively. Thinking remains available for the detailed
+breakdown. The parent request continues to show the
+gateway response counters. Existing once-only completion owns the terminal write. Partial or missing
 provider usage stays incomplete; no estimate or parent-response total fills it.
 
 The bounded current-cycle query selects exact physical model IDs and verified Google

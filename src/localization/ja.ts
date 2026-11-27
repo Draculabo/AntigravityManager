@@ -515,6 +515,8 @@ const ja = {
     'dual-ttft-diff': '{{winner}} の応答が {{diff}} 秒早い (TTFT)',
   },
   traffic: {
+    'usage-reasoning': '推論トークン',
+    'usage-reasoning-source': 'モデル提供元の報告値',
     'detail-load-failed': 'このリクエストを読み込めませんでした。もう一度お試しください。',
     'detail-not-found': 'このレコードは利用できなくなりました。消去された可能性があります。',
     fields: {

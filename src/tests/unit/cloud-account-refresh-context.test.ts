@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { isEqual } from 'lodash-es';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import { CloudAccountRefreshService } from '@/modules/cloud-account/services/CloudAccountRefreshService';
 import {
@@ -14,7 +15,7 @@ import {
 import { createAccount } from './proxy-real-path.harness';
 
 vi.mock('@/modules/cloud-account/persistence/cloudHandler', () => ({
-  CloudAccountRepo: { getAccount: vi.fn(), updateHealth: vi.fn() },
+  CloudAccountRepo: { getAccount: vi.fn(), updateHealth: vi.fn(), compareAndUpdateHealth: vi.fn() },
 }));
 vi.mock('@/server/main', () => ({
   evictNestServerAccountLeaseAccount: vi.fn(),
@@ -54,6 +55,16 @@ beforeEach(() => {
       account.health = health;
     }
   });
+  vi.mocked(CloudAccountRepo.compareAndUpdateHealth).mockImplementation(
+    async (_id, token, expected, health, guard) => {
+      if (!account || !isEqual(account.token, token) || !isEqual(account.health, expected)) {
+        return false;
+      }
+      guard?.(account);
+      account.health = health;
+      return true;
+    },
+  );
 });
 afterEach(async () => {
   await Promise.allSettled(operations.splice(0));

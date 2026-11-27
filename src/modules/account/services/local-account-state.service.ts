@@ -1,4 +1,8 @@
-import { prepareLaunchContext, prepareClientAccountWrite } from '@/modules/antigravity-runtime';
+import {
+  prepareLaunchContext,
+  prepareClientAccountWrite,
+  WindowsAgyCredentialWriteError,
+} from '@/modules/antigravity-runtime';
 import { credentialsFromAccountBackup } from '../persistence/snapshotCredentials';
 import {
   migrateAccountBackupFile,
@@ -204,6 +208,7 @@ export async function switchAccount(
         stage: operation.lastStage || 'account-load',
         reason: 'unknown',
         target: appTarget ?? 'classic',
+        ...(error instanceof WindowsAgyCredentialWriteError ? { rollback: error.rollback } : {}),
       });
       throw Object.assign(
         error instanceof Error ? error : new Error('Local account switch failed', { cause: error }),

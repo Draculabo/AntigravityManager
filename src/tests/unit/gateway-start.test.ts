@@ -27,6 +27,7 @@ const {
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
+    shareable: vi.fn(),
   },
 }));
 
@@ -56,12 +57,9 @@ vi.mock('@/shared/logging/logger', () => ({
   logger: mockLogger,
 }));
 
-vi.mock(
-  '@/server/gateway/modules/openai/responses/openai-responses-websocket.server',
-  () => ({
-    attachOpenAIResponsesWebSocketServer: mockAttachResponsesWebSocketServer,
-  }),
-);
+vi.mock('@/server/gateway/modules/openai/responses/openai-responses-websocket.server', () => ({
+  attachOpenAIResponsesWebSocketServer: mockAttachResponsesWebSocketServer,
+}));
 
 describe('gateway server startup', () => {
   beforeEach(() => {
@@ -173,6 +171,7 @@ describe('gateway server startup', () => {
       .mockResolvedValue(undefined);
     mockCreate.mockResolvedValue({
       register: vi.fn().mockResolvedValue(undefined),
+      getHttpAdapter: vi.fn(() => ({ getInstance: () => ({ addHook: mockAddHook }) })),
       enableCors: vi.fn(),
       listen: vi.fn().mockResolvedValue(undefined),
       close,
@@ -181,7 +180,12 @@ describe('gateway server startup', () => {
     });
     const auditClose = vi.spyOn(trafficAuditService, 'close').mockResolvedValue(undefined);
     const thoughtClose = vi.spyOn(thoughtStoreService, 'close').mockResolvedValue(undefined);
-    expect((await bootstrapNestServer(DEFAULT_APP_CONFIG.proxy)).success).toBe(true);
+    expect(await bootstrapNestServer(DEFAULT_APP_CONFIG.proxy)).toEqual({
+      success: true,
+      port: DEFAULT_APP_CONFIG.proxy.port,
+      base_url: 'http://localhost:8045',
+      listen_address: '127.0.0.1',
+    });
     await expect(stopNestServer()).resolves.toBe(false);
     expect(auditClose).toHaveBeenCalledOnce();
     expect(thoughtClose).toHaveBeenCalledOnce();
@@ -213,9 +217,9 @@ describe('gateway server startup', () => {
     });
     expect(listen).toHaveBeenCalledWith(8045, '127.0.0.1');
     expect(close).toHaveBeenCalledTimes(1);
-    expect(mockLogger.warn).toHaveBeenCalledWith(
-      'NestJS Proxy Server could not start: Port 8045 is already in use',
-      expect.any(Error),
+    expect(mockLogger.shareable).toHaveBeenCalledWith(
+      'warn',
+      'NestJS Proxy Server could not start: Port 8045 is already in use (EADDRINUSE)',
     );
     expect(mockLogger.error).not.toHaveBeenCalledWith(
       'Failed to start NestJS server',

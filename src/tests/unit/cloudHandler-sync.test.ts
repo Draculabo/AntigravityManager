@@ -113,6 +113,7 @@ vi.mock('@/modules/cloud-account/services/GoogleAPIService', async (importOrigin
 });
 
 vi.mock('@/modules/antigravity-runtime/credentials/antigravityCredentialStore', () => ({
+  readAgyAccountToken: vi.fn(async () => null),
   readAntigravityCredentialStoreToken: vi.fn(() => null),
   writeAntigravityCredentialStoreToken: vi.fn(),
 }));
@@ -1149,6 +1150,7 @@ describe('cloud switch fail-fast path', () => {
 
     vi.doMock('../../shared/logging/logger', () => ({
       logger: {
+        shareable: vi.fn(),
         info: vi.fn(),
         warn: vi.fn(),
         error: vi.fn(),
@@ -1188,6 +1190,7 @@ describe('cloud switch fail-fast path', () => {
         expiry_timestamp: expect.any(Number),
       }),
       expect.any(Function),
+      true,
     );
     expect(applyDeviceProfileMock).toHaveBeenCalledTimes(1);
     expect(applyDeviceProfileMock).toHaveBeenCalledWith(account.device_profile, undefined, {

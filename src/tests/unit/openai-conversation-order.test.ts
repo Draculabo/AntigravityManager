@@ -79,7 +79,7 @@ describe('OpenAI conversation order compatibility', () => {
     expect(instruction).not.toContain(billingLine);
   });
 
-  it('prepends a user turn when history starts with an assistant tool call', () => {
+  it('preserves a complete leading tool exchange without adding a turn', () => {
     const input = toOpenAIGenerationInput({
       model: 'gemini-3-flash',
       messages: [
@@ -111,12 +111,8 @@ describe('OpenAI conversation order compatibility', () => {
       userAgent: 'agent',
     }).request.contents;
 
-    expect(contents.map((content) => content.role)).toEqual(['user', 'model', 'user']);
-    expect(contents[0]).toEqual({
-      role: 'user',
-      parts: [{ text: 'Continue the task.' }],
-    });
-    expect(contents[1]).toMatchObject({
+    expect(contents.map((content) => content.role)).toEqual(['model', 'user']);
+    expect(contents[0]).toMatchObject({
       role: 'model',
       parts: [
         {
@@ -128,7 +124,7 @@ describe('OpenAI conversation order compatibility', () => {
         },
       ],
     });
-    expect(contents[2]).toEqual({
+    expect(contents[1]).toEqual({
       role: 'user',
       parts: [
         {
@@ -142,7 +138,7 @@ describe('OpenAI conversation order compatibility', () => {
     });
   });
 
-  it('adds a user turn when system messages are the only effective input', () => {
+  it('does not fabricate user input for system-only history', () => {
     const input = toOpenAIGenerationInput({
       model: 'gemini-3-flash',
       messages: [{ role: 'system', content: 'Use tools when needed.' }],
@@ -153,17 +149,11 @@ describe('OpenAI conversation order compatibility', () => {
       userAgent: 'agent',
     }).request.contents;
 
-    expect(contents).toEqual([
-      {
-        role: 'user',
-        parts: [{ text: 'Continue' }],
-      },
-    ]);
+    expect(contents).toEqual([]);
   });
 
-  it('normalizes the stale Codex model identity only in OpenAI system instructions', () => {
+  it('preserves explicit Codex identity in system instructions and user content', () => {
     const staleIdentity = 'You are Codex, an agent based on GPT-5.';
-    const genericIdentity = 'You are Codex, an agent.';
     const chatRequest = buildResponsesChatRequest({
       model: 'gpt-5-codex',
       instructions: `Top-level: ${staleIdentity}`,
@@ -178,8 +168,7 @@ describe('OpenAI conversation order compatibility', () => {
     if (typeof input.system !== 'string') {
       throw new Error('Expected an OpenAI system prompt string');
     }
-    expect(input.system).toContain(genericIdentity);
-    expect(input.system).not.toContain(staleIdentity);
+    expect(input.system).toContain(staleIdentity);
 
     const upstream = buildAntigravityGenerationRequest(input, {
       projectId: 'project',
@@ -189,8 +178,7 @@ describe('OpenAI conversation order compatibility', () => {
       .map((part) => part.text)
       .join('\n');
 
-    expect(systemText).toContain(genericIdentity);
-    expect(systemText).not.toContain(staleIdentity);
+    expect(systemText).toContain(staleIdentity);
     expect(upstream.request.contents).toContainEqual({
       role: 'user',
       parts: [{ text: `User echo: ${staleIdentity}` }],

@@ -178,7 +178,7 @@ describe('AccountLeaseService parity scheduling replay', () => {
         preferred_account_id: 'acc-2',
       }),
     );
-    expect((await service.getNextToken({ model: 'gemini-2.5-flash' }))?.id).toBe('acc-2');
+    expect((await service.getNextToken({ model: 'gemini-3-flash' }))?.id).toBe('acc-2');
   });
 
   it('rotates sticky account when limited in balance mode', async () => {
@@ -192,18 +192,18 @@ describe('AccountLeaseService parity scheduling replay', () => {
     );
     const first = await service.getNextToken({
       sessionKey: 'openai:user-1',
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash',
     });
     expect(first?.id).toBe('acc-1');
     await service.markFromUpstreamError({
       accountIdOrEmail: 'acc-1',
       status: 429,
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash',
       body: JSON.stringify({ error: { details: [{ reason: 'RATE_LIMIT_EXCEEDED' }] } }),
     });
     const second = await service.getNextToken({
       sessionKey: 'openai:user-1',
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash',
     });
     expect(second?.id).toBe('acc-2');
   });
@@ -219,14 +219,15 @@ describe('AccountLeaseService parity scheduling replay', () => {
     await service.markFromUpstreamError({
       accountIdOrEmail: 'acc-1',
       status: 429,
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash',
       body: JSON.stringify({
         error: { details: [{ reason: 'QUOTA_EXHAUSTED', metadata: { quotaResetDelay: '30s' } }] },
       }),
     });
-    expect((await service.getNextToken({ model: 'gemini-2.5-flash' }))?.id).toBe('acc-2');
+    expect((await service.getNextToken({ model: 'gemini-3-flash' }))?.id).toBe('acc-2');
     expect(
-      (await service.getNextToken({ model: 'gemini-2.5-pro', excludeAccountIds: ['acc-2'] }))?.id,
+      (await service.getNextToken({ model: 'gemini-3.1-pro-low', excludeAccountIds: ['acc-2'] }))
+        ?.id,
     ).toBe('acc-1');
   });
 
@@ -239,7 +240,7 @@ describe('AccountLeaseService parity scheduling replay', () => {
   it('moves to a second eligible account after the preferred stored account disappears', async () => {
     setServerConfig(createProxyConfig({ preferred_account_id: 'acc-1' }));
     fixture.accounts.delete('acc-1');
-    const lease = await service.getNextToken({ model: 'gemini-2.5-flash' });
+    const lease = await service.getNextToken({ model: 'gemini-3-flash' });
     expect(lease?.id).toBe('acc-2');
   });
 

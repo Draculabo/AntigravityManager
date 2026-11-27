@@ -15,7 +15,7 @@ describe('active Responses history ownership', () => {
 
   it('does not reintroduce an old completion after compaction and failed generation', async () => {
     const protocol = new OpenAIResponsesWebSocketProtocol();
-    protocol.accept({ type: 'response.create', model: 'fixture', input: [] });
+    await protocol.accept({ type: 'response.create', model: 'fixture', input: [] });
     protocol.complete({
       id: 'old',
       output: [{ id: 'old-answer', type: 'message', role: 'assistant', content: 'old answer' }],
@@ -28,7 +28,7 @@ describe('active Responses history ownership', () => {
 
   it('merges an ID-less completion only once across generation failures', async () => {
     const protocol = new OpenAIResponsesWebSocketProtocol();
-    protocol.accept({ type: 'response.create', model: 'fixture', input: [] });
+    await protocol.accept({ type: 'response.create', model: 'fixture', input: [] });
     const output = { type: 'message', role: 'assistant', content: 'answer' };
     protocol.complete({ id: 'old', output: [output] });
     const one = { type: 'message', role: 'user', content: 'one' };
@@ -39,7 +39,7 @@ describe('active Responses history ownership', () => {
 
   it('does not enumerate historical tool calls to repair one late result', async () => {
     const protocol = new OpenAIResponsesWebSocketProtocol();
-    protocol.accept({ type: 'response.create', model: 'fixture', input: [] });
+    await protocol.accept({ type: 'response.create', model: 'fixture', input: [] });
     const calls = Array.from({ length: 100 }, (_, index) => ({
       type: 'function_call',
       call_id: `call-${index}`,
@@ -74,7 +74,7 @@ describe('active Responses history ownership', () => {
         throw new Error('fixture preflight failed');
       }
     });
-    protocol.accept({ type: 'response.create', model: 'fixture', input: [] });
+    await protocol.accept({ type: 'response.create', model: 'fixture', input: [] });
     const output = { id: 'answer', type: 'message', role: 'assistant', content: 'answer' };
     protocol.complete({ id: 'completed', output: [output] });
     await expect(
@@ -90,13 +90,13 @@ describe('active Responses history ownership', () => {
 
   it('does not restore a completion discarded by complete transcript replacement', async () => {
     const protocol = new OpenAIResponsesWebSocketProtocol();
-    protocol.accept({ type: 'response.create', model: 'fixture', input: [] });
+    await protocol.accept({ type: 'response.create', model: 'fixture', input: [] });
     protocol.complete({
       id: 'old',
       output: [{ id: 'old-answer', type: 'message', role: 'assistant', content: 'old' }],
     });
     const replacement = { role: 'assistant', content: 'replacement' };
-    protocol.accept({ type: 'response.append', model: 'fixture', input: [replacement] });
+    await protocol.accept({ type: 'response.append', model: 'fixture', input: [replacement] });
     const next = { type: 'message', role: 'user', content: 'continue' };
     expect(await input(protocol, [next])).toEqual([replacement, next]);
   });

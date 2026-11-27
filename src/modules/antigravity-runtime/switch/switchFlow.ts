@@ -232,6 +232,7 @@ export async function executeSwitchFlow(options: SwitchFlowOptions): Promise<voi
             useCredentialStore,
             timeoutMs: processExitTimeoutMs,
             terms: classicTerms,
+            assertCurrent: options.assertCurrent,
             write: writeSwitchState,
             finalize: afterSwitchSuccess || (async () => {}),
             onStage: (next) => options.onDiagnosticStage?.(next),

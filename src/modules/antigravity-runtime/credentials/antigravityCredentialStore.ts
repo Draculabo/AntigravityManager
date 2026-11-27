@@ -19,7 +19,8 @@ import {
 } from './macosCredentialStore';
 import { readLinuxIdeCredentialSnapshot } from './linuxIdeCredentialStore';
 
-const WINDOWS_CREDENTIAL_TARGET = 'gemini:antigravity';
+export const WINDOWS_CREDENTIAL_TARGET = 'gemini:antigravity';
+export const WINDOWS_CREDENTIAL_USERNAME = 'antigravity';
 
 export interface CredentialStoreToken {
   accessToken?: string;
@@ -363,7 +364,7 @@ export interface CredentialStoreWriteOptions {
 
 /** Confirm the whole Windows credential, including identity metadata omitted by token reads. */
 export async function writeVerifiedWindowsAntigravityCredential(payload: string): Promise<void> {
-  await writeWindowsCredential(WINDOWS_CREDENTIAL_TARGET, 'antigravity', payload);
+  await writeWindowsCredential(WINDOWS_CREDENTIAL_TARGET, WINDOWS_CREDENTIAL_USERNAME, payload);
   if ((await readWindowsCredential(WINDOWS_CREDENTIAL_TARGET)) !== payload) {
     throw new CredentialReadbackError(
       'Windows Antigravity credential write could not be confirmed',
@@ -401,7 +402,7 @@ export async function writeAntigravityCredentialStoreToken(
 
 async function writeToSystemCredentialStore(payload: string): Promise<void> {
   if (process.platform === 'win32') {
-    await writeWindowsCredential(WINDOWS_CREDENTIAL_TARGET, 'antigravity', payload);
+    await writeWindowsCredential(WINDOWS_CREDENTIAL_TARGET, WINDOWS_CREDENTIAL_USERNAME, payload);
     return;
   }
   if (process.platform === 'linux' && isSecretToolAvailable()) {

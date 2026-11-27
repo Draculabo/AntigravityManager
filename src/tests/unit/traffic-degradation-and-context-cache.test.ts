@@ -12,6 +12,7 @@ import { TrafficAuditSummarySchema } from '@/modules/proxy-gateway/audit/traffic
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
+    i18n: { language: 'en' },
     t: (key: string, options?: Record<string, unknown>) => {
       if (key === 'traffic.recovered-badge' && options?.count) {
         return `Recovered (${options.count} attempts)`;

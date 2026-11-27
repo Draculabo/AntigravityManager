@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { isEqual } from 'lodash-es';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import { GoogleAPIService } from '@/modules/cloud-account/services/GoogleAPIService';
 import {
@@ -34,12 +35,16 @@ beforeEach(() => {
   vi.mocked(CloudAccountRepo.getAccount).mockImplementation(async () =>
     current ? structuredClone(current) : undefined,
   );
-  vi.mocked(CloudAccountRepo.updateToken).mockImplementation(async (_id, token, guard) => {
-    guard?.(current);
-    if (current) {
+  vi.mocked(CloudAccountRepo.compareAndUpdateToken).mockImplementation(
+    async (_id, expected, token, guard) => {
+      if (!current || !isEqual(current.token, expected)) {
+        return false;
+      }
+      guard?.(current);
       current.token = structuredClone(token);
-    }
-  });
+      return true;
+    },
+  );
 });
 
 describe('official-client switch ownership', () => {
@@ -70,7 +75,7 @@ describe('official-client switch ownership', () => {
       await expect(ensureCloudSwitchProjectReady(snapshot, context)).rejects.toMatchObject({
         name: 'CloudAccountRefreshContextChangedError',
       });
-      expect(CloudAccountRepo.updateToken).not.toHaveBeenCalled();
+      expect(CloudAccountRepo.compareAndUpdateToken).not.toHaveBeenCalled();
     },
   );
 
@@ -83,7 +88,7 @@ describe('official-client switch ownership', () => {
     await expect(
       ensureCloudSwitchProjectReady(snapshot, new CloudAccountSwitchContext(snapshot)),
     ).rejects.toMatchObject({ name: 'CloudAccountRefreshContextChangedError', cause });
-    expect(CloudAccountRepo.updateToken).not.toHaveBeenCalled();
+    expect(CloudAccountRepo.compareAndUpdateToken).not.toHaveBeenCalled();
   });
 
   it('keeps discovery best effort for an unchanged account', async () => {
@@ -91,7 +96,7 @@ describe('official-client switch ownership', () => {
       new Error('Synthetic unavailable'),
     );
     await ensureCloudSwitchProjectReady(snapshot, new CloudAccountSwitchContext(snapshot));
-    expect(CloudAccountRepo.updateToken).not.toHaveBeenCalled();
+    expect(CloudAccountRepo.compareAndUpdateToken).not.toHaveBeenCalled();
     expect(current).toEqual(snapshot);
   });
 
@@ -115,24 +120,66 @@ describe('official-client switch ownership', () => {
 
   it('rejects a whole-token write when a replacement arrives inside the write boundary', async () => {
     const context = new CloudAccountSwitchContext(snapshot);
-    vi.mocked(CloudAccountRepo.updateToken).mockImplementationOnce(async (_id, _token, guard) => {
+    vi.mocked(CloudAccountRepo.compareAndUpdateToken).mockImplementationOnce(async () => {
       if (!current) {
         throw new Error('Missing fixture');
       }
       current.token.refresh_token = 'replacement-grant';
-      guard?.(current);
+      return false;
     });
     await expect(
       context.updateToken({ ...snapshot.token, access_token: 'obsolete-access' }),
     ).rejects.toMatchObject({ name: 'CloudAccountRefreshContextChangedError' });
     expect(current?.token.refresh_token).toBe('replacement-grant');
+    expect(current?.token.access_token).toBe('synthetic-access');
     expect(snapshot.token.access_token).toBe('synthetic-access');
   });
+
+  it('uses the committed background refresh when the same switch grant wins the token-write race', async () => {
+    snapshot.token.expiry_timestamp = 100;
+    current = structuredClone(snapshot);
+    const context = new CloudAccountSwitchContext(snapshot);
+    const committed = { ...snapshot.token, access_token: 'monitor-access', expiry_timestamp: 5000 };
+    current.token = committed;
+
+    await context.updateRefreshedToken({ ...committed, access_token: 'switch-access' }, 1000);
+
+    expect(snapshot.token).toEqual(committed);
+    expect(current.token).toEqual(committed);
+    expect(CloudAccountRepo.compareAndUpdateToken).not.toHaveBeenCalled();
+    await context.assertCurrent();
+  });
+
+  it.each(['grant', 'project', 'quarantine', 'rotated-result'] as const)(
+    'refuses to adopt a competing refresh across a %s change',
+    async (change) => {
+      snapshot.token.expiry_timestamp = 100;
+      current = structuredClone(snapshot);
+      const context = new CloudAccountSwitchContext(snapshot);
+      current.token = { ...snapshot.token, access_token: 'monitor-access', expiry_timestamp: 5000 };
+      const result = { ...snapshot.token, access_token: 'switch-access', expiry_timestamp: 5000 };
+      if (change === 'grant') {
+        current.token.refresh_token = 'replacement';
+      } else if (change === 'project') {
+        current.token.project_id = 'different-project';
+      } else if (change === 'quarantine') {
+        current.health = { oauth: { refresh_blocked: true } };
+      } else {
+        result.refresh_token = 'rotated-grant';
+      }
+
+      await expect(context.updateRefreshedToken(result, 1000)).rejects.toMatchObject({
+        name: 'CloudAccountRefreshContextChangedError',
+      });
+      expect(snapshot.token.access_token).toBe('synthetic-access');
+      expect(CloudAccountRepo.compareAndUpdateToken).not.toHaveBeenCalled();
+    },
+  );
 
   it('does not conceal a discovered-project persistence failure as best-effort discovery', async () => {
     const failure = new Error('Synthetic SQLite write failure');
     vi.mocked(GoogleAPIService.fetchProjectId).mockResolvedValue('next-project');
-    vi.mocked(CloudAccountRepo.updateToken).mockRejectedValue(failure);
+    vi.mocked(CloudAccountRepo.compareAndUpdateToken).mockRejectedValue(failure);
     await expect(
       ensureCloudSwitchProjectReady(snapshot, new CloudAccountSwitchContext(snapshot)),
     ).rejects.toBe(failure);

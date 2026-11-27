@@ -1,8 +1,144 @@
 import { describe, expect, it } from 'vitest';
 
+import {
+  createCurrentUpstreamAttempt,
+  captureUpstreamAttemptUsage,
+  currentUpstreamAttemptUsage,
+} from '@/modules/proxy-gateway/audit/upstream-attempt-diagnostics';
 import { extractAuditUsage, mergeAuditUsage } from '@/modules/proxy-gateway/audit/audit-usage';
 
 describe('traffic audit usage extraction', () => {
+  it.each(['json', 'sse'] as const)(
+    'records physical Gemini thinking in output once when %s totals prove it was separate',
+    (format) => {
+      const upstream = {
+        response: {
+          usageMetadata: {
+            promptTokenCount: 12,
+            candidatesTokenCount: 8,
+            toolUsePromptTokenCount: 2,
+            thoughtsTokenCount: 116,
+            totalTokenCount: 138,
+          },
+        },
+      };
+      const attempt = createCurrentUpstreamAttempt(null, 'gemini-generate');
+      captureUpstreamAttemptUsage(
+        attempt,
+        format === 'json' ? upstream : `data: ${JSON.stringify(upstream)}\n\n`,
+      );
+      expect(currentUpstreamAttemptUsage(attempt)).toEqual({
+        inputTokens: 14,
+        outputTokens: 124,
+        reasoningTokens: 116,
+      });
+      expect(extractAuditUsage(upstream)).toMatchObject({ inputTokens: 12, outputTokens: 8 });
+    },
+  );
+
+  it.each(['stream callbacks', 'serialized SSE', 'event wrapper'] as const)(
+    'reconciles split and repeated physical usage via %s',
+    (source) => {
+      const events = [
+        { usageMetadata: { promptTokenCount: 12 } },
+        {
+          usageMetadata: { candidatesTokenCount: 8, thoughtsTokenCount: 116, totalTokenCount: 136 },
+        },
+        { usageMetadata: { candidatesTokenCount: 8 } },
+      ];
+      const attempt = createCurrentUpstreamAttempt(null, 'gemini-generate');
+      if (source === 'stream callbacks') {
+        for (const event of events) {
+          captureUpstreamAttemptUsage(attempt, event);
+        }
+      } else if (source === 'serialized SSE') {
+        captureUpstreamAttemptUsage(
+          attempt,
+          events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''),
+        );
+      } else {
+        captureUpstreamAttemptUsage(attempt, { events });
+      }
+      expect(currentUpstreamAttemptUsage(attempt)).toEqual({
+        inputTokens: 12,
+        outputTokens: 124,
+        reasoningTokens: 116,
+      });
+    },
+  );
+
+  it('includes independently reconciled tool prompts when thinking is already included', () => {
+    const attempt = createCurrentUpstreamAttempt(null, 'gemini-generate');
+    captureUpstreamAttemptUsage(attempt, {
+      usageMetadata: {
+        promptTokenCount: 12,
+        toolUsePromptTokenCount: 2,
+        candidatesTokenCount: 30,
+        thoughtsTokenCount: 20,
+        totalTokenCount: 44,
+      },
+    });
+    expect(currentUpstreamAttemptUsage(attempt)).toEqual({
+      inputTokens: 14,
+      outputTokens: 30,
+      reasoningTokens: 20,
+    });
+  });
+
+  it('leaves input and output as reported when the provider total already accounts for tool use', () => {
+    const attempt = createCurrentUpstreamAttempt(null, 'gemini-generate');
+    captureUpstreamAttemptUsage(attempt, {
+      usageMetadata: {
+        promptTokenCount: 12,
+        toolUsePromptTokenCount: 2,
+        candidatesTokenCount: 30,
+        thoughtsTokenCount: 20,
+        totalTokenCount: 42,
+      },
+    });
+    expect(currentUpstreamAttemptUsage(attempt)).toEqual({
+      inputTokens: 12,
+      outputTokens: 30,
+      reasoningTokens: 20,
+    });
+  });
+
+  it.each([undefined, 42, 99])(
+    'preserves the reported physical output when the total is %s and inclusion cannot be proven separate',
+    (totalTokenCount) => {
+      const attempt = createCurrentUpstreamAttempt(null, 'gemini-generate');
+      captureUpstreamAttemptUsage(attempt, {
+        usageMetadata: {
+          promptTokenCount: 12,
+          candidatesTokenCount: 30,
+          thoughtsTokenCount: 20,
+          totalTokenCount,
+        },
+      });
+      expect(currentUpstreamAttemptUsage(attempt)?.outputTokens).toBe(30);
+    },
+  );
+
+  it('includes separate Interactions thinking while preserving the reported cached input', () => {
+    const attempt = createCurrentUpstreamAttempt(null, 'gemini-generate');
+    captureUpstreamAttemptUsage(attempt, {
+      usage: {
+        total_input_tokens: 7,
+        total_output_tokens: 23,
+        total_thought_tokens: 49,
+        total_cached_tokens: 0,
+        total_tokens: 79,
+        total_tool_use_tokens: 0,
+      },
+    });
+    expect(currentUpstreamAttemptUsage(attempt)).toEqual({
+      inputTokens: 7,
+      outputTokens: 72,
+      reasoningTokens: 49,
+      cachedTokens: 0,
+    });
+  });
+
   it('preserves mapped input totals without adding supplemental cache categories', () => {
     // The gateway's Claude mapper uses input_tokens for the existing normalized total.
     expect(

@@ -12,6 +12,7 @@ interface ClassicSwitchOptions {
   useCredentialStore: boolean;
   timeoutMs: number;
   terms: ClassicTermsSwitch | null;
+  assertCurrent?(): Promise<void>;
   write(applyProfile?: boolean): Promise<void>;
   finalize(): Promise<void>;
   onStage(stage: 'target-write' | 'process-close' | 'process-start'): void;
@@ -90,6 +91,7 @@ export async function executeClassicSwitch(options: ClassicSwitchOptions): Promi
         await options.terms?.apply();
       });
       await phase('client-start', 'restart', async () => {
+        await options.assertCurrent?.();
         options.onStage('process-start');
         options.onLaunch();
         launchAttempted = true;
@@ -102,7 +104,10 @@ export async function executeClassicSwitch(options: ClassicSwitchOptions): Promi
         trace.effects.client = 'started';
       });
     }
-    await phase('account-finalize', hotConfirmed ? 'hot' : 'restart', options.finalize);
+    await phase('account-finalize', hotConfirmed ? 'hot' : 'restart', async () => {
+      await options.assertCurrent?.();
+      await options.finalize();
+    });
     outcome = hotConfirmed ? 'hot-success' : recovered ? 'recovered-by-restart' : 'restart-success';
   } catch (error) {
     let finalError = error;

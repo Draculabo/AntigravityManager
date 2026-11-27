@@ -17,18 +17,15 @@ import {
  * have sent upstream.
  */
 
-vi.mock(
-  '@/server/gateway/common/utils/request-user-agent',
-  async (importOriginal) => ({
-    ...(await importOriginal<Record<string, unknown>>()),
-    resolveRequestUserAgent: async () => 'antigravity-parity-harness/0.0.0',
-  }),
-);
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  resolveRequestUserAgent: async () => 'antigravity-parity-harness/0.0.0',
+}));
 
 function countTokensBody(text: string) {
   return {
     messages: [{ content: text, role: 'user' }],
-    model: 'claude-sonnet-4-5',
+    model: 'claude-sonnet-4-6-thinking',
   };
 }
 
@@ -67,7 +64,7 @@ describe('Anthropic count_tokens', () => {
           { content: 'first', role: 'user' },
           { content: 'second', role: 'assistant' },
         ],
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-6-thinking',
         system: 'You are terse.',
       } as never,
       reply as never,
@@ -132,7 +129,7 @@ describe('Anthropic count_tokens', () => {
               role: 'user',
             },
           ],
-          model: 'claude-sonnet-4-5',
+          model: 'claude-sonnet-4-6-thinking',
           system: 'x'.repeat(2000),
           tools: [
             {

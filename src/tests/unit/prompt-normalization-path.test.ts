@@ -112,7 +112,7 @@ describe.each(['chat', 'responses', 'messages', 'gemini'] as const)(
           expect(request).toEqual(before);
         } else if (protocol === 'messages') {
           const request = {
-            model: 'claude-sonnet-4-5',
+            model: 'claude-sonnet-4-6-thinking',
             max_tokens: 32,
             system: input,
             messages: [{ role: 'user', content: user }],

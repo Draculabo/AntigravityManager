@@ -496,7 +496,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     mockGeminiClient.generateInternal.mockResolvedValueOnce({ candidates: [] });
     mockGeminiClient.streamGenerateInternal.mockResolvedValueOnce(stream);
 
-    const promise = service.handleGeminiGenerateContent('models/gemini-2.5-flash', {
+    const promise = service.handleGeminiGenerateContent('models/gemini-3-flash', {
       contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
     });
 
@@ -662,7 +662,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     mockGeminiClient.generateInternal.mockResolvedValueOnce({ candidates: [] });
     mockGeminiClient.streamGenerateInternal.mockResolvedValueOnce(stream);
 
-    const result = await service.handleGeminiGenerateContent('models/gemini-2.5-flash', {
+    const result = await service.handleGeminiGenerateContent('models/gemini-3-flash', {
       contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
     });
 
@@ -678,7 +678,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
       candidates: [{ content: { parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
     });
 
-    await service.handleGeminiGenerateContent('models/claude-sonnet-4-5', {
+    await service.handleGeminiGenerateContent('models/claude-sonnet-4-6-thinking', {
       contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
     } as any);
 
@@ -1273,7 +1273,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
       });
 
     const result = await service.handleAnthropicMessages({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6-thinking',
       stream: false,
       max_tokens: 256,
       messages: [{ role: 'user', content: 'hello' }],
@@ -1306,7 +1306,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
         usageMetadata: { totalTokenCount: 5 },
       });
 
-    const result = await service.handleGeminiGenerateContent('models/gemini-2.5-flash', {
+    const result = await service.handleGeminiGenerateContent('models/gemini-3-flash', {
       contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
     } as any);
 
@@ -1338,7 +1338,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
       usageMetadata: { totalTokenCount: 5 },
     });
 
-    await service.handleGeminiGenerateContent('models/gemini-2.5-flash', {
+    await service.handleGeminiGenerateContent('models/gemini-3-flash', {
       contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
     } as any);
 
@@ -1400,7 +1400,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
       thoughtSessionStable: true,
     };
     const result = await runWithTrafficAuditRequestContext(auditContext, () =>
-      service.handleGeminiGenerateContent('models/gemini-2.5-flash', {
+      service.handleGeminiGenerateContent('models/gemini-3-flash', {
         contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
       } as any),
     );
@@ -1433,7 +1433,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
         usageMetadata: { totalTokenCount: 5 },
       });
 
-    const result = await service.handleGeminiGenerateContent('models/gemini-2.5-flash', {
+    const result = await service.handleGeminiGenerateContent('models/gemini-3-flash', {
       contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
     } as any);
 
@@ -1455,7 +1455,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     });
     mockGeminiClient.generateInternal.mockRejectedValue(error);
     await expect(
-      service.handleGeminiGenerateContent('models/gemini-2.5-flash', {
+      service.handleGeminiGenerateContent('models/gemini-3-flash', {
         contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
       } as any),
     ).rejects.toBe(error);
@@ -1506,7 +1506,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
         usageMetadata: { totalTokenCount: 5 },
       });
 
-    const result = await service.handleGeminiGenerateContent('models/gemini-2.5-flash', {
+    const result = await service.handleGeminiGenerateContent('models/gemini-3-flash', {
       contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
     } as any);
 
@@ -1580,7 +1580,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
         usageMetadata: { totalTokenCount: 5 },
       });
 
-    await service.handleGeminiGenerateContent('models/gemini-2.5-flash', {
+    await service.handleGeminiGenerateContent('models/gemini-3-flash', {
       contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
     } as any);
 
@@ -1600,7 +1600,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
       usageMetadata: { totalTokenCount: 5 },
     });
 
-    await service.handleGeminiGenerateContent('models/gemini-2.5-flash', {
+    await service.handleGeminiGenerateContent('models/gemini-3-flash', {
       contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
     } as any);
 
@@ -1614,7 +1614,7 @@ describe('ProxyService Empty Stream Retry Logic', () => {
     mockAccountLeaseService.getNextToken.mockResolvedValue(createToken('acc-1'));
     mockGeminiClient.streamGenerateInternal.mockResolvedValue(new EventEmitter());
 
-    await service.handleGeminiStreamGenerateContent('models/gemini-2.5-flash', {
+    await service.handleGeminiStreamGenerateContent('models/gemini-3-flash', {
       contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
     } as any);
 

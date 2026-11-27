@@ -44,7 +44,7 @@ describe('audit capacity window configuration migration', () => {
     return original;
   }
 
-  it('loads new defaults without creating a file and preserves explicit older capacities', async () => {
+  it('persists defaults on first load and preserves explicit older capacities', async () => {
     const { ConfigManager } = await import('@/modules/config/ipc/manager');
     expect(ConfigManager.loadConfig().proxy.traffic_audit).toEqual({
       enabled: true,
@@ -54,7 +54,9 @@ describe('audit capacity window configuration migration', () => {
       max_queue_records: 512,
       max_queue_mib: 16,
     });
-    expect(fs.existsSync(configPath)).toBe(false);
+    expect(JSON.parse(fs.readFileSync(configPath, 'utf8')).proxy.traffic_audit).toEqual(
+      ConfigManager.getCachedConfig()?.proxy.traffic_audit,
+    );
     const original = writeLegacy();
     expect(ConfigManager.loadConfig().proxy.traffic_audit).toEqual({
       enabled: false,
@@ -114,7 +116,7 @@ describe('audit capacity window configuration migration', () => {
       await expect(ConfigManager.saveConfig(next)).rejects.toThrow(
         'Configuration could not be saved.',
       );
-      expect(ConfigManager.getCachedConfig()).toBe(before);
+      expect(ConfigManager.getCachedConfig()).toEqual(before);
       expect(fs.readFileSync(configPath, 'utf8')).toBe(original);
     });
   }
@@ -139,7 +141,7 @@ describe('audit capacity window configuration migration', () => {
     );
     expect(fs.readFileSync(backupPath, 'utf8')).toBe(original);
     expect(fs.readFileSync(configPath, 'utf8')).toBe(original);
-    expect(ConfigManager.getCachedConfig()).toBe(before);
+    expect(ConfigManager.getCachedConfig()).toEqual(before);
     state.failSave = false;
     await ConfigManager.saveConfig(next);
     expect(ConfigManager.getCachedConfig()?.proxy.traffic_audit.max_rows).toBe(5000);

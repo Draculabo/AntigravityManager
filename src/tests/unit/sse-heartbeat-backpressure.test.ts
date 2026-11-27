@@ -1,9 +1,10 @@
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import type { FastifyReply } from 'fastify';
-import { Observable } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getObservableFlowControl } from '@/server/gateway/common/observable-flow-control';
+import { FlowControlledSseStream } from '@/server/gateway/common/flow-controlled-sse-stream';
+import { getGenerationTimeoutMs } from '@/server/gateway/common/generation-timeout-policy';
 import { writeProxySseResponse } from '@/server/gateway/common/proxy-sse-response';
 import { getSseOutputRetainedBytes } from '@/server/gateway/common/sse-output-pump';
 import {
@@ -43,7 +44,7 @@ async function createProtocolStream(protocol: Protocol) {
         })
       : protocol === 'messages'
         ? gateway.anthropicService.handleAnthropicMessages({
-            model: 'claude-sonnet-4-5',
+            model: 'claude-sonnet-4-6-thinking',
             max_tokens: 32,
             stream: true,
             messages: [{ role: 'user', content: 'controlled flow' }],
@@ -58,8 +59,8 @@ async function createProtocolStream(protocol: Protocol) {
           );
   await vi.advanceTimersByTimeAsync(0);
   const stream = await pending;
-  if (!(stream instanceof Observable)) {
-    throw new Error('Expected production protocol stream');
+  if (!(stream instanceof FlowControlledSseStream)) {
+    throw new Error('Expected a flow-controlled protocol stream');
   }
   return { source, lease, upstream, stream };
 }
@@ -89,13 +90,23 @@ async function createBackpressuredResponse(protocol: Protocol) {
       return raw;
     }),
   });
-  const resume = vi.spyOn(source, 'resume');
-  writeProxySseResponse({ raw, hijack: vi.fn() } as unknown as FastifyReply, stream);
-  await vi.advanceTimersByTimeAsync(0);
-  expect(raw.write).toHaveBeenCalled();
-  expect(source.isPaused()).toBe(true);
+  const resume = vi.spyOn(stream, 'resume');
+  const close = () => {
+    raw.emit('close');
+    source.destroy();
+  };
+  try {
+    writeProxySseResponse({ raw, hijack: vi.fn() } as unknown as FastifyReply, stream);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(raw.write).toHaveBeenCalled();
+    expect(stream.isPaused).toBe(true);
+  } catch (error) {
+    close();
+    throw error;
+  }
   return {
     source,
+    stream,
     lease,
     upstream,
     raw,
@@ -106,17 +117,17 @@ async function createBackpressuredResponse(protocol: Protocol) {
       raw.emit('drain');
       await vi.advanceTimersByTimeAsync(0);
     },
-    close: () => {
-      raw.emit('close');
-      source.destroy();
-    },
+    close,
   };
 }
 
 afterEach(() => {
-  expect(getSseOutputRetainedBytes()).toBe(0);
-  vi.useRealTimers();
-  vi.restoreAllMocks();
+  try {
+    expect(getSseOutputRetainedBytes()).toBe(0);
+  } finally {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  }
 });
 
 describe('protocol heartbeats during downstream backpressure', () => {
@@ -266,33 +277,36 @@ describe('protocol heartbeats during downstream backpressure', () => {
     },
   );
 
-  it('terminates partial Anthropic output at the fifth idle interval while heartbeats are paused', async () => {
+  it('enforces the Anthropic generation deadline while heartbeats are paused', async () => {
     vi.useFakeTimers();
     const { source, lease, upstream, stream } = await createProtocolStream('messages');
     const chunks: string[] = [];
     const complete = vi.fn();
-    const subscription = stream.subscribe({ next: (chunk) => chunks.push(chunk), complete });
+    const error = vi.fn();
+    const subscription = stream.subscribe({ next: (chunk) => chunks.push(chunk), complete, error });
     try {
       await vi.advanceTimersByTimeAsync(0);
       const control = getObservableFlowControl(stream);
       expect(control).toBeDefined();
       control?.pause();
       const progress = [...chunks];
-      await vi.advanceTimersByTimeAsync(99_999);
+      await vi.advanceTimersByTimeAsync(getGenerationTimeoutMs() - 1);
       expect(chunks).toEqual(progress);
       expect(complete).not.toHaveBeenCalled();
+      expect(error).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(1);
       expect(chunks.filter((chunk) => chunk === anthropicPing)).toEqual([]);
       expect(chunks.join('')).toContain('controlled progress');
-      expect(chunks.join('')).toContain('"stop_reason":"max_tokens"');
-      expect(chunks.filter((chunk) => chunk.includes('event: message_stop'))).toHaveLength(1);
-      expect(chunks.at(-1)).toContain('event: message_stop');
-      expect(complete).toHaveBeenCalledOnce();
+      expect(chunks.join('')).not.toContain('event: message_stop');
+      expect(complete).not.toHaveBeenCalled();
+      expect(error).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ name: 'GenerationDeadlineExceededError', code: 'ETIMEDOUT' }),
+      );
       expect(source.destroyed).toBe(true);
       expect(lease.markModelSuccess).not.toHaveBeenCalled();
       expect(upstream.streamGenerateInternal).toHaveBeenCalledOnce();
       await vi.advanceTimersByTimeAsync(300_000);
-      expect(complete).toHaveBeenCalledOnce();
+      expect(error).toHaveBeenCalledOnce();
       expect(vi.getTimerCount()).toBe(0);
     } finally {
       subscription.unsubscribe();
@@ -314,7 +328,7 @@ describe('protocol heartbeats during downstream backpressure', () => {
         const retained = getSseOutputRetainedBytes();
         const resumes = response.resume.mock.calls.length;
         await vi.advanceTimersByTimeAsync(21_000);
-        expect(response.source.isPaused()).toBe(true);
+        expect(response.stream.isPaused).toBe(true);
         expect(response.resume).toHaveBeenCalledTimes(resumes);
         expect(getSseOutputRetainedBytes()).toBe(retained);
         await response.drain();

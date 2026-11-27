@@ -11,7 +11,10 @@ vi.mock('@/shared/platform/paths', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/shared/platform/paths')>()),
   getAgentDir: () => state.directory,
 }));
-vi.mock('@/server/main', () => ({ getNestServerStatus: vi.fn() }));
+vi.mock('@/server/main', () => ({
+  getNestServerStatus: vi.fn(),
+  getNestServerRestartFields: () => [],
+}));
 vi.mock('@/modules/proxy-gateway/audit/traffic-audit.service', () => ({
   trafficAuditService: { configure: vi.fn(), recordAdminOperation: vi.fn() },
 }));
@@ -93,7 +96,7 @@ describe('deleted account preference ownership', () => {
     ConfigManager.loadConfig();
     await fs.writeFile(configPath(), '{synthetic-broken-json');
     await expect(owner.clearDeletedAccountPreference('deleted')).rejects.toThrow(
-      'Configuration could not be loaded',
+      'Configuration JSON is invalid.',
     );
     expect(save).not.toHaveBeenCalled();
     expect(await fs.readFile(configPath(), 'utf8')).toBe('{synthetic-broken-json');

@@ -12,9 +12,7 @@ vi.mock('@/modules/proxy-gateway/audit/traffic-audit.service', () => ({
   trafficAuditService: audit,
 }));
 vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
-  ...(await original<
-    typeof import('@/server/gateway/common/utils/request-user-agent')
-  >()),
+  ...(await original<typeof import('@/server/gateway/common/utils/request-user-agent')>()),
   resolveRequestUserAgent: async () => 'tool-generation-audit-test',
 }));
 
@@ -118,6 +116,7 @@ describe('upstream malformed tool generation audit', () => {
         responseHeadersMs: null,
         firstByteMs: expect.any(Number),
         firstUsableOutputMs: expect.any(Number),
+        downloadedBodyBytes: Buffer.byteLength(data),
       },
       usage: undefined,
     });

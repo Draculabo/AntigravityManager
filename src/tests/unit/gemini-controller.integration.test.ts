@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { of, throwError } from 'rxjs';
+import { isObservable, lastValueFrom, of, throwError, toArray } from 'rxjs';
 import { HttpException } from '@nestjs/common';
 
 const auditMocks = vi.hoisted(() => ({
@@ -170,7 +170,8 @@ describe('GeminiController Integration', () => {
 
     const accountLeaseService = {
       getAllRawQuotaModels: vi.fn(
-        () => new Set(['gemini-3-pro-image', 'gemini-2.5-flash', 'gemini-pro-agent']),
+        () =>
+          new Set(['gemini-3-pro-image', 'gemini-2.5-flash', 'gemini-pro-agent', 'gemini-3-flash']),
       ),
     };
     const controller = new GeminiController({} as any, accountLeaseService as any);
@@ -181,8 +182,8 @@ describe('GeminiController Integration', () => {
     expect(payload).toEqual({
       models: [
         {
-          name: 'models/gemini-2.5-flash',
-          displayName: 'gemini-2.5-flash',
+          name: 'models/gemini-3-flash',
+          displayName: 'gemini-3-flash',
           description: '',
           inputTokenLimit: 1048576,
           outputTokenLimit: 65536,
@@ -242,7 +243,7 @@ describe('GeminiController Integration', () => {
       'models/gemini-3.1-pro-low',
       { contents: [{ role: 'user', parts: [{ text: 'hello' }] }] },
       'generate-content',
-      undefined,
+      expect.any(AbortSignal),
       'gemini',
       { headers: {}, url: undefined },
     );
@@ -264,16 +265,16 @@ describe('GeminiController Integration', () => {
   });
 
   it('handles streamGenerateContent action and emits SSE headers', async () => {
-    const stream = of('data: {"ok":true}\n\n');
+    const event = 'data: {"ok":true}\n\n';
     const proxyService = {
       handleGeminiGenerateContent: vi.fn(),
-      handleGeminiStreamGenerateContent: vi.fn().mockResolvedValue(stream),
+      handleGeminiStreamGenerateContent: vi.fn().mockResolvedValue(of(event)),
     };
     const controller = new GeminiController(proxyService as any);
     const reply = createReplyMock();
 
     await controller.modelAction(
-      'gemini-2.5-flash:streamGenerateContent',
+      'gemini-3-flash:streamGenerateContent',
       { contents: [{ role: 'user', parts: [{ text: 'hello' }] }] } as any,
       reply as any,
     );
@@ -281,7 +282,12 @@ describe('GeminiController Integration', () => {
     expect(reply.header).toHaveBeenCalledWith('Content-Type', 'text/event-stream');
     expect(reply.header).toHaveBeenCalledWith('Cache-Control', 'no-cache');
     expect(reply.header).toHaveBeenCalledWith('Connection', 'keep-alive');
-    expect(reply.send).toHaveBeenCalledWith(stream);
+    expect(reply.send).toHaveBeenCalledOnce();
+    const response: unknown = reply.send.mock.calls[0][0];
+    if (!isObservable(response)) {
+      throw new Error('Expected a streaming response');
+    }
+    await expect(lastValueFrom(response.pipe(toArray()))).resolves.toEqual([event]);
   });
 
   it('writes an SSE error event through the raw reply stream', async () => {

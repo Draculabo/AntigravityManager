@@ -2,8 +2,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LocalAccountImportService } from '@/modules/cloud-account/local-import/local-account-import.service';
+import { localAccountPostImportService } from '@/modules/cloud-account/local-import/local-account-post-import.service';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import { upsertCloudAccountsAtomically } from '@/modules/cloud-account/persistence/cloud-account-batch-writer';
+import { CloudAccountRefreshService } from '@/modules/cloud-account/services/CloudAccountRefreshService';
+import { importCloudAccountRefreshToken } from '@/modules/cloud-account/services/cloud-account-credential-import.service';
+import { importCloudAccounts } from '@/modules/cloud-account/services/cloud-account-file-policy.service';
+import { GoogleAPIService } from '@/modules/cloud-account/services/GoogleAPIService';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 import { cloudAccountStoreAdapter } from '@/server/gateway/modules/account-lease/interfaces/account-lease-adapters';
 import {
@@ -19,6 +25,9 @@ vi.mock('better-sqlite3', async () => {
 });
 vi.mock('@/shared/platform/paths', () => ({
   getCloudAccountsDbPath: () => path.join(state.directory, 'cloud_accounts.db'),
+}));
+vi.mock('@/modules/identity-profile/public', () => ({
+  prepareDesktopIdentityStorage: vi.fn(async () => undefined),
 }));
 
 function account(id = 'one'): CloudAccount {
@@ -42,10 +51,43 @@ beforeEach(() => {
   state.directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agm-import-commit-'));
 });
 afterEach(() => {
+  vi.restoreAllMocks();
   fs.rmSync(state.directory, { recursive: true, force: true });
 });
 
 describe('SQLite import commit ownership', () => {
+  it.each(['same', 'replacement'] as const)(
+    'retains stored Google proof only for a backup import with the same grant (%s)',
+    async (grant) => {
+      const original = account();
+      const before = await CloudAccountRepo.insertAccount(original, 'synthetic-verified-subject');
+      vi.spyOn(CloudAccountRefreshService, 'clearFailureState').mockResolvedValue(undefined);
+      vi.spyOn(localAccountPostImportService, 'schedule').mockReturnValue(undefined);
+      const refreshToken = grant === 'same' ? original.token.refresh_token : 'replacement';
+      const result = await importCloudAccounts(
+        JSON.stringify({
+          version: '1.0',
+          exportedAt: 1,
+          accounts: [
+            {
+              provider: original.provider,
+              email: original.email,
+              name: 'Imported owner',
+              token: { ...original.token, refresh_token: refreshToken },
+            },
+          ],
+        }),
+      );
+      expect(result).toMatchObject({ updated: 1, imported: 0, failed: 0 });
+      const stored = await CloudAccountRepo.getAccount(original.id);
+      expect(stored?.name).toBe('Imported owner');
+      expect(stored?.token.refresh_token).toBe(refreshToken);
+      expect(stored?.google_usage_subject_hash).toBe(
+        grant === 'same' ? before.google_usage_subject_hash : undefined,
+      );
+    },
+  );
+
   it.each(['token', 'quota', 'health'] as const)(
     'forwards a lease %s guard through the production adapter into SQLite',
     async (field) => {
@@ -156,6 +198,95 @@ describe('SQLite import commit ownership', () => {
       ),
     ).rejects.toMatchObject({ name: 'CloudAccountImportConflictError' });
     expect(await CloudAccountRepo.getAccounts()).toEqual(before);
+  });
+
+  it('keeps a verified subject through local token metadata import and pasted reauthorization', async () => {
+    const original = account();
+    const subject = 'synthetic-verified-subject';
+    const before = await CloudAccountRepo.insertAccount(original, subject);
+    expect(before.google_usage_subject_hash).toMatch(/^[a-f0-9]{64}$/);
+
+    const result = await new LocalAccountImportService().importSession({
+      result: {
+        accounts: [
+          {
+            fingerprint: 'test-import',
+            sources: [],
+            emailHints: [original.email],
+            hasAccessToken: true,
+            hasIdToken: false,
+          },
+        ],
+      },
+      getCredential: () => ({
+        refreshToken: original.token.refresh_token,
+        accessToken: 'discovered-access',
+        expiryTimestamp: 9999999999,
+      }),
+    });
+    expect(result).toEqual({
+      imported: [
+        {
+          fingerprint: 'test-import',
+          accountId: original.id,
+          email: original.email,
+          action: 'updated',
+        },
+      ],
+      skipped: [],
+      failed: [],
+    });
+    expect(await CloudAccountRepo.getAccount(original.id)).toMatchObject({
+      google_usage_subject_hash: before.google_usage_subject_hash,
+      token: { access_token: 'discovered-access', refresh_token: original.token.refresh_token },
+    });
+
+    vi.spyOn(GoogleAPIService, 'refreshAccessToken').mockResolvedValue({
+      access_token: 'pasted-access',
+      expires_in: 3600,
+      token_type: 'Bearer',
+    });
+    vi.spyOn(GoogleAPIService, 'getUserInfo').mockResolvedValue({
+      email: original.email,
+      id: subject,
+      name: 'Verified account',
+      verified_email: true,
+    });
+    vi.spyOn(CloudAccountRefreshService, 'clearFailureState').mockResolvedValue(undefined);
+    await expect(
+      importCloudAccountRefreshToken({ refreshToken: 'replacement-grant' }),
+    ).resolves.toEqual({ status: 'updated', email: original.email });
+    expect(await CloudAccountRepo.getAccount(original.id)).toMatchObject({
+      google_usage_subject_hash: before.google_usage_subject_hash,
+      token: { refresh_token: 'replacement-grant' },
+    });
+  });
+
+  it.each([{ refresh_token: 'other-grant' }, { oauth_client_key: 'other-client' }])(
+    'clears proof when the imported token changes its grant binding by %j',
+    async (change) => {
+      const original = account();
+      const before = await CloudAccountRepo.insertAccount(original, 'synthetic-verified-subject');
+      const next = { ...before, token: { ...before.token, ...change } };
+
+      await upsertCloudAccountsAtomically([next], [before]);
+
+      expect(await CloudAccountRepo.getAccount(original.id)).toMatchObject({ token: next.token });
+      expect(
+        (await CloudAccountRepo.getAccount(original.id))?.google_usage_subject_hash,
+      ).toBeUndefined();
+    },
+  );
+
+  it('does not persist subject evidence on a newly imported local account', async () => {
+    const original = account();
+    await upsertCloudAccountsAtomically(
+      [{ ...original, google_usage_subject_hash: 'a'.repeat(64) }],
+      [],
+    );
+    const saved = await CloudAccountRepo.getAccount(original.id);
+    expect(saved).toMatchObject({ token: original.token });
+    expect(saved?.google_usage_subject_hash).toBeUndefined();
   });
 
   it('allows unrelated account additions and unchanged optional JSON fields', async () => {

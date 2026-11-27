@@ -28,8 +28,15 @@ Refresh tokens are present in memory during the import request. Failed items rem
 the open dialog for retry and successful items are released. Identity verification rejects a
 different grant for an existing email unless the stored subject matches the verified subject.
 This prevents importing an unrelated identity over a previously saved account.
+Local discovery, file import, and IDE sync can update account metadata between verified imports.
+Their account writes keep the stored subject proof only when the OAuth grant binding matches the
+guarded current row.
+This lets the account owner reuse its prior verification on a later pasted reauthorization while
+keeping locally supplied credentials outside the verification boundary.
 
 ## Verification
 
 The credential import, IPC audit, private core RPC and account dialog tests cover parsing,
 rejection, account writes, capture exclusion and retrying only failed entries.
+The SQLite import commit tests cover subject readback after local discovery and file import,
+pasted reauthorization, and proof removal when the import changes the grant binding.

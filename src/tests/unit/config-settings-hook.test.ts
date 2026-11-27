@@ -152,8 +152,13 @@ describe('service settings in the renderer', () => {
   });
 
   it('does not roll back an earlier service save when a later desktop save fails', async () => {
+    api.readDesktop.mockResolvedValue({
+      ...DesktopPreferencesSchema.strip().parse(DEFAULT_APP_CONFIG),
+      theme: 'light',
+    });
     const { result, client } = mount();
     await waitFor(() => expect(result.current.serviceAvailable).toBe(true));
+    await waitFor(() => expect(result.current.config?.theme).toBe('light'));
     const base = {
       ...result.current.config!,
       theme: 'light',

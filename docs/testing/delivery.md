@@ -119,8 +119,9 @@ patch-version installer from the same application payload for that check.
 installs the fixture on an authorized Windows x64 host, checks the app's automatic update and
 restores its shortcuts and login settings. Run it only from a disposable Windows account: the
 installer's automatic relaunch uses that account's default app profile, even when the previous
-process had a temporary profile argument. The check refuses an existing default NSIS installation
-or app profile.
+process had a temporary profile argument. The check refuses an existing default NSIS installation,
+desktop profile, or Manager account data directory (`~/.antigravity-agent`) before creating the
+temporary installation.
 Uninstall completion requires the owned installation directory to disappear after the uninstaller
 launcher exits. The runner waits up to 90 seconds and treats incomplete cleanup as failure.
 After successful cleanup, the NSIS runner writes a JSON report in a fresh

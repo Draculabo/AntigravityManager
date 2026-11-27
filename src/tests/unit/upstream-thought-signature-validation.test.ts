@@ -17,15 +17,10 @@ import {
   collect,
 } from './proxy-real-path.harness';
 
-vi.mock(
-  '@/server/gateway/common/utils/request-user-agent',
-  async (importOriginal) => ({
-    ...(await importOriginal<
-      typeof import('@/server/gateway/common/utils/request-user-agent')
-    >()),
-    resolveRequestUserAgent: async () => 'antigravity-parity-harness/0.0.0',
-  }),
-);
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/server/gateway/common/utils/request-user-agent')>()),
+  resolveRequestUserAgent: async () => 'antigravity-parity-harness/0.0.0',
+}));
 
 const raw = Buffer.from([0x08, 0x04, 0x12, ...Array<number>(80).fill(0x7f)]).toString('base64');
 const wrapped = Buffer.from(raw, 'utf8').toString('base64');
@@ -136,14 +131,14 @@ describe('nonreplayable upstream signature conflict through shared protocol serv
               })
           : protocol === 'anthropic'
             ? gateway.anthropicService.handleAnthropicMessages({
-                model: 'claude-sonnet-4-5',
+                model: 'claude-sonnet-4-6-thinking',
                 max_tokens: 128,
                 messages: [{ role: 'user', content: 'hello' }],
                 stream,
               })
             : gateway.openAIService.handleChatCompletions(
                 {
-                  model: 'claude-sonnet-4-5',
+                  model: 'claude-sonnet-4-6-thinking',
                   messages: [{ role: 'user', content: 'hello' }],
                   stream,
                 },

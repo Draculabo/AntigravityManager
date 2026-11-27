@@ -144,8 +144,8 @@ describe('opt-in adaptive routing', () => {
       adaptiveTarget: 'auto:claude-opus',
     });
     context.getAvailableModels.mockClear();
-    expect(policy.resolveModelRoute('gemini-2.5-flash', config, context)).toEqual(
-      policy.resolveModelRoute('gemini-2.5-flash', config),
+    expect(policy.resolveModelRoute('gemini-3-flash', config, context)).toEqual(
+      policy.resolveModelRoute('gemini-3-flash', config),
     );
     expect(context.getAvailableModels).not.toHaveBeenCalled();
     expect(policy.resolveModelRoute('auto:claude-opus', config, context).source).toBe('miss');

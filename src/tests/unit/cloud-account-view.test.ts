@@ -145,6 +145,7 @@ describe('cloud account renderer view', () => {
           gemini: { percentage: 50, resetTime: 'later', display_name: 'Gemini' },
         },
         subscription_tier: 'pro',
+        is_forbidden: true,
         subscription_status: {
           refresh_status: 'succeeded',
           checked_at: 100,
@@ -178,6 +179,7 @@ describe('cloud account renderer view', () => {
           has_verification_link: true,
         },
         oauth: { refresh_blocked: true },
+        service_disabled: undefined,
       },
       created_at: 1,
       last_used: 2,
@@ -193,7 +195,7 @@ describe('cloud account renderer view', () => {
     });
     const serialized = JSON.stringify(view);
     expect(serialized).not.toMatch(
-      /secret-|access_token|refresh_token|id_token|device_profile|device_history|proxy_url|future_secret|verification_url|model_forwarding_rules|is_forbidden|isForbidden|supports_images|max_tokens/,
+      /secret-|access_token|refresh_token|id_token|device_profile|device_history|proxy_url|future_secret|verification_url|model_forwarding_rules|isForbidden|supports_images|max_tokens/,
     );
     expect(serialized).not.toMatch(/raw_value|g1-pro-tier/);
     expect(

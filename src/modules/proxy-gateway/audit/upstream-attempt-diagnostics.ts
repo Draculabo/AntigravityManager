@@ -6,7 +6,12 @@ import { UpstreamRequestError } from '../../../server/gateway/common/exceptions/
 import type { UpstreamAttemptHandle } from './traffic-audit.service';
 import type { CompleteUpstreamAttemptInput } from './traffic-audit.types';
 import { isFailedAuditAttempt } from './audit-attempt-outcome';
-import { extractAuditUsage, mergeAuditUsage, type AuditUsage } from './audit-usage';
+import {
+  extractUpstreamUsageObservation,
+  mergeUpstreamUsage,
+  normalizeUpstreamUsage,
+  type AuditUsage,
+} from './audit-usage';
 import { parseAuditJsonBody } from './audit-json-object';
 import { IncrementalSseRedactor } from './incremental-sse-redactor';
 import type { StartUpstreamAttemptInput } from './traffic-audit.types';
@@ -24,7 +29,10 @@ export interface CurrentUpstreamAttemptHandle {
 }
 
 const completed = new WeakSet<CurrentUpstreamAttemptHandle>();
-const attemptUsage = new WeakMap<CurrentUpstreamAttemptHandle, AuditUsage>();
+const attemptUsage = new WeakMap<
+  CurrentUpstreamAttemptHandle,
+  NonNullable<ReturnType<typeof extractUpstreamUsageObservation>>
+>();
 const incompleteUsage = new WeakSet<CurrentUpstreamAttemptHandle>();
 
 /** Observe the physical response before semantic rejection or cancellation can hide its usage. */
@@ -36,11 +44,11 @@ export function captureUpstreamAttemptUsage(
     return;
   }
   const parsed = parseAuditJsonBody(value);
-  let observed = extractAuditUsage(parsed);
+  let observed = extractUpstreamUsageObservation(parsed);
   if (parsed === undefined && typeof value === 'string' && /(^|[\r\n])data:/.test(value)) {
     const parser = new IncrementalSseRedactor({
       onRawParsedEvent: (event) => {
-        observed = mergeAuditUsage(observed, extractAuditUsage(event));
+        observed = mergeUpstreamUsage(observed, extractUpstreamUsageObservation(event));
       },
     });
     parser.push(value);
@@ -49,7 +57,7 @@ export function captureUpstreamAttemptUsage(
       incompleteUsage.add(handle);
     }
   }
-  const usage = mergeAuditUsage(attemptUsage.get(handle), observed);
+  const usage = mergeUpstreamUsage(attemptUsage.get(handle), observed);
   if (usage) {
     attemptUsage.set(handle, usage);
   }
@@ -58,10 +66,12 @@ export function captureUpstreamAttemptUsage(
 export function currentUpstreamAttemptUsage(
   handle: CurrentUpstreamAttemptHandle | null,
 ): AuditUsage | undefined {
-  return handle ? attemptUsage.get(handle) : undefined;
+  return handle ? normalizeUpstreamUsage(attemptUsage.get(handle)) : undefined;
 }
 
-export function isUpstreamAttemptUsagePartial(handle: CurrentUpstreamAttemptHandle | null): boolean {
+export function isUpstreamAttemptUsagePartial(
+  handle: CurrentUpstreamAttemptHandle | null,
+): boolean {
   return handle !== null && incompleteUsage.has(handle);
 }
 
@@ -69,7 +79,10 @@ export function createCurrentUpstreamAttempt(
   audit: UpstreamAttemptHandle | null,
   operation: string,
   requestId?: string,
-  identity?: Pick<StartUpstreamAttemptInput, 'accountId' | 'accountGenerationHash' | 'model' | 'usageScope'>,
+  identity?: Pick<
+    StartUpstreamAttemptInput,
+    'accountId' | 'accountGenerationHash' | 'model' | 'usageScope'
+  >,
 ): CurrentUpstreamAttemptHandle {
   return Object.freeze({
     audit,

@@ -6,6 +6,7 @@ import {
   serializeDeviceHistory,
   serializeDeviceProfile,
 } from './cloud-account-device-profile-codec';
+import { googleUsageGrantHash } from './google-usage-identity';
 
 /** Match the existing SQLite representation, including defaults and omitted JSON fields. */
 type AccountValues = Omit<typeof accounts.$inferSelect, 'lifecycleGeneration'>;
@@ -34,6 +35,22 @@ export function cloudAccountRowValues(account: CloudAccount): AccountValues {
     proxyEnabled: account.proxy_enabled === false ? 0 : 1,
     googleUsageIdentityJson: null,
   };
+}
+
+export function cloudAccountImportUpdateValues(
+  account: CloudAccount,
+  values: AccountValues,
+  expected: CloudAccount | undefined,
+) {
+  const grant = account.provider === 'google' ? googleUsageGrantHash(account.token) : null;
+  if (
+    expected?.provider === 'google' &&
+    grant !== null &&
+    googleUsageGrantHash(expected.token) === grant
+  ) {
+    return omit(values, 'googleUsageIdentityJson');
+  }
+  return values;
 }
 
 function parseJsonColumn(value: string | null): unknown {

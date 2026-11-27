@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { isDeepStrictEqual } from 'node:util';
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import { GoogleAPIService } from '@/modules/cloud-account/services/GoogleAPIService';
 import { CloudAccountRefreshService } from '@/modules/cloud-account/services/CloudAccountRefreshService';
@@ -7,6 +8,7 @@ import { CloudMonitorService } from '@/modules/cloud-account/services/CloudMonit
 import type { CloudAccount } from '@/modules/cloud-account/types';
 
 vi.mock('@/modules/cloud-account/persistence/cloudHandler');
+vi.mock('@/server/main', () => ({ replaceNestServerAccountLeaseToken: vi.fn() }));
 vi.mock('@/modules/cloud-account/services/GoogleAPIService');
 vi.mock('@/modules/cloud-account/services/CloudAccountRefreshService', async (original) => ({
   ...(await original<
@@ -68,6 +70,9 @@ beforeEach(() => {
   vi.mocked(CloudAccountRepo.getAccounts).mockImplementation(async () =>
     [...stored.values()].map((value) => structuredClone(value)),
   );
+  vi.mocked(CloudAccountRepo.assertCurrentAccount).mockImplementation((id, guard) => {
+    guard(stored.get(id));
+  });
   vi.mocked(CloudAccountRepo.updateToken).mockImplementation(async (id, token, guard) => {
     guard?.(stored.get(id));
     const current = stored.get(id);
@@ -75,6 +80,17 @@ beforeEach(() => {
       current.token = structuredClone(token);
     }
   });
+  vi.mocked(CloudAccountRepo.compareAndUpdateToken).mockImplementation(
+    async (id, expected, token, guard) => {
+      const current = stored.get(id);
+      if (!current || !isDeepStrictEqual(current.token, expected)) {
+        return false;
+      }
+      guard?.(current);
+      current.token = structuredClone(token);
+      return true;
+    },
+  );
   vi.mocked(CloudAccountRepo.updateQuota).mockImplementation(async (id, value, guard) => {
     guard?.(stored.get(id));
     const current = stored.get(id);

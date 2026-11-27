@@ -35,8 +35,13 @@ const nativeWindows = process.platform === 'win32';
 const credentialService = 'AntigravityManager.Acceptance.' + path.basename(root);
 const credentialAccount = 'synthetic';
 const credentialTarget = credentialService + ':' + credentialAccount;
-let agyCliPayload = null;
-let googleOAuthInput = null;
+const agyGeminiDirectory = path.join(root, '.gemini');
+const agyFiles = [
+  path.join(agyGeminiDirectory, 'antigravity-cli', 'antigravity-oauth-token'),
+  path.join(agyGeminiDirectory, 'oauth_creds.json'),
+  path.join(agyGeminiDirectory, 'google_accounts.json'),
+];
+let failAgyReadback = false;
 const nativeDependencies = process.env.AGM_CLIENT_NATIVE_DEPS;
 const NativeDatabase = nativeDependencies
   ? createRequire(path.join(nativeDependencies, 'package.json'))('better-sqlite3')
@@ -63,7 +68,15 @@ Module._load = function (request, ...args) {
       },
       readWindowsCredential: async (target) => {
         assert.equal(target, 'gemini:antigravity');
+        if (failAgyReadback) {
+          failAgyReadback = false;
+          throw new Error('fixture vault readback unavailable');
+        }
         return store.readWindowsCredential(credentialTarget);
+      },
+      matchesWindowsCredentialWrite: (current, username, payload) => {
+        assert.equal(username, 'antigravity');
+        return store.matchesWindowsCredentialWrite(current, credentialAccount, payload);
       },
       writeWindowsCredential: async (target, account, payload) => {
         assert.deepEqual([target, account], ['gemini:antigravity', 'antigravity']);
@@ -73,19 +86,12 @@ Module._load = function (request, ...args) {
       },
     };
   }
-  if (nativeWindows && request === './agyCliTokenStore') {
-    return {
-      writeAgyCliToken(payload) {
-        agyCliPayload = payload;
-      },
-    };
-  }
-  if (nativeWindows && request === './googleOAuthCredentialStore') {
-    return {
-      writeGoogleOAuthCredentials(input) {
-        googleOAuthInput = structuredClone(input);
-      },
-    };
+  if (
+    nativeWindows &&
+    request === 'node:os' &&
+    /[\\/](agyCliTokenStore|googleOAuthCredentialStore)\.ts$/.test(args[0]?.filename)
+  ) {
+    return { ...os, homedir: () => root };
   }
   if (request === 'better-sqlite3') {
     return NativeDatabase;
@@ -321,19 +327,16 @@ try {
       assert.equal(profileAToken().refreshToken, a.token.refresh_token);
       assert.deepEqual(await readAntigravityCredentialStoreToken(), hostCredential);
       for (const selected of [b, a, b]) {
-        agyCliPayload = null;
-        googleOAuthInput = null;
         const writer = await prepareClientAccountWrite(selected, 'agy');
         assert.equal(writer.storage, 'credential-store');
         await writer.write();
-        const cliToken = JSON.parse(agyCliPayload).token;
+        const cliToken = JSON.parse(fs.readFileSync(agyFiles[0], 'utf8')).token;
         assert.equal(cliToken.access_token, selected.token.access_token);
         assert.equal(cliToken.refresh_token, selected.token.refresh_token);
-        assert.deepEqual(googleOAuthInput, {
-          ...selected.token,
-          project_id: selected.token.project_id,
-          email: selected.email,
-        });
+        const oauth = JSON.parse(fs.readFileSync(agyFiles[1], 'utf8'));
+        assert.equal(oauth.access_token, selected.token.access_token);
+        assert.equal(oauth.refresh_token, selected.token.refresh_token);
+        assert.equal(JSON.parse(fs.readFileSync(agyFiles[2], 'utf8')).active, selected.email);
         const nativePayload = JSON.parse(await readWindowsCredential(credentialTarget));
         assert.equal(nativePayload.id_token_email, selected.email);
         assert.equal(nativePayload.id_token, selected.token.id_token);
@@ -345,6 +348,17 @@ try {
           ...(selected.token.project_id ? { projectId: selected.token.project_id } : {}),
         });
       }
+      const priorAgyCredential = await readWindowsCredentialSnapshot(credentialTarget);
+      const priorAgyFiles = agyFiles.map((file) => fs.readFileSync(file));
+      failAgyReadback = true;
+      await assert.rejects((await prepareClientAccountWrite(a, 'agy')).write(), {
+        rollback: 'succeeded',
+      });
+      assert.deepEqual(await readWindowsCredentialSnapshot(credentialTarget), priorAgyCredential);
+      assert.deepEqual(
+        agyFiles.map((file) => fs.readFileSync(file)),
+        priorAgyFiles,
+      );
     }
     const rowsBeforeFailure = database.prepare('SELECT * FROM ItemTable ORDER BY key').all();
     database.exec(
@@ -374,6 +388,7 @@ try {
                 'native Windows exact-target A-B-A, independent enumeration and nondestructive reads',
                 'Windows IDE identity envelope round-trips through the native store',
                 'Agy CLI switches update the Windows credential and preserve file mirrors',
+                'Agy CLI readback failure restores exact native and file snapshots',
                 'IDE profile writes preserve peer SQLite and host credentials',
               ]
             : []),

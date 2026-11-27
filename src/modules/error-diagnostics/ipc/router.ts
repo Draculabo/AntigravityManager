@@ -4,8 +4,8 @@ import { getAgentDir } from '@/shared/platform/paths';
 import { ORPCError, os } from '@orpc/server';
 import { z } from 'zod';
 import { writeDiagnosticAttachment } from '@/modules/app-shell/diagnostic-logs/public';
-import { getErrorDiagnosticSource, readErrorDiagnosticSources } from './desktop-adapter';
-import { createErrorDesktopService } from './error-desktop.service';
+import { getErrorDiagnosticSource, readErrorDiagnosticSources } from '../desktop-adapter';
+import { createErrorDesktopService } from '../error-desktop.service';
 import {
   ErrorDesktopOpenSchema,
   ErrorDesktopQuerySchema,
@@ -14,8 +14,8 @@ import {
   ErrorSaveResultSchema,
   ErrorSourceInputSchema,
   ErrorSourcesSchema,
-} from './error-desktop.schema';
-import { ErrorWindowClearSchema, ErrorWindowPageSchema } from './error-window.schema';
+} from '../error-desktop.schema';
+import { ErrorWindowClearSchema, ErrorWindowPageSchema } from '../error-window.schema';
 
 const service = createErrorDesktopService({
   source: getErrorDiagnosticSource,

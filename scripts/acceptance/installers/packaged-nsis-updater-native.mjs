@@ -60,18 +60,23 @@ const metadata = YAML.parse(await readFile(metadataFile, 'utf8'));
 assert.equal(metadata.files?.[0]?.url, path.basename(currentInstaller));
 const currentVersion = metadata.version;
 const defaultUserData = path.join(process.env.APPDATA, 'Antigravity Manager');
+const defaultAccountData = path.join(os.homedir(), '.antigravity-agent');
+const defaultInstall = path.join(process.env.LOCALAPPDATA, 'Programs', 'antigravity-manager');
 assert(
   !existsSync(defaultUserData),
   'Run installed NSIS acceptance from a disposable Windows account with no existing app profile',
 );
-const temporaryParent = await realpath(os.tmpdir());
-const directory = await mkdtemp(path.join(temporaryParent, 'agm-nsis-update-'));
-const requestedInstall = path.join(directory, 'install');
-const defaultInstall = path.join(process.env.LOCALAPPDATA, 'Programs', 'antigravity-manager');
+assert(
+  !existsSync(defaultAccountData),
+  'Run installed NSIS acceptance from a disposable Windows account with no existing Manager account data',
+);
 assert(
   !existsSync(defaultInstall),
   `Existing NSIS installation must not be changed: ${defaultInstall}`,
 );
+const temporaryParent = await realpath(os.tmpdir());
+const directory = await mkdtemp(path.join(temporaryParent, 'agm-nsis-update-'));
+const requestedInstall = path.join(directory, 'install');
 const profile = path.join(directory, 'profile');
 const diagnosticDirectory = path.join(profile, '.antigravity-agent');
 const userData = path.join(profile, 'desktop-data');

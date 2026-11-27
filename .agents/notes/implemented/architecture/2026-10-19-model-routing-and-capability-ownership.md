@@ -76,6 +76,11 @@ missing model entitlement from suppressing a model for every other account and
 prevents a public directory from being treated as proof that generation will
 succeed.
 
+The shared directory also checks the default recipe of a registered preset when
+all loaded accounts have model catalogs. A legacy catalog spelling alone does
+not establish a compatible physical route. Temporary capability failures do
+not withdraw a route the catalog otherwise supports.
+
 ## Verification
 
 Focused routing, capability, model-variant and protocol-path tests passed. The

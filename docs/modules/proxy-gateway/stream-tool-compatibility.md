@@ -16,6 +16,10 @@ pauses the upstream and suppresses heartbeat generation. Draining resumes normal
 delivery without replaying missed heartbeats. Anthropic's first-event wrapper carries
 the same pause state into its mapper.
 
+The thinking-recovery adapter may buffer upstream bytes before the protocol
+mapper asks for its next frame. An upstream failure while the client is blocked
+on the opening frame follows the adapter's normal stream failure path.
+
 Native Gemini forwards upstream SSE comments and generates no heartbeat frames of its own.
 
 Anthropic Messages uses the shared

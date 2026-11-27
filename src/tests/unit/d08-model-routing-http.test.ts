@@ -234,6 +234,38 @@ it('routes an explicitly configured old request name to its active target', asyn
   expect(wire.at(-1)?.body.model).toBe('gemini-3.1-pro-low');
 });
 
+it('hides a registered Flash preset when the catalog only advertises its legacy name', async () => {
+  const { app, wire, lease } = await fixture(['gemini-3-flash', 'gemini-3.8-flash-high']);
+
+  for (const url of ['/v1/models', '/v1beta/models', '/v1/models/claude']) {
+    const response = await app.inject({ url, headers });
+    expect(response.statusCode).toBe(200);
+    const catalog = JSON.stringify(response.json());
+    expect(catalog).not.toMatch(/"(?:(?:models\/)?gemini-3-flash)"/);
+    expect(catalog).toContain('gemini-3.8-flash-high');
+  }
+  for (const url of ['/v1/models/gemini-3-flash', '/v1beta/models/gemini-3-flash']) {
+    expect((await app.inject({ url, headers })).statusCode).toBe(404);
+  }
+  const config = getServerConfig();
+  if (!config) {
+    throw new Error('Expected the fixture gateway configuration');
+  }
+  setServerConfig({ ...config, only_raw_quota_models: true });
+  const raw = await app.inject({ url: '/v1/models', headers });
+  expect(raw.statusCode).toBe(200);
+  expect(raw.json().data).toContainEqual(expect.objectContaining({ id: 'gemini-3-flash' }));
+  expect(lease.getNextToken).not.toHaveBeenCalled();
+  expect(wire).toEqual([]);
+});
+
+it('discovers a Flash preset when an account advertises its registered recipe', async () => {
+  const { app } = await fixture(['gemini-3-flash', 'gemini-3-flash-agent']);
+  const response = await app.inject({ url: '/v1/models/gemini-3-flash', headers });
+  expect(response.statusCode).toBe(200);
+  expect(response.json()).toMatchObject({ id: 'gemini-3-flash' });
+});
+
 it('discovers and sends new physical model IDs only when the account advertises them', async () => {
   const models = ['gemini-4-neon-high', 'gemini-4-carbon-xhigh', 'claude-opus-5-5-medium'];
   const { app, wire } = await fixture(models);

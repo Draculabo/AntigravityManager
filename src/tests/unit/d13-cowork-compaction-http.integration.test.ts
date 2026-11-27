@@ -31,9 +31,7 @@ vi.mock('@/modules/proxy-gateway/opencode-sync/opencode-credentials', () => ({
   openCodeCredentialService: { matches: () => false },
 }));
 vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
-  ...(await original<
-    typeof import('@/server/gateway/common/utils/request-user-agent')
-  >()),
+  ...(await original<typeof import('@/server/gateway/common/utils/request-user-agent')>()),
   resolveRequestUserAgent: async () => 'd13-loopback-fixture',
   buildContentRequestUserAgent: () => 'd13-loopback-fixture',
 }));
@@ -213,7 +211,7 @@ async function fixture(auto = false) {
         'x-claude-code-session-id': options.session ?? 'd13-primary-session',
       },
       JSON.stringify({
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-6-thinking',
         max_tokens: 128,
         messages,
         stream: options.stream ?? false,

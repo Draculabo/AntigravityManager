@@ -52,7 +52,7 @@ async function run(protocol: Protocol, input: string[] | Readable, transportErro
     });
   } else if (protocol === 'messages') {
     stream = await gateway.anthropicService.handleAnthropicMessages({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6-thinking',
       max_tokens: 32,
       stream: true,
       messages: [{ role: 'user', content: 'controlled' }],

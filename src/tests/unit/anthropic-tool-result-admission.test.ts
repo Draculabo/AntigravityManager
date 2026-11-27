@@ -13,13 +13,10 @@ import {
   geminiTextResponse,
 } from './proxy-real-path.harness';
 
-vi.mock(
-  '@/server/gateway/common/utils/request-user-agent',
-  async (importOriginal) => ({
-    ...(await importOriginal()),
-    resolveRequestUserAgent: async () => 'tool-result-admission-test',
-  }),
-);
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (importOriginal) => ({
+  ...(await importOriginal()),
+  resolveRequestUserAgent: async () => 'tool-result-admission-test',
+}));
 
 describe('tool-result admission through protocol services', () => {
   it.each([false, true])(
@@ -32,7 +29,7 @@ describe('tool-result admission through protocol services', () => {
       const reply = createReply();
       await controller.anthropicMessages(
         {
-          model: 'claude-sonnet-4-5',
+          model: 'claude-sonnet-4-6-thinking',
           max_tokens: 32,
           stream,
           messages: [
@@ -66,7 +63,7 @@ describe('tool-result admission through protocol services', () => {
     const { anthropicService } = createGateway(upstream, lease);
     await expect(
       anthropicService.handleAnthropicMessages({
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-6-thinking',
         max_tokens: 32,
         messages: [
           {
@@ -88,7 +85,7 @@ describe('tool-result admission through protocol services', () => {
     const lease = createLease([createAccount('acc-1')]);
     const { anthropicService } = createGateway(upstream, lease);
     const request: AnthropicChatRequest = {
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6-thinking',
       max_tokens: 32,
       messages: [
         { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't', content: 'x' }] },
@@ -109,7 +106,7 @@ describe('tool-result admission through protocol services', () => {
       const { openAIService } = createGateway(upstream, lease);
       await expect(
         openAIService.handleChatCompletions({
-          model: 'claude-sonnet-4-5',
+          model: 'claude-sonnet-4-6-thinking',
           stream,
           messages: [{ role: 'tool', tool_call_id: 't', content: 'orphan output' }],
         }),
@@ -130,7 +127,7 @@ describe('tool-result admission through protocol services', () => {
       const lease = createLease([createAccount('acc-1')]);
       const { anthropicService } = createGateway(upstream, lease);
       const response = await anthropicService.handleAnthropicMessages({
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-6-thinking',
         max_tokens: 32,
         stream,
         messages: [

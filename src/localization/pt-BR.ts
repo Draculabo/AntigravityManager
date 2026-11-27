@@ -591,6 +591,8 @@ const ptBR = {
   },
   traffic: {
     ...en.traffic,
+    'usage-reasoning': 'Tokens de raciocínio',
+    'usage-reasoning-source': 'Informados pelo provedor',
     'export-har': 'Exportar HAR',
     'har-exporting': 'Exportando HAR…',
     'har-export-saved': 'Arquivo HAR salvo.',

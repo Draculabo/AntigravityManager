@@ -25,6 +25,7 @@ describe('AccountLeaseConfigPolicy', () => {
         parity_enabled: true,
         parity_kill_switch: false,
         parity_shadow_enabled: true,
+        weekly_quota_priority_enabled: true,
         scheduling_mode: 'performance-first',
         preferred_account_id: ' acc-1 ',
         max_wait_seconds: 12,
@@ -37,6 +38,7 @@ describe('AccountLeaseConfigPolicy', () => {
 
     expect(policy.getSelectionConfig()).toEqual({
       quotaAwareSchedulingEnabled: true,
+      weeklyQuotaPriorityEnabled: true,
       parityEnabled: true,
       parityShadowEnabled: true,
       schedulingMode: 'performance-first',

@@ -22,9 +22,7 @@ import {
 } from './proxy-real-path.harness';
 
 vi.mock('@/server/gateway/common/utils/request-user-agent', async (original) => ({
-  ...(await original<
-    typeof import('@/server/gateway/common/utils/request-user-agent')
-  >()),
+  ...(await original<typeof import('@/server/gateway/common/utils/request-user-agent')>()),
   resolveRequestUserAgent: async () => 'd11-loopback-fixture',
 }));
 
@@ -102,14 +100,14 @@ it.runIf(Boolean(process.env.AGM_D11_CLAUDE_EXE))(
       });
       await app.listen(0, '127.0.0.1');
       const origin = await app.getUrl();
-      const { stdout } = await promisify(execFile)(
+      const execution = promisify(execFile)(
         executable,
         [
           '--print',
           '--output-format',
           'text',
           '--model',
-          'claude-sonnet-4-5',
+          'claude-sonnet-4-6',
           '--no-session-persistence',
           '--setting-sources',
           '',
@@ -121,7 +119,6 @@ it.runIf(Boolean(process.env.AGM_D11_CLAUDE_EXE))(
           '',
           '--system-prompt',
           'Synthetic loopback acceptance test.',
-          'Reply briefly.',
         ],
         {
           cwd: profile.path,
@@ -147,6 +144,8 @@ it.runIf(Boolean(process.env.AGM_D11_CLAUDE_EXE))(
           },
         },
       );
+      execution.child.stdin?.end('Reply briefly.\n');
+      const { stdout } = await execution;
       expect(stdout).toContain(answer);
       expect(upstream.streamGenerateInternal).toHaveBeenCalledTimes(2);
       expect(writes).toHaveLength(1);

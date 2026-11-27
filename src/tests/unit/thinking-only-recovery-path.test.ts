@@ -116,7 +116,7 @@ async function run(
         : await gateway.geminiService.handleGeminiGenerateContent('gemini-3-flash', request);
     } else if (protocol === 'messages') {
       result = await gateway.anthropicService.handleAnthropicMessages({
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-6-thinking',
         max_tokens: 32,
         stream,
         messages: [{ role: 'user', content: 'controlled request' }],

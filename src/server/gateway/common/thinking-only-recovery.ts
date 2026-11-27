@@ -210,7 +210,14 @@ function rewriteEvent(event: SseEvent, data: string | null): string {
 }
 
 function readable(source: NodeJS.ReadableStream): Readable {
-  return source instanceof Readable ? source : new Readable().wrap(source);
+  const stream = source instanceof Readable ? source : new Readable().wrap(source);
+  if (!stream.closed) {
+    // A blocked opening frame can delay iteration. The iterator will still reject with stream.errored.
+    const awaitIterator = (): void => {};
+    stream.on('error', awaitIterator);
+    stream.once('close', () => stream.off('error', awaitIterator));
+  }
+  return stream;
 }
 
 /** Hold only the eligible STOP until clean EOF; thought parts remain visible under backpressure. */

@@ -41,7 +41,7 @@ async function dispatch(
       gateway?.anthropicService ?? (service as unknown as AnthropicService),
     ).anthropicMessages(
       {
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-6-thinking',
         max_tokens: 32,
         messages: [{ role: 'user', content: 'controlled' }],
       },

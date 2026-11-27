@@ -72,7 +72,7 @@ import {
   type UsageRangeInput,
 } from './usage-range.schema';
 import type { IncrementalAuditPayloadKind } from './incremental-audit-serializer';
-import { extractAuditUsage } from './audit-usage';
+import { extractUpstreamAuditUsage } from './audit-usage';
 
 const TRAFFIC_AUDIT_FILENAME = 'request-audit.db';
 
@@ -334,7 +334,7 @@ export class TrafficAuditService {
       return;
     }
     const completedAt = Date.now();
-    const usage = input.usage ?? extractAuditUsage(input.responseBody);
+    const usage = input.usage ?? extractUpstreamAuditUsage(input.responseBody);
     // Establish body ownership before completion makes this request eligible for eviction.
     if (!input.responsePayloadHandled) {
       this.capturePayload({

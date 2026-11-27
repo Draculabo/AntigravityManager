@@ -47,10 +47,13 @@ to use their current formats. The badge reflects the saved CLI credential at ref
 does not guarantee that an already-running CLI process has reloaded it.
 
 The Windows account is shared with clients that use `gemini:antigravity`. Manager serializes its
-own switches. Other processes can refresh or replace the item independently. A readback failure
-stops finalization and does not restore an older shared item over a possible concurrent update.
-Fallback files can already contain the new account. Existing sessions should be closed before
-retrying the selection or signing in through the official client.
+own switches. Other processes can refresh or replace the item independently. An unsuccessful
+write triggers verified compensation for the application's own values, using in-memory snapshots
+of the prior bytes and native metadata. An observed external change is left in place and is
+reported as unconfirmed recovery. Keeping the snapshots in memory avoids a new durable copy of
+login credentials. The Windows and filesystem APIs do not provide a shared compare-and-swap,
+so recovery checks cannot exclude an external write racing the restore itself. Existing sessions
+should be closed before switching or retrying.
 
 ## Verification
 

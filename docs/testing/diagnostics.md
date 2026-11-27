@@ -43,7 +43,8 @@ closure and core shutdown independently during recovery.
 On Windows, `pnpm run test:diagnostics:packaged <desktop-executable>` exercises the full
 packaged or installed product with empty isolated profiles and reporting disabled. Both
 desktop owner modes must retain login and switch diagnostics through the production preload
-and public IPC; the real login toast must expose its reference in Error details. The packaged
+and public IPC. The Add Account dialog must show the authorization failure and expose its
+reference in Details without opening a browser for an invalid proxy configuration. The packaged
 CLI exchanges a synthetic authorization code through a local proxy returning HTTP 503 and
 must use HTTPS CONNECT and retain the upstream status/code and closed HTTP evidence in its
 terminal diagnostic and local log. The focused logging regression checks the actual Winston

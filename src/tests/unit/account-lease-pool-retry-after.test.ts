@@ -28,7 +28,7 @@ function createAccount(id: string): CloudAccount {
 describe('AccountLeaseService pool Retry-After', () => {
   it.each([
     ['claude-sonnet-4-6-thinking', 'claude-sonnet-4-6', 'Claude Sonnet 4.6 (Thinking)'],
-    ['gemini-3.7-flash-high', 'gemini-3.7-flash-tiered', undefined],
+    ['gemini-3.7-flash-high', 'gemini-3.7-flash-high', undefined],
   ])(
     'checks the actual account route for %s',
     async (requestedModel, physicalModel, displayName) => {

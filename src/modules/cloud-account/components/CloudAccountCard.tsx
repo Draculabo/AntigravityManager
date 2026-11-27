@@ -816,7 +816,7 @@ export function CloudAccountCard({
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => onSwitch(account.id, 'agy')}
-                  disabled={isSwitching || account.is_active_agy}
+                  disabled={isSwitching}
                   className="flex cursor-pointer items-center justify-between"
                 >
                   <span className="flex items-center gap-2">
@@ -1344,7 +1344,7 @@ export function CompactCloudAccountCard({
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => onSwitch(account.id, 'agy')}
-                disabled={isSwitching || isAccountDisabled || account.is_active_agy}
+                disabled={isSwitching || isAccountDisabled}
                 className="flex cursor-pointer items-center justify-between"
               >
                 <span className="flex items-center gap-2">

@@ -245,8 +245,11 @@ it('keeps an automatic HTTP redirect from resending a large generation body', as
 
 it.each([false, true])('records actual HTTP stages with visible output=%s', async (visible) => {
   const debug = vi.spyOn(logger, 'debug').mockImplementation(() => {});
+  let uploadedBodyBytes = 0;
   const client = await upstream((request, response) => {
-    request.resume();
+    request.on('data', (chunk: Buffer) => {
+      uploadedBodyBytes += chunk.byteLength;
+    });
     request.once('end', () => {
       response.writeHead(200, { 'content-type': 'text/event-stream' });
       response.write(': keepalive\n\n');
@@ -287,6 +290,8 @@ it.each([false, true])('records actual HTTP stages with visible output=%s', asyn
         responseHeadersMs: expect.any(Number),
         firstByteMs: expect.any(Number),
         firstUsableOutputMs: visible ? expect.any(Number) : null,
+        uploadedBodyBytes,
+        downloadedBodyBytes: Buffer.concat(chunks).byteLength,
         version: 1,
       },
     ],

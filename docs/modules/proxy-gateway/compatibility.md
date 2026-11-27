@@ -159,6 +159,9 @@ return HTTP 404 before account selection. Registered automatic Flash routes reta
 do not bind to automatic profiles merely because both are registered as High.
 Explicit provider retirement rules retain their existing registered-recipe safety check and may
 name a replacement tier. Bare-family nearest-tier selection remains available.
+The OpenAI, Gemini and Anthropic model directories omit a registered default
+preset when every loaded account has a catalog and none contains a compatible
+physical route. Raw quota mode still lists advertised physical IDs.
 
 Capability failures are scoped to an account and known model family for 900
 seconds. A failure on account A does not block account B, and a denial for one

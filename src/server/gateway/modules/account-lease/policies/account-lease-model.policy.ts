@@ -54,6 +54,8 @@ const GEMINI_4_ARGON_FAMILY = new Set([
 
 export type AccountModelAvailability = 'unknown' | 'available' | 'unavailable';
 
+type ModelDiscoveryEvidence = ModelDiscoveryCapabilities & { missingRegisteredRoute?: true };
+
 export class AccountLeaseModelPolicy {
   private readonly catalog: AccountModelCatalog;
 
@@ -69,44 +71,55 @@ export class AccountLeaseModelPolicy {
     return this.catalog.getAllRawQuotaModels();
   }
 
-  getModelDiscoveryCapabilities(model: string, physicalTarget = false): ModelDiscoveryCapabilities {
+  getModelDiscoveryCapabilities(model: string, physicalTarget = false): ModelDiscoveryEvidence {
     const profile = resolveModelVariant({ model, physicalTarget });
     const requestedModel = profile?.model ?? model.toLowerCase();
-    const facts = [...this.options.getTokenCache().values()].flatMap<ModelDiscoveryCapabilities>(
-      (token) => {
-        const available = this.filterRequestableModels(
-          this.getAvailableModelsFromToken(token),
-          token.account_id,
+    const tokens = [...this.options.getTokenCache().values()];
+    let missingRegisteredRoute = !physicalTarget && profile !== null && tokens.length > 0;
+    const facts = tokens.flatMap<ModelDiscoveryCapabilities>((token) => {
+      const advertised = this.getAvailableModelsFromToken(token);
+      if (advertised.size === 0) {
+        missingRegisteredRoute = false;
+        return [{}];
+      }
+      const available = this.filterRequestableModels(advertised, token.account_id);
+      const physical = this.resolveAvailableModel(
+        token,
+        requestedModel,
+        available,
+        undefined,
+        physicalTarget || profile !== null,
+      );
+      if (physical) {
+        missingRegisteredRoute = false;
+      } else if (missingRegisteredRoute && available.size < advertised.size) {
+        // Temporary account capability blocks affect metadata, but do not withdraw a catalog route.
+        const catalogModels = new Set(
+          [...advertised].filter((modelId) => !isRetiredModel(modelId)),
         );
-        if (available.size === 0) {
-          return this.getAvailableModelsFromToken(token).size === 0 ? [{}] : [];
-        }
-        const physical = this.resolveAvailableModel(
-          token,
-          requestedModel,
-          available,
-          undefined,
-          physicalTarget || profile !== null,
-        );
-        if (!physical) {
-          return [];
-        }
-        const evidence = this.getPositiveModelEvidenceFromToken(token).find(
-          (entry) => entry.modelId === physical,
-        );
-        return [
-          {
-            supports_images: evidence?.details?.modalities?.supportsImages,
-            supports_thinking: evidence?.details?.supportsThinking,
-            max_output_tokens: evidence?.details?.maxOutputTokens,
-          },
-        ];
-      },
-    );
+        missingRegisteredRoute =
+          this.resolveAvailableModel(token, requestedModel, catalogModels, undefined, true) ===
+          null;
+      }
+      if (!physical) {
+        return [];
+      }
+      const evidence = this.getPositiveModelEvidenceFromToken(token).find(
+        (entry) => entry.modelId === physical,
+      );
+      return [
+        {
+          supports_images: evidence?.details?.modalities?.supportsImages,
+          supports_thinking: evidence?.details?.supportsThinking,
+          max_output_tokens: evidence?.details?.maxOutputTokens,
+        },
+      ];
+    });
     const supportsImages = consistentCapability(facts.map((fact) => fact.supports_images));
     const supportsThinking = consistentCapability(facts.map((fact) => fact.supports_thinking));
     const maxOutputTokens = consistentCapability(facts.map((fact) => fact.max_output_tokens));
     return {
+      ...(missingRegisteredRoute ? { missingRegisteredRoute: true } : {}),
       ...(supportsImages !== undefined ? { supports_images: supportsImages } : {}),
       ...(supportsThinking !== undefined ? { supports_thinking: supportsThinking } : {}),
       ...(maxOutputTokens !== undefined ? { max_output_tokens: maxOutputTokens } : {}),

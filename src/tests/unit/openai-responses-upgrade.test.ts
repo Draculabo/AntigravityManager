@@ -66,12 +66,28 @@ describe('Responses reasoning history in the current store', () => {
         },
       ],
     });
-    writer.save('resp_legacy_inputs', {
-      identity: responsesIdentityFixture,
-      model: 'gemini-3-flash',
-      inputItems: fixture.entries[1].value.inputItems,
-    });
     await writer.flush();
+    const snapshot = z
+      .object({
+        version: z.literal(1),
+        entries: z.array(
+          z.object({
+            key: z.string(),
+            updatedAt: z.number(),
+            value: z.object({ node: z.object({}).passthrough() }).passthrough(),
+          }),
+        ),
+      })
+      .parse(JSON.parse(fs.readFileSync(filePath, 'utf8')));
+    const storedEntry = snapshot.entries[0];
+    snapshot.entries.push({
+      ...storedEntry,
+      key: 'resp_legacy_inputs',
+      value: {
+        node: { ...storedEntry.value.node, inputDelta: fixture.entries[1].value.inputItems },
+      },
+    });
+    fs.writeFileSync(filePath, JSON.stringify(snapshot));
     const store = new OpenAIResponsesSessionStoreImpl({ filePath });
     const old = store.get('resp_before_restart');
     expect(old?.response).toEqual(fixture.entries[0].value.response);
@@ -138,25 +154,7 @@ describe('Responses reasoning history in the current store', () => {
       'data:image/',
     );
     expect(JSON.parse(fs.readFileSync(filePath, 'utf8')).version).toBe(1);
-    const legacy = restarted.get('resp_legacy_inputs');
-    expect(JSON.stringify(legacy?.inputItems)).toContain('data:image/');
-    expect(
-      buildResponsesChatRequest({ model: legacy?.model, input: legacy?.inputItems }).messages,
-    ).toEqual([
-      { role: 'user', content: '' },
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'image_url',
-            image_url: { url: 'data:image/png;base64,AA==' },
-          },
-        ],
-      },
-    ]);
-    expect(JSON.stringify(restarted.get('resp_legacy_inputs')?.inputItems)).toContain(
-      'data:image/',
-    );
+    expect(restarted.get('resp_legacy_inputs')).toBeNull();
     await restarted.flush();
   });
   it.each(['', ' \n\t', ' keep whitespace '])(

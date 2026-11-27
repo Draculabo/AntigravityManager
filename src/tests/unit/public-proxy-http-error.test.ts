@@ -50,7 +50,7 @@ async function httpFailure(
       gateway?.anthropicService ?? (service as unknown as AnthropicService),
     ).anthropicMessages(
       {
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-6-thinking',
         max_tokens: 32,
         messages: [{ role: 'user', content: 'controlled' }],
       },
@@ -267,7 +267,7 @@ describe.each(['chat', 'responses', 'messages', 'gemini'] as const)(
         param = 'body.messages.0.content.0';
         await new AnthropicController(service as unknown as AnthropicService).anthropicMessages(
           {
-            model: 'claude-sonnet-4-5',
+            model: 'claude-sonnet-4-6-thinking',
             max_tokens: 32,
             messages: [
               {

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { FeedbackState } from '@/components/ui/feedback-state';
 import { Input } from '@/components/ui/input';
 import { ipc } from '@/ipc/manager';
-import { useCloudAccounts } from '@/modules/cloud-account/hooks/useCloudAccounts';
+import { useCloudAccounts } from '@/modules/cloud-account/renderer';
 import type { TrafficAuditListInput } from '../../audit/traffic-audit.types';
 import {
   USAGE_OVERVIEW_LIMIT,

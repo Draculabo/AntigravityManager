@@ -20,7 +20,7 @@ import {
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { alias } from 'drizzle-orm/sqlite-core';
 import { z } from 'zod';
-import { getQuotaModelFamilyId } from '@/modules/cloud-account/utils/quota-model-families';
+import { getQuotaModelFamilyId } from '@/modules/cloud-account/public';
 import { requestLogs, upstreamAttempts, type trafficAuditSchema } from './traffic-audit.schema';
 import { readActivityDays } from './traffic-audit-activity-days';
 import {

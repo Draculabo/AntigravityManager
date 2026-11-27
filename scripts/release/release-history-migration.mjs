@@ -1,4 +1,4 @@
-import changelog from '@semantic-release/changelog';
+import { prepare as prepareChangelog } from '@semantic-release/changelog';
 import semver from 'semver';
 import releaseConfig from '../../release.config.cjs';
 import {
@@ -60,7 +60,7 @@ export async function recordHistoryMigration(cwd, candidate) {
   );
   const version = tag.slice(1);
   const context = { cwd, nextRelease: { version, notes }, logger: console };
-  await changelog.prepare(changelogPlugin[1], context);
+  await prepareChangelog(changelogPlugin[1], context);
   await updatePackageVersion({}, context);
   git(cwd, [
     '-c',

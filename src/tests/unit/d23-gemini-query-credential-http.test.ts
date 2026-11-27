@@ -83,8 +83,8 @@ async function createSurface() {
       {
         provide: AccountLeaseService,
         useValue: {
-          getAllRawQuotaModels: () => new Set(['gemini-2.5-flash']),
-          getAllCollectedModels: () => new Set(['gemini-2.5-flash']),
+          getAllRawQuotaModels: () => new Set(['gemini-3-flash']),
+          getAllCollectedModels: () => new Set(['gemini-3-flash']),
         },
       },
     ],
@@ -128,14 +128,14 @@ function identities(request: FastifyRequest) {
 describe('Gemini query credentials at the production HTTP ingress', () => {
   it('authenticates model list, retrieval and generation without changing the original URL', async () => {
     const { app, seen, generate } = await createSurface();
-    for (const path of ['/v1beta/models', '/v1beta/models/gemini-2.5-flash']) {
+    for (const path of ['/v1beta/models', '/v1beta/models/gemini-3-flash']) {
       const reply = await app.inject({ url: `${path}?${keyQuery}` });
       expect(reply.statusCode).toBe(200);
       expect(seen.at(-1)?.url).toBe(`${path}?${keyQuery}`);
     }
     const reply = await app.inject({
       method: 'POST',
-      url: `/v1beta/models/gemini-2.5-flash:generateContent?${keyQuery}`,
+      url: `/v1beta/models/gemini-3-flash:generateContent?${keyQuery}`,
       payload: content,
     });
     expect({ status: reply.statusCode, body: reply.json() }).toEqual({
@@ -223,7 +223,7 @@ describe('Gemini query credentials at the production HTTP ingress', () => {
 
   it('normalizes before gzip admission and rejects unauthorized compressed input before decoding', async () => {
     const { app, generate } = await createSurface();
-    const url = `/v1beta/models/gemini-2.5-flash:generateContent?${keyQuery}`;
+    const url = `/v1beta/models/gemini-3-flash:generateContent?${keyQuery}`;
     const good = await app.inject({
       method: 'POST',
       url,

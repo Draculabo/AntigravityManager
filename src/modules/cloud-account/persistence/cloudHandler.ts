@@ -22,7 +22,11 @@ import {
   type SetCloudAccountRoutingInput,
 } from '../services/cloud-account-routing.schema';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
-import { assertImportPlanCurrent, cloudAccountRowValues } from './cloud-account-import-guard';
+import {
+  assertImportPlanCurrent,
+  cloudAccountImportUpdateValues,
+  cloudAccountRowValues,
+} from './cloud-account-import-guard';
 import {
   parseDeviceHistoryColumn,
   parseDeviceProfileColumn,
@@ -111,12 +115,14 @@ function parseAccountRow(row: AccountRow): CloudAccount {
     is_active: Boolean(row.isActive),
     proxy_url: row.proxyUrl ?? undefined,
     proxy_priority: row.proxyPriority ?? 50,
-    ...(geminiPriority !== undefined || claudePriority !== undefined ? {
-      proxy_priority_overrides: {
-        ...(geminiPriority !== undefined ? { gemini: geminiPriority } : {}),
-        ...(claudePriority !== undefined ? { claude: claudePriority } : {}),
-      },
-    } : {}),
+    ...(geminiPriority !== undefined || claudePriority !== undefined
+      ? {
+          proxy_priority_overrides: {
+            ...(geminiPriority !== undefined ? { gemini: geminiPriority } : {}),
+            ...(claudePriority !== undefined ? { claude: claudePriority } : {}),
+          },
+        }
+      : {}),
     proxy_enabled: row.proxyEnabled !== 0,
   };
 }
@@ -187,6 +193,8 @@ export class CloudAccountRepo {
     const { raw, orm } = getCloudDb();
     try {
       const values = cloudAccountRowValues(account);
+      const expected = expectedAccounts?.find((candidate) => candidate.id === account.id);
+      const update = cloudAccountImportUpdateValues(account, values, expected);
 
       orm.transaction((transaction) => {
         if (expectedAccounts) {
@@ -205,7 +213,7 @@ export class CloudAccountRepo {
           .values(values)
           .onConflictDoUpdate({
             target: accounts.id,
-            set: values,
+            set: update,
           })
           .run();
       });

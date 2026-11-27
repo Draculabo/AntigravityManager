@@ -317,6 +317,11 @@ request-validation HTTP 400 does not imply an unhealthy account. Grace can commi
 the same pending lease after its earlier failure; repeated success callbacks are
 idempotent and cannot overwrite a newer successful binding.
 
+An explicit Google service-disabled response quarantines the affected account
+and ends that generation. Subsequent requests can use another eligible account.
+The quarantine survives a Gateway restart, even when the account can still
+retrieve its quota.
+
 Pending state is held in a weak map owned by the lease service and is not exposed
 in protocol payloads or persisted. Commit checks that the selected cache entry is
 still current and is not OAuth-disabled or validation-blocked. Clearing sessions

@@ -203,7 +203,7 @@ describe.each(['chat', 'responses', 'messages', 'gemini'] as const)(
           : protocol === 'messages'
             ? gateway.anthropicService.handleAnthropicMessages(
                 {
-                  model: 'claude-sonnet-4-5',
+                  model: 'claude-sonnet-4-6-thinking',
                   max_tokens: 32,
                   stream,
                   messages: histories.anthropic,

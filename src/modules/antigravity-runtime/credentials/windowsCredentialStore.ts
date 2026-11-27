@@ -17,6 +17,30 @@ export const WindowsCredentialSnapshotSchema = z.object({
 });
 export type WindowsCredentialSnapshot = z.infer<typeof WindowsCredentialSnapshotSchema>;
 
+const writtenCredentialMetadata = {
+  flags: 0,
+  comment: null,
+  persist: 2,
+  targetAlias: null,
+};
+
+export function matchesWindowsCredentialWrite(
+  current: WindowsCredentialSnapshot | null,
+  username: string,
+  payload: string,
+): boolean {
+  const bytes = Buffer.from(payload, 'utf8');
+  try {
+    return isEqual(current, {
+      ...writtenCredentialMetadata,
+      username,
+      payload: bytes.toString('base64'),
+    });
+  } finally {
+    bytes.fill(0);
+  }
+}
+
 /** Recovery captures exact bytes and writable metadata, including an absent item. */
 export async function readWindowsCredentialSnapshot(
   target: string,
@@ -201,17 +225,14 @@ export async function writeWindowsCredential(
     try {
       const success: unknown = write(
         {
-          flags: 0,
+          ...writtenCredentialMetadata,
           type: 1,
           targetName: target,
-          comment: null,
           lastWritten: [0, 0],
           blobSize: blob.length,
           blob,
-          persist: 2,
           attributeCount: 0,
           attributes: null,
-          targetAlias: null,
           username,
         },
         0,

@@ -25,7 +25,7 @@ function dispatch(gateway: ReturnType<typeof createGateway>, protocol: Protocol,
   }
   if (protocol === 'messages') {
     return gateway.anthropicService.handleAnthropicMessages({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6-thinking',
       max_tokens: 32,
       stream,
       messages: [{ role: 'user', content: 'controlled' }],

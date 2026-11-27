@@ -118,6 +118,42 @@ describe('stored account eligibility during completion', () => {
     }
   });
 
+  it('reloads accounts when a deferred write fails before its stored account becomes blocked', async () => {
+    const account = createAccount('sqlite-project');
+    account.token.project_id = undefined;
+    await CloudAccountRepo.insertAccount(account);
+    const attempted = Promise.withResolvers<void>();
+    vi.spyOn(CloudAccountRepo, 'compareAndUpdateToken').mockImplementationOnce(async () => {
+      attempted.resolve();
+      throw new Error('SQLite write unavailable');
+    });
+    const lease = new AccountLeaseService(
+      cloudAccountStoreAdapter,
+      {
+        fetchQuota: vi.fn(),
+        refreshAccessToken: vi.fn(),
+        normalizeRefreshedOAuthClientKey: vi.fn(),
+        fetchProjectId: vi.fn(async () => 'deferred-project'),
+      },
+      undefined,
+      undefined,
+      undefined,
+      null,
+    );
+    services.push(lease);
+    await expect(lease.getNextToken()).resolves.toMatchObject({
+      token: { project_id: 'deferred-project' },
+    });
+    await attempted.promise;
+    await CloudAccountHealthService.mutateHealth(account.id, () => ({
+      oauth: { refresh_blocked: true },
+    }));
+
+    await expect(lease.reloadAllAccountsOrThrow()).resolves.toBeDefined();
+    expect((await CloudAccountRepo.getAccount(account.id))?.token.project_id).toBeUndefined();
+    await expect(lease.getNextToken()).resolves.toBeNull();
+  });
+
   it.each(['oauth', 'validation'] as const)(
     'does not write quota after stored %s quarantine while the fetch waits',
     async (kind) => {

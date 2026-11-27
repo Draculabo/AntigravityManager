@@ -5,6 +5,7 @@ import { CloudMonitorService } from '@/modules/cloud-account/services/CloudMonit
 import { CloudAccountRepo } from '@/modules/cloud-account/persistence/cloudHandler';
 import { CloudAccountSettingsStore } from '@/modules/cloud-account/persistence/cloud-account-settings-store';
 import { GoogleAPIService } from '@/modules/cloud-account/services/GoogleAPIService';
+import type { CloudAccount } from '@/modules/cloud-account/types';
 
 vi.mock('@/modules/cloud-account/persistence/cloudHandler');
 vi.mock('@/modules/cloud-account/persistence/cloud-account-settings-store');
@@ -44,16 +45,22 @@ describe('CloudMonitorService exhausted quota alerts', () => {
   });
 
   it('alerts when a model quota reaches zero percent', async () => {
-    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([
-      {
-        id: 'acc-zero',
-        email: 'zero@example.com',
-        token: {
-          access_token: 'access-token',
-          expiry_timestamp: Math.floor(Date.now() / 1000) + 3600,
-        },
+    const account: CloudAccount = {
+      id: 'acc-zero',
+      provider: 'google',
+      email: 'zero@example.com',
+      created_at: 1,
+      last_used: 1,
+      token: {
+        access_token: 'access-token',
+        refresh_token: 'refresh-token',
+        token_type: 'Bearer',
+        expires_in: 3600,
+        expiry_timestamp: Math.floor(Date.now() / 1000) + 3600,
       },
-    ] as never);
+    };
+    vi.mocked(CloudAccountRepo.getAccounts).mockResolvedValue([account]);
+    vi.mocked(CloudAccountRepo.getAccount).mockResolvedValue(account);
     vi.mocked(GoogleAPIService.fetchQuota).mockResolvedValue({
       models: {
         'models/gemini-test': {

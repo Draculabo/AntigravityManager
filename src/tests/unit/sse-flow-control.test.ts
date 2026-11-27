@@ -4,6 +4,7 @@ import type { FastifyReply } from 'fastify';
 import { Observable } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { writeProxySseResponse } from '@/server/gateway/common/proxy-sse-response';
+import { FlowControlledSseStream } from '@/server/gateway/common/flow-controlled-sse-stream';
 import {
   createAccount,
   createGateway,
@@ -34,7 +35,7 @@ describe('production SSE producer backpressure', () => {
         });
       } else if (protocol === 'messages') {
         const pending = gateway.anthropicService.handleAnthropicMessages({
-          model: 'claude-sonnet-4-5',
+          model: 'claude-sonnet-4-6-thinking',
           max_tokens: 32,
           stream: true,
           messages: [{ role: 'user', content: 'synthetic flow' }],
@@ -76,15 +77,24 @@ describe('production SSE producer backpressure', () => {
       });
       const reply = { raw, hijack: vi.fn() } as unknown as FastifyReply;
       try {
+        if (!(stream instanceof FlowControlledSseStream)) {
+          throw new Error('Expected a flow-controlled protocol stream');
+        }
         writeProxySseResponse(reply, stream);
         if (protocol !== 'messages') {
           source.write(frame);
         }
-        expect(raw.write).toHaveBeenCalled();
-        expect(source.isPaused()).toBe(true);
+        await vi.waitFor(() => expect(stream.isPaused).toBe(true));
+        expect(raw.write).toHaveBeenCalledOnce();
+        source.write(frame);
+        expect(raw.write).toHaveBeenCalledOnce();
         raw.write.mockReturnValue(true);
         raw.emit('drain');
-        expect(source.isPaused()).toBe(false);
+        await vi.waitFor(() => {
+          expect(stream.isPaused).toBe(false);
+          const wire = raw.write.mock.calls.map(([chunk]) => chunk.toString()).join('');
+          expect(wire).toContain('synthetic frame');
+        });
       } finally {
         raw.emit('close');
         source.destroy();

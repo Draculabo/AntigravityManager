@@ -28,6 +28,15 @@ The validation-health owner passes the same guard to its write and rollback and
 checks it before cache reload. Failed rollback retains both failures in an
 aggregate error with the original cause. It does not overwrite replacement health.
 
+The live Gateway receives the committed token immediately after the guarded
+readback. The same synchronous check and cache replacement prevent a newer
+account incarnation from being replaced by a delayed refresh result.
+
+Switch preparation can adopt a competing write only when the durable token has
+advanced and the grant and other switching inputs still match. It reuses the
+committed access token rather than issuing another OAuth request or overwriting
+the background refresh.
+
 Current behavior belongs in
 [OAuth refresh ownership](../../../../docs/modules/cloud-account/overview.md#oauth-refresh-ownership).
 

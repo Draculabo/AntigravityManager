@@ -1,6 +1,7 @@
 import {
   prepareLaunchContext,
   prepareClientAccountWrite,
+  WindowsAgyCredentialWriteError,
   type ClientAccountStorage,
 } from '@/modules/antigravity-runtime';
 import { accountOwnerEvents } from './account-owner-events.service';
@@ -261,7 +262,7 @@ export async function switchCloudAccountCore(
                     );
 
                     const updatedToken = mergeRefreshedToken(account.token, refreshedToken, now);
-                    await context.updateToken(updatedToken);
+                    await context.updateRefreshedToken(updatedToken, now);
                     logger.shareable('info', 'Cloud account token refreshed');
                   } catch (error) {
                     logger.warn('Failed to refresh token before IDE injection', error);
@@ -359,8 +360,10 @@ export async function switchCloudAccountCore(
           } catch (error) {
             logger.warn('Cloud account switch stopped before completion', error);
             const kind = error instanceof CloudAccountSwitchError ? error.switchCode : failureCode;
-            const primaryError =
-              kind === 'target-write-failed' && writeFailure && !(error instanceof AggregateError)
+            const recovery = error instanceof WindowsAgyCredentialWriteError ? error : undefined;
+            const primaryError = recovery
+              ? recovery.primary
+              : kind === 'target-write-failed' && writeFailure && !(error instanceof AggregateError)
                 ? writeFailure
                 : error;
             const classified = classifyOperationCause(error);
@@ -379,7 +382,7 @@ export async function switchCloudAccountCore(
                   reason,
                   target: appTarget ?? 'classic',
                   ...(storage ? { storage } : {}),
-                  rollback: 'not-attempted',
+                  rollback: recovery?.rollback ?? 'not-attempted',
                   causes: classified.causes,
                   ...(classified.causesTruncated ? { causesTruncated: true } : {}),
                   ...(primaryError instanceof CredentialReadbackError

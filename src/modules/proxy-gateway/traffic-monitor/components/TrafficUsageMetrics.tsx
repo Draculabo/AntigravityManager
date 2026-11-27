@@ -64,7 +64,7 @@ export function TrafficUsageMetrics({
       label: t('traffic.usage-reasoning'),
       value: values.reasoning === null ? '—' : short(values.reasoning),
       title: values.reasoning === null ? undefined : number.format(values.reasoning),
-      detail: values.reasoning === null ? undefined : t('traffic.usage-reasoning-in-output'),
+      detail: values.reasoning === null ? undefined : t('traffic.usage-reasoning-source'),
     },
     context
       ? {

@@ -17,6 +17,7 @@ export interface GoogleOAuthCredentialInput extends CredentialStoreTokenInput {
 
 export interface GoogleOAuthCredentialStoreOptions {
   geminiDir?: string;
+  writeFile?: (file: string, payload: string) => void;
 }
 
 /**
@@ -52,8 +53,9 @@ export function writeGoogleOAuthCredentials(
   );
   const accountsPayload = JSON.stringify(nextAccounts, null, 2);
 
-  writePrivateFileAtomically(oauthPath, oauthPayload);
-  writePrivateFileAtomically(accountsPath, accountsPayload);
+  const writeFile = options.writeFile ?? writePrivateFileAtomically;
+  writeFile(oauthPath, oauthPayload);
+  writeFile(accountsPath, accountsPayload);
 }
 
 function readGoogleAccountsFile(accountsPath: string): z.infer<typeof GoogleAccountsFileSchema> {

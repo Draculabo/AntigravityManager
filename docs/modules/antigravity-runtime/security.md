@@ -72,10 +72,12 @@ The runtime closes the captured IDE tree before required writes, verifies each d
 Workspace provisioning explicitly selects the existing workspace writer behavior: this ordinary-switch change does not add SQLite/cache synchronization or identity confirmation to workspace launch. Windows IDE 2.6 workspace credentials still use the shared Windows item. Separate profiles and HOME directories do not isolate it; concurrent account isolation remains unresolved. The standalone fallback added here belongs to the current ordinary-switch OS environment, not to managed workspace homes. No accepted-terms records are manufactured.
 
 Windows `agy` account switches update the local CLI session and Google OAuth files, then write and
-read back the shared `gemini:antigravity` credential used by new CLI processes. The local CLI
-session also requires readback. A failed system write or readback fails the switch. The files may
-already contain the selected account when the system write fails. Manager verifies the exact
-credential it wrote and leaves any subsequent updates by other processes in place.
+read back the shared `gemini:antigravity` credential used by new CLI processes. Manager captures
+the previous credential and file contents in memory before their writes. On failure, it restores
+and verifies each affected value that still matches the switch's own write. An observed value
+written by another process is preserved. If recovery cannot be confirmed, the switch failure
+reports that separately. Close the clients sharing this credential and confirm the intended
+account before retrying.
 
 On Windows, current-account and local snapshot reads check the system credential first and use the
 CLI session file when the system entry is absent. This system item is shared with desktop clients

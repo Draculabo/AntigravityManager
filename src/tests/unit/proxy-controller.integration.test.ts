@@ -325,7 +325,7 @@ describe('ProxyController Integration', () => {
     );
   });
 
-  it('lists Antigravity public presets alongside discovered chat models', () => {
+  it('lists account-discovered chat models once the catalog has model data', () => {
     const proxyService = {
       handleChatCompletions: vi.fn(),
       handleAnthropicMessages: vi.fn(),
@@ -349,27 +349,10 @@ describe('ProxyController Integration', () => {
     expect(reply.status).toHaveBeenCalledWith(200);
     const payload = reply.send.mock.calls[0][0];
     const ids = payload.data.map((model: { id: string }) => model.id);
-    expect(ids).toEqual(
-      expect.arrayContaining([
-        'gemini-3.7-flash',
-        'gemini-3.7-flash-medium',
-        'gemini-3.7-flash-high',
-        'gemini-3.7-flash-low',
-        'gemini-3.6-flash',
-        'gemini-3.5-flash-medium',
-        'gemini-3.5-flash-high',
-        'gemini-3.5-flash-low',
-        'gemini-3.1-pro-low',
-        'claude-sonnet-4-6-thinking',
-        'claude-opus-4-6-thinking',
-        'gpt-oss-120b-medium',
-      ]),
-    );
-    expect(ids).not.toContain('gemini-3-pro-image');
-    expect(ids).toContain('gemini-imagecraft-chat');
+    expect(ids).toEqual(['gemini-3-flash', 'gemini-3.5-flash-low', 'gemini-imagecraft-chat']);
   });
 
-  it('lists the exact raw quota models, including physical image models', () => {
+  it('lists available raw quota models, including physical image models', () => {
     setServerConfig({
       ...DEFAULT_APP_CONFIG.proxy,
       only_raw_quota_models: true,
@@ -380,7 +363,8 @@ describe('ProxyController Integration', () => {
 
     const accountLeaseService = {
       getAllRawQuotaModels: vi.fn(
-        () => new Set(['gemini-3-pro-image', 'gemini-2.5-flash', 'gemini-pro-agent']),
+        () =>
+          new Set(['gemini-3-pro-image', 'gemini-2.5-flash', 'gemini-pro-agent', 'gemini-3-flash']),
       ),
     };
     const controller = new ProxyController({} as any, accountLeaseService as any);
@@ -395,7 +379,7 @@ describe('ProxyController Integration', () => {
       object: 'list',
       data: [
         {
-          id: 'gemini-2.5-flash',
+          id: 'gemini-3-flash',
           object: 'model',
           created: 1770652800,
           owned_by: 'antigravity',

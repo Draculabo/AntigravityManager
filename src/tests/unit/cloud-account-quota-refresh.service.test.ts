@@ -19,22 +19,20 @@ import { CloudAccountHealthService } from '@/modules/cloud-account/services/Clou
 
 const leaseBridge = vi.hoisted(() => ({ evict: vi.fn(), quarantine: vi.fn() }));
 
+vi.mock('@/server/main', () => ({ replaceNestServerAccountLeaseToken: vi.fn() }));
 vi.mock('@/modules/cloud-account/services/CloudAccountHealthService', () => ({
   clearValidationHealthAfterSuccessfulProbe: vi.fn(async () => {}),
   CloudAccountHealthService: { mutateHealth: vi.fn(async (_id, update) => update(undefined)) },
   evictAccountFromActiveLeaseCache: vi.fn(async (id) => leaseBridge.evict(id)),
   quarantineAccountInActiveLeaseCache: vi.fn(async (id) => leaseBridge.quarantine(id)),
 }));
-vi.mock(
-  '@/server/gateway/shared/services/model-availability.service',
-  async (importOriginal) => {
-    const actual =
-      await importOriginal<
-        typeof import('@/server/gateway/shared/services/model-availability.service')
-      >();
-    return { ...actual, proxyModelAvailabilityStore: new actual.ModelAvailabilityService() };
-  },
-);
+vi.mock('@/server/gateway/shared/services/model-availability.service', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('@/server/gateway/shared/services/model-availability.service')
+    >();
+  return { ...actual, proxyModelAvailabilityStore: new actual.ModelAvailabilityService() };
+});
 vi.mock('@/shared/logging/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
@@ -121,6 +119,9 @@ describe('Node-safe cloud account quota refresh', () => {
   it('retries 401 with a refreshed token and invokes only the retry hook', async () => {
     const stored = account();
     vi.spyOn(CloudAccountRepo, 'getAccount').mockResolvedValue(stored);
+    vi.spyOn(CloudAccountRepo, 'assertCurrentAccount').mockImplementation((_id, guard) => {
+      guard(stored);
+    });
     vi.spyOn(GoogleAPIService, 'fetchQuota')
       .mockRejectedValueOnce(new Error('UNAUTHORIZED'))
       .mockResolvedValueOnce({ models: { gemini: { percentage: 70, resetTime: 'soon' } } });
@@ -251,6 +252,9 @@ describe('Node-safe cloud account quota refresh', () => {
     const stored = account();
     const cachedQuota = stored.quota;
     vi.spyOn(CloudAccountRepo, 'getAccount').mockResolvedValue(stored);
+    vi.spyOn(CloudAccountRepo, 'assertCurrentAccount').mockImplementation((_id, guard) => {
+      guard(stored);
+    });
     vi.spyOn(GoogleAPIService, 'fetchQuota')
       .mockRejectedValueOnce(new Error('UNAUTHORIZED'))
       .mockRejectedValueOnce(new Error('RESOURCE_EXHAUSTED'));

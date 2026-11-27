@@ -53,7 +53,9 @@ function getCurrentPlatformPathApi(options?: PathResolutionOptions): PathApi {
  * @returns {boolean} True if the current platform is WSL, false otherwise.
  */
 export function isWsl(platform: NodeJS.Platform = process.platform): boolean {
-  if (platform !== 'linux') return false;
+  if (platform !== 'linux' || fs.existsSync('/.dockerenv') || fs.existsSync('/run/.containerenv')) {
+    return false;
+  }
   try {
     const version = fs.readFileSync('/proc/version', 'utf-8').toLowerCase();
     return version.includes('microsoft') && version.includes('wsl');

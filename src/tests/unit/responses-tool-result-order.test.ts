@@ -19,13 +19,10 @@ import {
   geminiTextResponse,
 } from './proxy-real-path.harness';
 
-vi.mock(
-  '@/server/gateway/common/utils/request-user-agent',
-  async (importOriginal) => ({
-    ...(await importOriginal()),
-    resolveRequestUserAgent: async () => 'responses-tool-order-test',
-  }),
-);
+vi.mock('@/server/gateway/common/utils/request-user-agent', async (importOriginal) => ({
+  ...(await importOriginal()),
+  resolveRequestUserAgent: async () => 'responses-tool-order-test',
+}));
 
 const prompt = { type: 'message', role: 'user', content: 'Work on these fixtures.' };
 const call = (id: string, name: string) => ({
@@ -170,7 +167,7 @@ describe('Responses chronological tool names', () => {
     const reply = createReply();
     await operations.responses(
       {
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-6-thinking',
         store: false,
         input: [prompt, call('t', 'read'), output('t'), call('t', 'write'), output('t')],
       },
@@ -195,7 +192,7 @@ describe('Responses chronological tool names', () => {
     const reply = createReply();
     await operations.responses(
       {
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-6-thinking',
         store: false,
         input: [prompt, call('t', 'read'), call('t', 'write'), output('t')],
       },
@@ -223,7 +220,7 @@ describe('Responses chronological tool names', () => {
       const reply = createReply();
       await operations.responses(
         {
-          model: 'claude-sonnet-4-5',
+          model: 'claude-sonnet-4-6-thinking',
           store: false,
           input: [{ type, call_id: 'unknown', output: 'private tool output' }],
         },
@@ -251,7 +248,7 @@ describe('Responses chronological tool names', () => {
       const reply = createReply();
       await operations.responses(
         {
-          model: 'claude-sonnet-4-5',
+          model: 'claude-sonnet-4-6-thinking',
           store: false,
           input: [
             prompt,

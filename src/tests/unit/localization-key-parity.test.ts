@@ -24,4 +24,14 @@ describe('localization catalogs', () => {
       expect(actual, locale).toEqual(expected);
     }
   });
+
+  it.each(Object.entries({ fr, ja, ptBR, ru, tr, vi, zhCN }))(
+    'translates the Traffic reasoning metric without English fallback in %s',
+    (_locale, catalog) => {
+      for (const key of ['usage-reasoning', 'usage-reasoning-source'] as const) {
+        expect(catalog.traffic).toHaveProperty(key, expect.stringMatching(/\S/u));
+        expect(catalog.traffic).not.toHaveProperty(key, en.traffic[key]);
+      }
+    },
+  );
 });

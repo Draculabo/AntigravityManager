@@ -60,6 +60,7 @@ describe.each(['gemini', 'chat', 'responses', 'messages'] as const)(
           outcome = error;
         },
       );
+      await vi.waitFor(() => expect(upstream.generateInternal).toHaveBeenCalledOnce());
       await vi.advanceTimersByTimeAsync(120_001);
       expect(outcome).toBeUndefined();
       await vi.advanceTimersByTimeAsync(30_000);

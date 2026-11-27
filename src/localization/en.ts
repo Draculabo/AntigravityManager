@@ -564,7 +564,7 @@ const en = {
     'session-title-search': 'Search session titles',
     'session-title-no-matches': 'No matching sessions in this date range',
     'session-title-more': 'Show more sessions',
-    'usage-reasoning-in-output': 'Included in output',
+    'usage-reasoning-source': 'Reported by upstream',
     'usage-attempt-count': '{{value}} upstream attempts',
     'usage-chart-style': 'Chart style',
     'usage-chart-bars': 'Bars',

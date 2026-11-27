@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/select';
 import { getLocalizedErrorMessage } from '@/shared/utils/errorMessages';
 import { readFinalizedOperationDiagnostic } from '@/shared/observability/operationDiagnostic';
+import { formatOperationDiagnostic } from '@/shared/observability/operationDiagnosticText';
 import {
   cancelOAuthSession,
   copyOAuthSessionLink,
@@ -140,11 +141,22 @@ function OAuthAttempt({ clientKey, sessionQueueRef, onAuthorized, onRestart }: O
   }
 
   if (attempt.kind === 'failed') {
+    const diagnostic = readFinalizedOperationDiagnostic(attempt.error);
     return (
       <div className="grid gap-3">
         <p role="alert" className="text-destructive">
           {loginFailureDescription(attempt.error, t)}
         </p>
+        {diagnostic && (
+          <details className="min-w-0 border-t pt-3">
+            <summary className="focus-visible:ring-ring cursor-pointer rounded-sm text-sm font-medium focus-visible:ring-2 focus-visible:outline-none">
+              {t('action.details')}
+            </summary>
+            <pre className="bg-muted mt-2 max-h-40 overflow-auto rounded-md p-3 text-xs break-all whitespace-pre-wrap">
+              {formatOperationDiagnostic(diagnostic)}
+            </pre>
+          </details>
+        )}
         <Button type="button" variant="outline" className="justify-self-start" onClick={onRestart}>
           {t('cloud.add-flow.retry-authorization')}
         </Button>

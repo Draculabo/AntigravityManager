@@ -260,6 +260,25 @@ describe('Path Utilities', () => {
     );
   });
 
+  it.each(['/.dockerenv', '/run/.containerenv'])(
+    'discovers Linux client data inside a WSL-backed container with %s',
+    async (containerMarker) => {
+      setPlatform('linux');
+      pretendWsl();
+      vi.spyOn(os, 'homedir').mockReturnValue('/home/fixture');
+      vi.spyOn(fs, 'existsSync').mockImplementation((file) => file === containerMarker);
+
+      const paths = await import('../../shared/platform/paths');
+
+      expect(paths.getAntigravityDbPaths('ide')).toEqual([
+        '/home/fixture/.config/Antigravity IDE/User/globalStorage/state.vscdb',
+        '/home/fixture/.config/Antigravity IDE/User/state.vscdb',
+        '/home/fixture/.config/Antigravity IDE/state.vscdb',
+      ]);
+      expect(childProcessMock.execSync).not.toHaveBeenCalled();
+    },
+  );
+
   it('should skip non-writable derived portable user-data paths on macOS', async () => {
     vi.resetModules();
     setPlatform('darwin');

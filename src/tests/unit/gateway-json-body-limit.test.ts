@@ -13,14 +13,11 @@ vi.mock('@nestjs/core', async (importOriginal) => ({
   NestFactory: { create: mocks.create },
 }));
 vi.mock('@/shared/logging/logger', () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), shareable: vi.fn() },
 }));
-vi.mock(
-  '@/server/gateway/modules/openai/responses/openai-responses-websocket.server',
-  () => ({
-    attachOpenAIResponsesWebSocketServer: () => () => {},
-  }),
-);
+vi.mock('@/server/gateway/modules/openai/responses/openai-responses-websocket.server', () => ({
+  attachOpenAIResponsesWebSocketServer: () => () => {},
+}));
 
 let gateway: FastifyInstance;
 
@@ -58,6 +55,7 @@ beforeEach(async () => {
       close: () => gateway.close(),
       get: () => ({ getAccountCount: () => 0 }),
       getHttpServer: () => gateway.server,
+      getHttpAdapter: () => adapter,
     };
   });
   expect(

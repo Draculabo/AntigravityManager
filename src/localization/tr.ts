@@ -1806,6 +1806,8 @@ const tr = {
     },
   },
   traffic: {
+    'usage-reasoning': 'Düşünme tokenları',
+    'usage-reasoning-source': 'Sağlayıcının bildirdiği değer',
     'export-har': 'HAR dışa aktar',
     'har-exporting': 'HAR dışa aktarılıyor…',
     'har-export-saved': 'HAR dosyası kaydedildi.',

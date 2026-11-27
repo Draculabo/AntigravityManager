@@ -38,6 +38,7 @@ import {
   writeMacOSKeychainPayload,
 } from './macosCredentialStore';
 import { writeMacOSServiceMachineId } from './macosClientSqlite';
+import { writeWindowsAgyAccount } from './windowsAgyAccountWrite';
 
 export type ClientAccountStorage = 'cli-session' | 'credential-store' | 'sqlite';
 
@@ -112,12 +113,13 @@ export async function prepareClientAccountWrite(
     return {
       storage,
       write: async () => {
-        writeAgyCliToken(payload);
-        writeGoogleOAuthCredentials({ ...credentials.token, email: credentials.email });
-        // Commit the shared credential only after the CLI fallback files have been updated.
+        const input = { ...credentials.token, email: credentials.email };
         if (windowsPayload !== undefined) {
-          await writeVerifiedWindowsAntigravityCredential(windowsPayload);
+          await writeWindowsAgyAccount(input, payload, windowsPayload);
+          return;
         }
+        writeAgyCliToken(payload);
+        writeGoogleOAuthCredentials(input);
       },
     };
   }

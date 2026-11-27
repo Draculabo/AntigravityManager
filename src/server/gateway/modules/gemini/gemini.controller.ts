@@ -34,7 +34,7 @@ import { GeminiRequest, GeminiResponse } from '../../common/interfaces/request-i
 import { getServerConfig } from '../../../server-config';
 import { getAllDynamicModels } from '../../../../modules/proxy-gateway/antigravity/ModelMapping';
 import {
-  resolveModelDiscoveryMetadata,
+  type ModelDiscoveryMetadata,
   tryResolveModelDiscoveryMetadata,
 } from '../../shared/services/model-discovery-metadata';
 import { AccountLeaseService } from '../account-lease/account-lease.service';
@@ -357,7 +357,7 @@ export class GeminiController {
 
   private toGeminiModelMetadata(
     modelName: string,
-    limits: ReturnType<typeof resolveModelDiscoveryMetadata>,
+    limits: ModelDiscoveryMetadata,
   ): GeminiModelMetadata {
     const displayName = modelName.replace(/^models\//, '');
     return {

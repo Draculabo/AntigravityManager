@@ -53,9 +53,10 @@ The Accounts page shows quota on each account card.
 
 Account cards always offer a Use dropdown. App, IDE and CLI badges below the email identify the
 clients using that account; accounts without an active client show Not in use. Each client tracks
-its account independently, so multiple accounts can have usage badges. The dropdown disables only
-targets already using that account, or all targets while its switch is pending. Quota refresh
-ordering and tier filters do not redefine client usage.
+its account independently, so multiple accounts can have usage badges. The dropdown disables
+desktop targets already using that account and actions with a pending switch. The CLI action stays
+available for its active account so users can reapply the login if a shared credential changes
+outside Manager. Quota refresh ordering and tier filters do not redefine client usage.
 
 Account cards show Gemini and Claude recommendations with the five-hour quota and
 the clients each recommendation applies to. Each client skips the account already
@@ -298,7 +299,9 @@ Manual quota refresh and the account monitor own a writeback context containing
 the original account identity, creation time, grant, OAuth client, proxy and access
 token. They check it after provider waits, before further dependent work, and in
 the SQLite transaction that writes token, quota, status or last-use state. A token
-write advances only that operation's expected context. A stale operation fails
+write advances that operation's expected context. The owner rechecks the committed
+account synchronously before handing its refreshed credentials to the live Gateway
+lease cache. A stale operation fails
 with the internal context-changed error; it does not retry OAuth, report login
 expiry, reuse cached quota as success or apply its failure status to a replacement.
 
@@ -313,6 +316,11 @@ the guard, so it cannot restore old health onto a replacement. If recovery and
 rollback both fail, an aggregate error retains both failures and the original cause.
 These are separate guarded writes, not one transaction for the whole provider
 operation; earlier committed effects are not reported as rolled back.
+
+During switch preparation, a newer access token committed by a background refresh
+can be used when the stored grant, account, project, client and device profile
+still match the switch. A grant rotation or a quarantined account still ends the
+switch before the official client is changed.
 
 Refresh operations are serialized per account. The persisted account, rather than
 the caller's health hint, determines eligibility. A request whose refresh grant

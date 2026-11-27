@@ -37,7 +37,7 @@ describe('Parity rollout guard replay', () => {
         preferred_account_id: 'acc-2',
       }),
     );
-    const paritySelected = await service.getNextToken({ model: 'gemini-2.5-flash' });
+    const paritySelected = await service.getNextToken({ model: 'gemini-3-flash' });
     expect(paritySelected?.id).toBe('acc-2');
 
     setServerConfig(
@@ -48,7 +48,7 @@ describe('Parity rollout guard replay', () => {
       }),
     );
     service.resetSelectionState();
-    const rollbackSelected = await service.getNextToken({ model: 'gemini-2.5-flash' });
+    const rollbackSelected = await service.getNextToken({ model: 'gemini-3-flash' });
     expect(rollbackSelected?.id).toBe('acc-1');
     // Verify that shadow comparison was bypassed due to kill-switch
     expect((service as any).shadowComparisonCount).toBe(0);
@@ -64,7 +64,7 @@ describe('Parity rollout guard replay', () => {
       }),
     );
 
-    const shadowSelection = await service.getNextToken({ model: 'gemini-2.5-flash' });
+    const shadowSelection = await service.getNextToken({ model: 'gemini-3-flash' });
     expect(shadowSelection?.id).toBe('acc-1');
 
     setServerConfig(
@@ -76,7 +76,7 @@ describe('Parity rollout guard replay', () => {
       }),
     );
     service.resetSelectionState();
-    const blockedSelection = await service.getNextToken({ model: 'gemini-2.5-flash' });
+    const blockedSelection = await service.getNextToken({ model: 'gemini-3-flash' });
     expect(blockedSelection?.id).toBe('acc-1');
     expect((service as any).noGoBlocked).toBe(true);
   });

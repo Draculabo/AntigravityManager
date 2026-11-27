@@ -1877,6 +1877,8 @@ const ru = {
     },
   },
   traffic: {
+    'usage-reasoning': 'Токены рассуждения',
+    'usage-reasoning-source': 'По данным поставщика модели',
     'export-har': 'Экспорт HAR',
     'har-exporting': 'Экспорт HAR…',
     'har-export-saved': 'Файл HAR сохранён.',

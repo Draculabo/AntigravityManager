@@ -111,6 +111,9 @@ an outcome and, on success, the verified email. An identical grant is skipped. A
 can update an existing account only when the verified Google subject matches the stored subject.
 Use Google sign-in to reauthorize an account that has no matching subject.
 
+Local discovery, file import, and IDE sync preserve existing subject verification when the
+stored grant and OAuth client stay the same. An import cannot supply subject verification.
+
 OAuth client discovery and active-client preference use strict public descriptors containing
 only the key, label, client ID and active/builtin flags. Client secrets and registry internals
 remain inside the owning process. Both renderer and core RPC validate bounded client keys;

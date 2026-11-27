@@ -1794,6 +1794,8 @@ const vi = {
     },
   },
   traffic: {
+    'usage-reasoning': 'Token suy luận',
+    'usage-reasoning-source': 'Do nhà cung cấp báo cáo',
     'export-har': 'Xuất HAR',
     'har-exporting': 'Đang xuất HAR…',
     'har-export-saved': 'Đã lưu tệp HAR.',

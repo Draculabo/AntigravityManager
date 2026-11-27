@@ -95,7 +95,7 @@ describe.each([false, true])('signature rejection preserves input, stream=%s', (
         },
       ];
       const request: AnthropicChatRequest = {
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-6-thinking',
         max_tokens: 32,
         stream,
         system: '  Preserve system policy.  ',

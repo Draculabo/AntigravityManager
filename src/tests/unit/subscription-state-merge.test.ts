@@ -29,6 +29,7 @@ describe('subscription refresh evidence reconciliation', () => {
     expect(view.quota).toEqual({
       models: {},
       subscription_tier: 'pro',
+      is_forbidden: false,
       subscription_status: {
         refresh_status: 'succeeded',
         checked_at: 100,

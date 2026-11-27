@@ -431,6 +431,8 @@ const fr = {
   },
   traffic: {
     ...en.traffic,
+    'usage-reasoning': 'Tokens de raisonnement',
+    'usage-reasoning-source': 'Indiqués par le fournisseur',
     'export-har': 'Exporter en HAR',
     'har-exporting': 'Export HAR…',
     'har-export-saved': 'Fichier HAR enregistré.',

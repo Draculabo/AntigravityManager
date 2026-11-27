@@ -29,7 +29,7 @@ async function createAnthropicStream(service: AnthropicService): Promise<Observa
   return (await service.handleAnthropicMessages({
     max_tokens: 32,
     messages: [{ content: 'stream please', role: 'user' }],
-    model: 'claude-sonnet-4-5',
+    model: 'claude-sonnet-4-6-thinking',
     stream: true,
   } as never)) as Observable<string>;
 }
@@ -93,7 +93,7 @@ describe('Anthropic stream timeout compatibility', () => {
     const service = createGateway(upstream, lease).anthropicService;
     const pending = service.handleAnthropicMessages(
       {
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-6-thinking',
         max_tokens: 32,
         messages: [{ role: 'user', content: 'synthetic cancellation' }],
         stream: true,
@@ -119,7 +119,7 @@ describe('Anthropic stream timeout compatibility', () => {
     await expect(
       service.handleAnthropicMessages(
         {
-          model: 'claude-sonnet-4-5',
+          model: 'claude-sonnet-4-6-thinking',
           max_tokens: 32,
           messages: [{ role: 'user', content: 'synthetic cancellation' }],
         },

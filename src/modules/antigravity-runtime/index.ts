@@ -30,3 +30,4 @@ export { buildAntigravityCredentialPayload } from './credentials/antigravityCred
 export { detectAgyCliExecutablePath } from './binary-patch/agyCliPathDetection';
 export { restoreWindowsIdeCredentials } from './credentials/windowsIdeRecovery';
 export { restoreLinuxIdeCredentials } from './credentials/linuxIdeRecovery';
+export { WindowsAgyCredentialWriteError } from './credentials/windowsAgyAccountWrite';

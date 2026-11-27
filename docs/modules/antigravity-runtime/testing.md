@@ -115,6 +115,10 @@ Unicode, quotes, empty argv and trailing backslashes; it does not target install
 The existing Antigravity launch integration script verifies the production observer on
 native Windows, Linux and optionally WSL Windows interop.
 
+Containers with Docker or Podman markers use Linux client paths, including on
+a Docker Desktop host that exposes a WSL kernel version. WSL distro sessions
+can still discover the Windows client through the existing interop paths.
+
 ### Packaged process loader
 
 After changing native dependency or packaging configuration, run `pnpm run package`.

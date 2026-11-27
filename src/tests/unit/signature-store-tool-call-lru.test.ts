@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
 
@@ -7,14 +7,18 @@ describe('SignatureStore tool-call eviction', () => {
   const sessionKey = 'tool-call-lru-session';
   afterEach(() => {
     SignatureStore.clear();
+    vi.useRealTimers();
   });
 
-  it('preserves a recently replayed tool-call signature when capacity is exceeded', () => {
-    for (let index = 0; index < 500; index += 1) {
+  it('evicts the earliest tool-call capture when replay does not change its age', () => {
+    vi.useFakeTimers();
+    for (let index = 0; index < 5_000; index += 1) {
+      vi.setSystemTime(index);
       SignatureStore.store({
         signature: `signature-${index}`,
         model,
         sessionKey,
+        messageCount: index,
         toolCallId: `call-${index}`,
       });
     }
@@ -23,14 +27,21 @@ describe('SignatureStore tool-call eviction', () => {
       'signature-0',
     );
 
-    SignatureStore.store({ signature: 'signature-500', model, sessionKey, toolCallId: 'call-500' });
+    vi.setSystemTime(5_000);
+    SignatureStore.store({
+      signature: 'signature-5000',
+      model,
+      sessionKey,
+      messageCount: 5_000,
+      toolCallId: 'call-5000',
+    });
 
-    expect(SignatureStore.getForToolCall({ model, sessionKey, toolCallId: 'call-0' })).toBe(
-      'signature-0',
+    expect(SignatureStore.getForToolCall({ model, sessionKey, toolCallId: 'call-0' })).toBeNull();
+    expect(SignatureStore.getForToolCall({ model, sessionKey, toolCallId: 'call-1' })).toBe(
+      'signature-1',
     );
-    expect(SignatureStore.getForToolCall({ model, sessionKey, toolCallId: 'call-1' })).toBeNull();
-    expect(SignatureStore.getForToolCall({ model, sessionKey, toolCallId: 'call-500' })).toBe(
-      'signature-500',
+    expect(SignatureStore.getForToolCall({ model, sessionKey, toolCallId: 'call-5000' })).toBe(
+      'signature-5000',
     );
-  });
+  }, 30_000);
 });
