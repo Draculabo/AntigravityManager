@@ -9,6 +9,7 @@ import semanticRelease from 'semantic-release';
 import { reconcileRelease } from './deliver-release-assets.mjs';
 import {
   ensureCandidateRelease,
+  findReleaseByTag,
   readReleaseById,
   updateReleaseById,
   uploadReleaseAssets,
@@ -58,6 +59,40 @@ async function draftFixture(t) {
     candidate: { tag: release.tag_name, channel: 'main', notes: release.body },
   };
 }
+
+test('duplicate GitHub Release entries resolve to the published ID or block the operation', async (t) => {
+  const { release: draft } = await draftFixture(t);
+  const published = { ...draft, id: 11, draft: false, published_at: draft.created_at };
+  const request = (args) => {
+    assert.deepEqual(args, [
+      'api',
+      '--include',
+      `repos/fixture/project/releases/tags/${draft.tag_name}`,
+    ]);
+    return `HTTP/2.0 200 OK\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(published)}`;
+  };
+  assert.deepEqual(findReleaseByTag(draft.tag_name, [draft, published], request), published);
+  assert.deepEqual(findReleaseByTag(draft.tag_name, [published, draft], request), published);
+
+  const drafts = [draft, { ...draft, id: 12 }];
+  assert.deepEqual(findReleaseByTag(draft.tag_name, drafts, request), published);
+  assert.throws(
+    () =>
+      findReleaseByTag(draft.tag_name, drafts, () => {
+        throw Object.assign(new Error('Not found'), { stdout: 'HTTP/2.0 404 Not Found\r\n' });
+      }),
+    /no published GitHub Release could be confirmed/,
+  );
+  assert.throws(
+    () =>
+      findReleaseByTag(
+        draft.tag_name,
+        drafts,
+        () => `HTTP/2.0 200 OK\r\n\r\n${JSON.stringify(draft)}`,
+      ),
+    /no published GitHub Release could be confirmed/,
+  );
+});
 
 test('a draft absent from the release list can be read, uploaded and published by its returned ID', async (t) => {
   const { release, notesPath, candidate } = await draftFixture(t);
@@ -305,7 +340,7 @@ test('the Release resume entry accepts either form spelling and emits the frozen
   await assert.rejects(readFile(invalidFile), { code: 'ENOENT' });
 });
 
-test('ordinary Release planning checks an omitted or stale draft by tag before choosing the next version', async (t) => {
+test('ordinary Release planning reconciles missing, stale, or duplicate entries before choosing the next version', async (t) => {
   const { cwd, origin, candidate } = await rewrittenMain(t);
   await recordHistoryMigration(cwd, candidate);
   git(cwd, ['fetch', '--tags', 'origin', 'main']);
@@ -346,7 +381,13 @@ test('ordinary Release planning checks an omitted or stale draft by tag before c
       if (file !== 'gh') return run(file, args, options);
       if (args[1] === '--paginate') {
         assert.deepEqual(args, ['api', '--paginate', '--slurp', 'repos/fixture/project/releases?per_page=100']);
-        return JSON.stringify([listed === 'draft' ? [{ ...release, draft: true, published_at: null }] : []]);
+        const draft = { ...release, draft: true, published_at: null };
+        const entries = {
+          missing: [],
+          draft: [draft],
+          duplicate: [{ ...draft, id: draft.id - 1 }, release],
+        };
+        return JSON.stringify([entries[listed]]);
       }
       assert.deepEqual(args, ['api', '--include', 'repos/fixture/project/releases/tags/${candidate.tag}']);
       const response = 'HTTP/2.0 ' + status + '\\r\\nContent-Type: application/json\\r\\n\\r\\n';
@@ -368,6 +409,7 @@ test('ordinary Release planning checks an omitted or stale draft by tag before c
   const preload = `data:text/javascript;base64,${Buffer.from(fakeGitHub).toString('base64')}`;
   const script = fileURLToPath(new URL('./manage-release.mjs', import.meta.url));
   for (const [listed, status] of [
+    ['duplicate', 200],
     ['missing', 200],
     ['draft', 200],
     ['draft', 404],

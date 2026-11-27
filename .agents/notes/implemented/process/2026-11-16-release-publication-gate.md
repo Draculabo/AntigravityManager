@@ -38,10 +38,12 @@ tags remain available to installed clients and historical release pages.
 
 The Release list discovers existing drafts. The create response identifies a newly created
 draft by ID so immediate verification and delivery can continue even when the list omits it.
-When the list omits a recorded candidate or shows it as a draft, the workflow also checks
-the tag's published Release endpoint. A confirmed public release supplies the notes baseline
-for planning and recording. A tag alone does not establish publication because the workflow
-records it before uploading the verified assets.
+When the list omits a recorded candidate, shows it as a draft, or returns several entries for
+its tag, the workflow also checks the tag's published Release endpoint. A confirmed published
+Release resolves repeated list entries and supplies the notes baseline for planning and recording.
+Repeated entries without confirmed publication stop the operation because choosing a draft ID
+would be ambiguous. A tag alone does not establish publication because the workflow records it
+before uploading the verified assets.
 Recovery uses the dispatched revision for publication tools while building the recorded source.
 
 ## Verification
@@ -57,5 +59,6 @@ Draft fixtures cover a missing list entry, ID readback, content mismatches, asse
 and publication of the verified ID.
 The recovery fixture exercises the CLI with the form's version value and verifies the
 recorded candidate and workflow outputs.
-The automatic planning fixture exercises a release omitted from the list, a stale draft entry,
-and a candidate with no confirmed publication.
+The automatic planning fixture exercises missing, stale, and repeated list entries. The
+lookup fixture verifies that repeated entries resolve to the confirmed published ID and
+otherwise fail closed.

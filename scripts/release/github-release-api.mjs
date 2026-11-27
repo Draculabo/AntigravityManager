@@ -15,22 +15,32 @@ function releaseEndpoint(id) {
 
 export function findReleaseByTag(tag, releases = listReleases(), request = gh) {
   const matches = releases.filter(({ tag_name }) => tag_name === tag);
-  if (matches.length > 1) {
-    throw new Error(`More than one GitHub Release has tag ${tag}`);
-  }
   const [listed] = matches;
   const status = releaseStatus(listed);
-  if (status === 'published' || status === 'abandoned') {
+  if (matches.length === 1 && (status === 'published' || status === 'abandoned')) {
     return listed;
   }
 
+  const confirmed = readReleaseByTag(tag, request);
+  if (
+    matches.length > 1 &&
+    (!confirmed?.published_at || releaseStatus(confirmed) !== 'published')
+  ) {
+    throw new Error(
+      `More than one entry has tag ${tag}, and no published GitHub Release could be confirmed`,
+    );
+  }
+  return confirmed ?? listed;
+}
+
+function readReleaseByTag(tag, request) {
   const endpoint = `repos/${repository()}/releases/tags/${ReleaseTag.parse(tag)}`;
   let response;
   try {
     response = request(['api', '--include', endpoint]);
   } catch (cause) {
     if (/^HTTP\/\S+ 404\b/.test(cause?.stdout ?? '')) {
-      return listed;
+      return undefined;
     }
     throw new Error(`Cannot verify GitHub Release for ${tag}`, { cause });
   }

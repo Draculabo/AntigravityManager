@@ -176,8 +176,9 @@ with `operation=resume` and `release_tag`, leaving `migration_version` empty.
   Dispatch a fresh resume run after changing the release scripts. The publish job uses the
   dispatched workflow revision, while the build still uses the recorded candidate source.
 - Resolve the current unpublished candidate before releasing another version on that channel.
-  If the GitHub Release list omits the candidate or shows it as a draft, planning checks the
-  candidate tag directly for a public release before requiring recovery.
+  If the GitHub Release list omits the candidate, shows it as a draft, or contains repeated
+  entries for the same tag, planning checks that tag directly for a published release.
+  When repeated entries have no confirmed publication, the workflow stops for recovery.
   To stop pursuing it, dispatch **Release** on the same channel with `operation=abandon` and the
   candidate tag. Abandonment retains the tag and reserves its version. The next release notes
   include changes since the last published, reachable release on that channel. A first beta can
