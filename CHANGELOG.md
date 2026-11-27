@@ -2,6 +2,96 @@
 
 # Changelog
 
+# 🚀 Antigravity Manager Release v0.34.0
+
+**Release Date:** 2026-11-27
+**Since v0.33.1:** 21 commits · 2 merged PRs · 1 verified contributor
+
+> This release includes updates in Desktop & User Experience, Tooling & Maintenance, Proxy Gateway & Models, Accounts & Core, Security & Reliability, Documentation.
+
+---
+
+## ✨ Highlights
+
+- **Feature** — improve tool compatibility and model usage trends ([44ce316](https://github.com/Draculabo/AntigravityManager/commit/44ce31637f605606fecaa1b39d052568f3eaf980))
+- **Feature** — refine account routing and gateway compatibility ([5cc5785](https://github.com/Draculabo/AntigravityManager/commit/5cc5785e5377d2028b5b5cae149ef95ef148667f))
+- **Feature** — add usage analytics and redesign the monitor ([662863e](https://github.com/Draculabo/AntigravityManager/commit/662863e038c4dca27f8eb403911d9866507440ac))
+- **Feature** — prune application operation history independently ([8ad79cf](https://github.com/Draculabo/AntigravityManager/commit/8ad79cfa0fcd306ddc672c1454f19eea59bf62e6))
+- **Feature** — show client and model recommendations on account cards ([d751e4e](https://github.com/Draculabo/AntigravityManager/commit/d751e4e11a4b4a30664b86dc1baf09faaed3eb0b))
+
+---
+
+## 🖥️ Desktop & User Experience
+
+- **Maintenance** — update package metadata to v0.33.1 ([#445](https://github.com/Draculabo/AntigravityManager/pull/445))
+
+---
+
+## 🔧 Tooling & Maintenance
+
+- **Build** — bump @semantic-release/changelog from 6.0.3 to 7.0.0 ([#448](https://github.com/Draculabo/AntigravityManager/pull/448))
+- **Feature** — improve tool compatibility and model usage trends ([44ce316](https://github.com/Draculabo/AntigravityManager/commit/44ce31637f605606fecaa1b39d052568f3eaf980))
+- **Feature** — add usage analytics and redesign the monitor ([662863e](https://github.com/Draculabo/AntigravityManager/commit/662863e038c4dca27f8eb403911d9866507440ac))
+- **Feature** — prune application operation history independently ([8ad79cf](https://github.com/Draculabo/AntigravityManager/commit/8ad79cfa0fcd306ddc672c1454f19eea59bf62e6))
+- **Fix** — keep locale catalogs aligned with English ([e7f535d](https://github.com/Draculabo/AntigravityManager/commit/e7f535d607bc657a8de6cc7df115ba5fa855c42e))
+- **Style** — remove void prefixes from function calls ([d7ea21b](https://github.com/Draculabo/AntigravityManager/commit/d7ea21bdae52d41c08d8a1dffa7ed8e1a08cc083))
+- **Refactoring** — migrate SQLite queries to Drizzle ([3eb9b43](https://github.com/Draculabo/AntigravityManager/commit/3eb9b436aa4582c6a105015560adc3969cf95a86))
+- **Fix** — improve issue reports and diagnostic logs ([bc2ea14](https://github.com/Draculabo/AntigravityManager/commit/bc2ea149e0fd0f78c0bc6c5f28109188b36315a9))
+- **Fix** — resolve release acceptance regressions ([c666812](https://github.com/Draculabo/AntigravityManager/commit/c666812087c28f9b34fffbfac619479e20545c25))
+- **Fix** — verify candidate publication by tag ([6583e7c](https://github.com/Draculabo/AntigravityManager/commit/6583e7cd7a8ca5ff4d3a5517a6f1c9dbe25c5b71))
+- **Fix** — resolve duplicate entries by published tag ([616946b](https://github.com/Draculabo/AntigravityManager/commit/616946be634578be5af81894e1280da970a7fe43))
+
+---
+
+## 🌐 Proxy Gateway & Models
+
+- **Fix** — infer nested tool array dimensions ([394e9ef](https://github.com/Draculabo/AntigravityManager/commit/394e9ef1d6e2d1f2e61a9329cb3b314027fa6e3e))
+- **Feature** — refine account routing and gateway compatibility ([5cc5785](https://github.com/Draculabo/AntigravityManager/commit/5cc5785e5377d2028b5b5cae149ef95ef148667f))
+- **Fix** — align model discovery with account availability ([78348da](https://github.com/Draculabo/AntigravityManager/commit/78348daecedadcbab5ce9c586d1aea7c3ea52497))
+
+---
+
+## 🏗️ Accounts & Core
+
+- **Feature** — show client and model recommendations on account cards ([d751e4e](https://github.com/Draculabo/AntigravityManager/commit/d751e4e11a4b4a30664b86dc1baf09faaed3eb0b))
+- **Fix** — refresh quota after weekly resets ([335b1a4](https://github.com/Draculabo/AntigravityManager/commit/335b1a4bd4b866cc2f4d6b14f6f284aedbe978aa))
+- **Feature** — unify account enrollment and imports ([981e700](https://github.com/Draculabo/AntigravityManager/commit/981e700b239dadffab42f9c0ced1797bf44829d5))
+- **Fix** — close dialog after successful token import ([1dd8ca8](https://github.com/Draculabo/AntigravityManager/commit/1dd8ca8023972ad6d51de0c9646cbf1d151e16e8))
+
+---
+
+## 🔒 Security & Reliability
+
+- **Fix** — synchronize Windows agy account credentials ([50ac373](https://github.com/Draculabo/AntigravityManager/commit/50ac373de16dca526b85ffc7c502e1d70e7e6cc7))
+
+---
+
+## 📚 Documentation
+
+- **Documentation** — add macOS launch and Keychain troubleshooting ([348fed2](https://github.com/Draculabo/AntigravityManager/commit/348fed2dc98250359c048927aeba61fa97b87036))
+
+---
+
+## 👥 Contributors
+
+Thanks to everyone who contributed to this release.
+
+@Draculabo
+
+Maintenance: @dependabot[bot].
+
+<details>
+<summary>Merged pull requests and authors</summary>
+
+- chore(linux): update package metadata to v0.33.1 by @Draculabo ([#445](https://github.com/Draculabo/AntigravityManager/pull/445))
+- build(deps-dev): bump @semantic-release/changelog from 6.0.3 to 7.0.0 by @dependabot[bot] ([#448](https://github.com/Draculabo/AntigravityManager/pull/448))
+
+</details>
+
+---
+
+**Full Changelog:** https://github.com/Draculabo/AntigravityManager/compare/v0.33.1...v0.34.0
+
 # 🚀 Antigravity Manager Release v0.33.1
 
 **Release Date:** 2026-11-20
