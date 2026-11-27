@@ -19,6 +19,9 @@ import {
 import type { AccountLeaseTokenData } from '@/server/gateway/modules/account-lease/interfaces/account-lease-token-types';
 
 const state = vi.hoisted(() => ({ directory: '' }));
+const importedQuota = {
+  models: { 'gemini-3-flash': { percentage: 80, resetTime: '2099-01-01T00:00:00Z' } },
+};
 vi.mock('better-sqlite3', async () => {
   const { createRequire } = await import('node:module');
   return { default: createRequire(import.meta.url)('better-sqlite3') };
@@ -56,6 +59,51 @@ afterEach(() => {
 });
 
 describe('SQLite import commit ownership', () => {
+  it.each(['available', 'unavailable'] as const)(
+    'keeps a newly imported credential when provider quota is %s',
+    async (availability) => {
+      const original = account('unrelated');
+      await CloudAccountRepo.addAccount(original);
+      const unrelated = await CloudAccountRepo.getAccount(original.id);
+      vi.spyOn(GoogleAPIService, 'refreshAccessToken').mockResolvedValue({
+        access_token: 'pasted-access',
+        expires_in: 3600,
+        token_type: 'Bearer',
+      });
+      vi.spyOn(GoogleAPIService, 'getUserInfo').mockResolvedValue({
+        email: 'imported@example.test',
+        id: 'synthetic-verified-subject',
+        name: 'Verified account',
+        verified_email: true,
+      });
+      vi.spyOn(CloudAccountRefreshService, 'clearFailureState').mockResolvedValue(undefined);
+      const fetchQuota = vi.spyOn(GoogleAPIService, 'fetchQuota');
+      if (availability === 'available') {
+        fetchQuota.mockResolvedValue(importedQuota);
+      } else {
+        fetchQuota.mockRejectedValue(new Error('Quota unavailable'));
+      }
+      vi.spyOn(GoogleAPIService, 'fetchAICredits').mockResolvedValue(null);
+
+      await expect(
+        importCloudAccountRefreshToken({ refreshToken: 'imported-grant' }),
+      ).resolves.toEqual({
+        status: 'added',
+        email: 'imported@example.test',
+      });
+
+      const stored = (await CloudAccountRepo.getAccounts()).find(
+        (account) => account.email === 'imported@example.test',
+      );
+      expect(stored?.token.refresh_token).toBe('imported-grant');
+      expect(stored?.quota?.models).toEqual(
+        availability === 'available' ? importedQuota.models : undefined,
+      );
+      expect(fetchQuota).toHaveBeenCalledExactlyOnceWith('pasted-access', undefined);
+      expect(await CloudAccountRepo.getAccount(original.id)).toEqual(unrelated);
+    },
+  );
+
   it.each(['same', 'replacement'] as const)(
     'retains stored Google proof only for a backup import with the same grant (%s)',
     async (grant) => {
@@ -253,12 +301,15 @@ describe('SQLite import commit ownership', () => {
       verified_email: true,
     });
     vi.spyOn(CloudAccountRefreshService, 'clearFailureState').mockResolvedValue(undefined);
+    vi.spyOn(GoogleAPIService, 'fetchQuota').mockResolvedValue(importedQuota);
+    vi.spyOn(GoogleAPIService, 'fetchAICredits').mockResolvedValue(null);
     await expect(
       importCloudAccountRefreshToken({ refreshToken: 'replacement-grant' }),
     ).resolves.toEqual({ status: 'updated', email: original.email });
     expect(await CloudAccountRepo.getAccount(original.id)).toMatchObject({
       google_usage_subject_hash: before.google_usage_subject_hash,
       token: { refresh_token: 'replacement-grant' },
+      quota: importedQuota,
     });
   });
 

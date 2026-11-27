@@ -14,6 +14,7 @@ import {
 import { parseCloudAccountCredentialInput } from '@/modules/cloud-account/services/cloud-account-credential-input';
 import { importCloudAccountRefreshToken } from '@/modules/cloud-account/services/cloud-account-credential-import.service';
 import { createCloudAccountCredentialImportRouter } from '@/modules/cloud-account/services/cloud-account-credential-import.transport';
+import * as quotaRefresh from '@/modules/cloud-account/services/cloud-account-quota-refresh.service';
 import type { CloudAccount } from '@/modules/cloud-account/types';
 
 vi.mock('@/modules/identity-profile/public', () => ({
@@ -110,6 +111,9 @@ describe('Google refresh-token import', () => {
     });
     vi.spyOn(CloudAccountRepo, 'getAccounts').mockResolvedValue([]);
     vi.spyOn(CloudAccountRefreshService, 'clearFailureState').mockResolvedValue(undefined);
+    vi.spyOn(quotaRefresh, 'refreshAccountQuotaCore').mockResolvedValue(
+      savedAccount('verified-subject'),
+    );
   });
 
   afterEach(() => vi.restoreAllMocks());
@@ -150,6 +154,7 @@ describe('Google refresh-token import', () => {
       email: providerEmail,
     });
     expect(update).not.toHaveBeenCalled();
+    expect(quotaRefresh.refreshAccountQuotaCore).not.toHaveBeenCalled();
   });
 
   it('replaces the credential only with the same verified subject and keeps account metadata', async () => {

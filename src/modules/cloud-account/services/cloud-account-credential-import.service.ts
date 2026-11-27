@@ -8,6 +8,7 @@ import type { CloudAccount, CloudTokenData } from '../types';
 import { CloudAccountRefreshService } from './CloudAccountRefreshService';
 import { GoogleAPIService, OAuthTokenRefreshError } from './GoogleAPIService';
 import type { CloudAccountCredentialImport } from './cloud-account-credential-import.schema';
+import { refreshAccountQuotaCore } from './cloud-account-quota-refresh.service';
 import { captureTokenWriteGuard } from './cloud-account-refresh-writeback';
 
 export const importCloudAccountRefreshToken: CloudAccountCredentialImport = async ({
@@ -149,5 +150,12 @@ export const importCloudAccountRefreshToken: CloudAccountCredentialImport = asyn
       'Cloud account credential import saved the account but could not finalize refresh state',
     );
   }
+
+  try {
+    await refreshAccountQuotaCore(saved.id);
+  } catch {
+    logger.warn('Cloud account credential import saved the account but could not refresh quota');
+  }
+
   return { status, email: email.data };
 };

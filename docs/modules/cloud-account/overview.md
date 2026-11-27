@@ -21,7 +21,9 @@ On the Accounts page, **Add Account** offers three methods:
 - **Token / JSON** accepts one refresh token per line or JSON with a `refresh_token` or
   `refreshToken` field. If every entry imports successfully or is skipped, the dialog closes and
   Manager shows the result. If any entry fails, the dialog stays open. Use **Retry failed** to
-  retry only those entries. Expand **Import from file** to restore a Manager backup.
+  retry only those entries. Manager attempts to refresh quota for each account added or updated
+  from pasted credentials. The account stays saved if the quota request fails. Expand **Import
+  from file** to restore a Manager backup.
 - **This device** scans supported local clients and shows a preview before any account is imported.
 
 The **Import / Export** menu also opens local account discovery, file import, and account export.
