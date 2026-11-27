@@ -128,9 +128,10 @@ are included in `pnpm run test:acceptance unit`.
 ### Publish a new version
 
 Dispatch [Release](../../.github/workflows/release.yml) on `main` for a stable release or `beta`
-for a prerelease. The workflow previews Semantic Release and builds the candidate's exact
-source commit and version. Use `dry_run=true` to rehearse the candidate build and artifact
-verification. If there is no new candidate, the workflow ends after planning.
+for a prerelease. For a normal release, select `operation=release` and leave both version fields
+empty. The workflow previews Semantic Release and builds the candidate's exact source commit
+and version. Use `dry_run=true` to rehearse the candidate build and artifact verification. If
+there is no new candidate, the workflow ends after planning.
 
 After the build and verification succeed, the publish job enters the `release` environment.
 The job records the release commit and tag, creates a draft, and uploads the required assets.
@@ -175,6 +176,8 @@ with `operation=resume` and `release_tag`, leaving `migration_version` empty.
   Dispatch a fresh resume run after changing the release scripts. The publish job uses the
   dispatched workflow revision, while the build still uses the recorded candidate source.
 - Resolve the current unpublished candidate before releasing another version on that channel.
+  If the GitHub Release list omits the candidate or shows it as a draft, planning checks the
+  candidate tag directly for a public release before requiring recovery.
   To stop pursuing it, dispatch **Release** on the same channel with `operation=abandon` and the
   candidate tag. Abandonment retains the tag and reserves its version. The next release notes
   include changes since the last published, reachable release on that channel. A first beta can

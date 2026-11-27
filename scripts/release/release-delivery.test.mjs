@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -263,8 +263,12 @@ test('the Release resume entry accepts either form spelling and emits the frozen
     const run = childProcess.execFileSync;
     childProcess.execFileSync = (file, args, options) => {
       if (file !== 'gh') return run(file, args, options);
-      assert.deepEqual(args, ['api', '--paginate', '--slurp', 'repos/fixture/project/releases?per_page=100']);
-      return '[[]]';
+      if (args[1] === '--paginate') {
+        assert.deepEqual(args, ['api', '--paginate', '--slurp', 'repos/fixture/project/releases?per_page=100']);
+        return '[[]]';
+      }
+      assert.deepEqual(args, ['api', '--include', 'repos/fixture/project/releases/tags/${candidate.tag}']);
+      throw Object.assign(new Error('Release not found'), { stdout: 'HTTP/2.0 404 Not Found\\r\\n' });
     };
     syncBuiltinESMExports();
   `;
@@ -299,6 +303,126 @@ test('the Release resume entry accepts either form spelling and emits the frozen
   assert.equal(invalid.status, 1);
   assert.match(invalid.stderr, /Enter an existing version in release_tag/);
   await assert.rejects(readFile(invalidFile), { code: 'ENOENT' });
+});
+
+test('ordinary Release planning checks an omitted or stale draft by tag before choosing the next version', async (t) => {
+  const { cwd, origin, candidate } = await rewrittenMain(t);
+  await recordHistoryMigration(cwd, candidate);
+  git(cwd, ['fetch', '--tags', 'origin', 'main']);
+  const source = await commit(cwd, 'feature.txt', 'feat: add a new feature');
+  git(cwd, ['push', '-q', 'origin', 'main']);
+
+  const repositoryUrl = 'https://github.com/fixture/project.git';
+  git(cwd, ['config', `url.${origin}.insteadOf`, repositoryUrl]);
+  await writeFile(
+    path.join(cwd, '.releaserc.json'),
+    JSON.stringify({ branches: ['main'], repositoryUrl }),
+  );
+  await mkdir(path.join(cwd, 'scripts/release'), { recursive: true });
+  await writeFile(
+    path.join(cwd, 'scripts/release/github-release-notes.mjs'),
+    `export { generateNotes } from ${JSON.stringify(new URL('./github-release-notes.mjs', import.meta.url).href)};`,
+  );
+
+  const release = {
+    id: 452997146,
+    tag_name: candidate.tag,
+    draft: false,
+    prerelease: false,
+    body: candidate.notes,
+    created_at: candidate.preparedAt,
+    published_at: candidate.preparedAt,
+    upload_url: 'https://uploads.github.com/repos/fixture/project/releases/452997146/assets',
+  };
+  const fakeGitHub = `
+    import childProcess from 'node:child_process';
+    import { syncBuiltinESMExports } from 'node:module';
+    import assert from 'node:assert/strict';
+    const run = childProcess.execFileSync;
+    const release = ${JSON.stringify(release)};
+    const listed = process.env.FIXTURE_RELEASE_LIST;
+    const status = Number(process.env.FIXTURE_TAG_STATUS);
+    childProcess.execFileSync = (file, args, options) => {
+      if (file !== 'gh') return run(file, args, options);
+      if (args[1] === '--paginate') {
+        assert.deepEqual(args, ['api', '--paginate', '--slurp', 'repos/fixture/project/releases?per_page=100']);
+        return JSON.stringify([listed === 'draft' ? [{ ...release, draft: true, published_at: null }] : []]);
+      }
+      assert.deepEqual(args, ['api', '--include', 'repos/fixture/project/releases/tags/${candidate.tag}']);
+      const response = 'HTTP/2.0 ' + status + '\\r\\nContent-Type: application/json\\r\\n\\r\\n';
+      if (status === 200) return response + JSON.stringify(release);
+      throw Object.assign(new Error('GitHub API fixture returned an error'), { stdout: response + '{}' });
+    };
+    syncBuiltinESMExports();
+    globalThis.fetch = async (url) => {
+      const target = new URL(url);
+      assert.equal(target.origin, 'https://api.github.com');
+      assert.ok(target.pathname.startsWith('/repos/fixture/project/commits/'));
+      const sha = target.pathname.split('/')[5];
+      return Response.json(target.pathname.endsWith('/pulls') ? [] : {
+        sha,
+        author: { login: 'fixture-author', type: 'User' },
+      });
+    };
+  `;
+  const preload = `data:text/javascript;base64,${Buffer.from(fakeGitHub).toString('base64')}`;
+  const script = fileURLToPath(new URL('./manage-release.mjs', import.meta.url));
+  for (const [listed, status] of [
+    ['missing', 200],
+    ['draft', 200],
+    ['draft', 404],
+    ['missing', 404],
+    ['missing', 403],
+  ]) {
+    const file = path.join(cwd, `candidate-${listed}-${status}.json`);
+    const result = spawnSync(process.execPath, ['--import', preload, script, 'plan', file], {
+      cwd,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        CI: '',
+        GIT_ALLOW_PROTOCOL: 'file',
+        GITHUB_ACTIONS: '',
+        GITHUB_REF_NAME: 'main',
+        GITHUB_REPOSITORY: 'fixture/project',
+        GITHUB_OUTPUT: `${file}.out`,
+        RELEASE_OPERATION: 'release',
+        RELEASE_TAG: '',
+        RELEASE_MIGRATION_VERSION: '',
+        FIXTURE_RELEASE_LIST: listed,
+        FIXTURE_TAG_STATUS: String(status),
+      },
+    });
+
+    if (status === 200) {
+      assert.equal(result.status, 0, result.stderr || result.stdout);
+      const plan = JSON.parse(await readFile(file, 'utf8'));
+      assert.deepEqual(
+        {
+          tag: plan.tag,
+          source: plan.source,
+          previousTag: plan.previousTag,
+          notesBase: plan.notesBase,
+        },
+        { tag: 'v0.34.0', source, previousTag: candidate.tag, notesBase: candidate.tag },
+      );
+      assert.equal(
+        await readFile(`${file}.out`, 'utf8'),
+        `has_candidate=true\nsource=${source}\nversion=0.34.0\ntag=v0.34.0\n`,
+      );
+    } else {
+      assert.equal(result.status, 1, result.stderr);
+      assert.match(
+        result.stderr,
+        status === 403
+          ? /Cannot verify GitHub Release for v0\.33\.0/
+          : new RegExp(
+              `Resume or abandon ${candidate.tag} on main.*\\(GitHub Release status: ${listed}\\)`,
+            ),
+      );
+      await assert.rejects(readFile(file), { code: 'ENOENT' });
+    }
+  }
 });
 
 function previewVersion(cwd, repositoryUrl) {

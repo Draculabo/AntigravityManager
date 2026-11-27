@@ -47,6 +47,7 @@ export function gh(args) {
   return execFileSync('gh', args, {
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,
+    stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   }).trim();
 }

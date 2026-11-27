@@ -20,6 +20,7 @@ import { git, resolveHead } from './release-source.mjs';
 import { generateNotes } from './github-release-notes.mjs';
 import {
   ensureCandidateRelease,
+  findReleaseByTag,
   readReleaseById,
   updateReleaseById,
 } from './github-release-api.mjs';
@@ -46,12 +47,16 @@ function candidateCommit(channel, tag) {
   return tagCommit(cwd, tag) ?? latestCandidateCommit(cwd, channel);
 }
 
-function findRelease(tag) {
-  const releases = listReleases().filter(({ tag_name }) => tag_name === tag);
-  if (releases.length > 1) {
-    throw new Error(`More than one GitHub Release has tag ${tag}`);
+function readReleaseInventory(recentTag) {
+  const releases = listReleases();
+  const recentRelease = recentTag ? findReleaseByTag(recentTag, releases) : undefined;
+  if (recentRelease && !releases.includes(recentRelease)) {
+    return {
+      releases: [...releases.filter(({ tag_name }) => tag_name !== recentTag), recentRelease],
+      recentRelease,
+    };
   }
-  return releases[0];
+  return { releases, recentRelease };
 }
 
 function resumeCandidate(channel, tag) {
@@ -64,7 +69,7 @@ function resumeCandidate(channel, tag) {
   if (recent !== commit) {
     throw new Error(`A newer ${channel} release candidate supersedes ${tag}`);
   }
-  if (releaseStatus(findRelease(tag)) === 'abandoned') {
+  if (releaseStatus(findReleaseByTag(tag)) === 'abandoned') {
     throw new Error(`${tag} has been abandoned`);
   }
   return candidate;
@@ -75,14 +80,14 @@ async function plan(channel, migrationVersion) {
   if (source !== resolveHead(cwd, channelRef(channel))) {
     throw new Error(`The checked out commit ${source} is no longer the tip of ${channel}`);
   }
-  const releases = listReleases();
   const recent = latestCandidateCommit(cwd, channel);
+  const recentTag = recent ? readCandidate(cwd, recent).tag : undefined;
+  const { releases, recentRelease } = readReleaseInventory(recentTag);
   if (recent) {
-    const candidate = readCandidate(cwd, recent);
-    const status = releaseStatus(releases.find(({ tag_name }) => tag_name === candidate.tag));
+    const status = releaseStatus(recentRelease);
     if (status === 'draft' || status === 'missing') {
       throw new Error(
-        `Resume or abandon ${candidate.tag} on ${channel} before starting a new release`,
+        `Resume or abandon ${recentTag} on ${channel} before starting a new release (GitHub Release status: ${status})`,
       );
     }
   }
@@ -209,7 +214,7 @@ async function record(candidate, notesPath) {
     if (resolveHead(cwd, 'HEAD') !== source) {
       throw new Error(`The release job must check out the original source ${source}`);
     }
-    const releases = listReleases();
+    const { releases } = readReleaseInventory(recent ? readCandidate(cwd, recent).tag : undefined);
     if (publishedBase(cwd, channel, source, releases) !== candidate.notesBase) {
       throw new Error('The published notes baseline changed; start a new release');
     }
@@ -244,7 +249,7 @@ async function record(candidate, notesPath) {
   }
   assertCandidateMatches(candidate, recorded);
   ensureTagAndChannel(candidate, commit);
-  const release = ensureCandidateRelease(candidate, findRelease(tag), notesPath);
+  const release = ensureCandidateRelease(candidate, findReleaseByTag(tag), notesPath);
   appendFileSync(process.env.GITHUB_OUTPUT, `release_id=${release.id}\n`);
 }
 
@@ -259,7 +264,7 @@ function abandon(channel, tag, notesPath) {
   ) {
     throw new Error(`There is no current managed candidate ${tag} on ${channel}`);
   }
-  const existing = findRelease(tag);
+  const existing = findReleaseByTag(tag);
   const status = releaseStatus(existing);
   if (status === 'abandoned') {
     return;

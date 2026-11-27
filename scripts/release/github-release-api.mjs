@@ -1,8 +1,45 @@
 import { writeFileSync } from 'node:fs';
-import { gh, Release, ReleaseId, releaseStatus, repository } from './release-candidate.mjs';
+import {
+  gh,
+  listReleases,
+  Release,
+  ReleaseId,
+  ReleaseTag,
+  releaseStatus,
+  repository,
+} from './release-candidate.mjs';
 
 function releaseEndpoint(id) {
   return `repos/${repository()}/releases/${ReleaseId.parse(id)}`;
+}
+
+export function findReleaseByTag(tag, releases = listReleases(), request = gh) {
+  const matches = releases.filter(({ tag_name }) => tag_name === tag);
+  if (matches.length > 1) {
+    throw new Error(`More than one GitHub Release has tag ${tag}`);
+  }
+  const [listed] = matches;
+  const status = releaseStatus(listed);
+  if (status === 'published' || status === 'abandoned') {
+    return listed;
+  }
+
+  const endpoint = `repos/${repository()}/releases/tags/${ReleaseTag.parse(tag)}`;
+  let response;
+  try {
+    response = request(['api', '--include', endpoint]);
+  } catch (cause) {
+    if (/^HTTP\/\S+ 404\b/.test(cause?.stdout ?? '')) {
+      return listed;
+    }
+    throw new Error(`Cannot verify GitHub Release for ${tag}`, { cause });
+  }
+
+  const release = Release.parse(JSON.parse(response.replace(/^[\s\S]*?\r?\n\r?\n/, '')));
+  if (release.tag_name !== tag) {
+    throw new Error(`GitHub returned Release tag ${release.tag_name}, expected ${tag}`);
+  }
+  return release;
 }
 
 export function readReleaseById(id, request = gh) {
