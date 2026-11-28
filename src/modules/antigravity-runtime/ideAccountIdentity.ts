@@ -1,4 +1,6 @@
+import { readFile } from 'node:fs/promises';
 import http from 'node:http';
+import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
 import type { ProcessInfo } from '@draculabo/sysinfo-process-enhanced';
@@ -9,6 +11,12 @@ import type { LaunchContext } from './types';
 
 const AuthSchema = z.object({ authResult: z.object({ hasValidAuth: z.boolean() }) });
 const UserSchema = z.object({ userStatus: z.object({ email: z.email() }) });
+const HubDiscoverySchema = z.object({
+  pid: z.number().int().positive(),
+  httpPort: z.number().int().min(1).max(65535),
+  csrfToken: z.string().min(1).max(256),
+});
+const HUB_DISCOVERY_MAX_BYTES = 4096;
 const SERVICE = '/exa.language_server_pb.LanguageServerService/';
 const WINDOWS_AGENT_STARTUP_TIMEOUT_MS = 120_000;
 
@@ -76,6 +84,37 @@ function argument(args: readonly string[], flag: string): string | null {
   return values.length === 1 && values[0] !== '' ? values[0] : null;
 }
 
+/**
+ * CLI 1.5.2+ receives the token through its environment and publishes it in a per-port
+ * discovery file. Accept it only when the file names this exact hub process and port.
+ */
+async function readHubCsrfToken(hub: ProcessInfo, port: number): Promise<string | null> {
+  const fromArguments = argument(hub.cmd, '--csrf_token');
+  if (fromArguments) {
+    return fromArguments;
+  }
+  const file = path.join(os.homedir(), '.gemini', 'antigravity', 'daemon', `hub_${port}.json`);
+  let text: string;
+  try {
+    text = await readFile(file, 'utf8');
+  } catch {
+    return null;
+  }
+  if (text.length > HUB_DISCOVERY_MAX_BYTES) {
+    return null;
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  const discovery = HubDiscoverySchema.safeParse(value);
+  return discovery.success && discovery.data.pid === hub.pid && discovery.data.httpPort === port
+    ? discovery.data.csrfToken
+    : null;
+}
+
 function descendants(rows: ProcessInfo[], root: ProcessInfo): ProcessInfo[] {
   const owned = new Map([[root.pid, root]]);
   let changed: boolean;
@@ -115,7 +154,8 @@ export async function confirmIdeAccountIdentity(
           canonicalPath(row.exe) === canonicalPath(context.executablePath),
       );
       if (root && (!current || current.startTime !== root.startTime)) {
-        throw processError('switched-identity-unconfirmed');
+        // The launched IDE exited or its PID was reused: no later observation can confirm it.
+        break;
       }
       root ??= current;
       if (root) {
@@ -131,9 +171,12 @@ export async function confirmIdeAccountIdentity(
         let confirmed = hubs.length > 0;
         for (const hub of hubs) {
           const portText = argument(hub.cmd, '--hub-port');
-          const csrf = argument(hub.cmd, '--csrf_token');
           const port = portText && /^\d+$/.test(portText) ? Number(portText) : 0;
-          if (!csrf || !Number.isInteger(port) || port < 1 || port > 65535) {
+          const csrf =
+            Number.isInteger(port) && port >= 1 && port <= 65535
+              ? await readHubCsrfToken(hub, port)
+              : null;
+          if (!csrf) {
             confirmed = false;
             break;
           }

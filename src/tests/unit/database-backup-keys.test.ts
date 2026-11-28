@@ -195,6 +195,23 @@ describe('account snapshot capture', () => {
       },
     );
 
+    it('reads the field 7 email when the IDE stores a display name in field 3', () => {
+      const payload = new Uint8Array([
+        ...ProtobufUtils.encodeStringField(3, 'Fixture Name'),
+        ...ProtobufUtils.encodeStringField(7, 'field7@example.invalid'),
+      ]);
+      values.set(
+        'antigravityUnifiedStateSync.userStatus',
+        ProtobufUtils.createUnifiedStateEntry('userStatusSentinelKey', payload),
+      );
+
+      expect(getCurrentAccountInfo('ide')).toEqual({
+        email: 'field7@example.invalid',
+        name: '',
+        isAuthenticated: true,
+      });
+    });
+
     it('falls back to legacy account info when unified userStatus is corrupt', () => {
       values.set('antigravityUnifiedStateSync.userStatus', 'not-protobuf');
       values.set(

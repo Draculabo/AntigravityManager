@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { eq } from 'drizzle-orm';
 import { isString } from 'lodash-es';
+import { z } from 'zod';
 import type { AccountBackupData, AccountInfo } from '@/modules/account/types';
 import type { AntigravityAppTarget } from '@/shared/platform/antigravityAppTarget';
 import { ItemTableValueRowSchema, type ItemTableKey } from '@/shared/persistence/database/types';
@@ -194,11 +195,12 @@ function readCurrentAccountInfoFromDbPath(
       try {
         const decoded = ProtobufUtils.decodeUnifiedStateEntry(unifiedUserValue);
         if (decoded.sentinelKey === 'userStatusSentinelKey') {
-          for (const field of [3, 7]) {
+          // The IDE stores the email in field 7 and may store the display name in field 3.
+          for (const field of [7, 3]) {
             const emailBytes = ProtobufUtils.getField(decoded.payload, field);
             if (emailBytes) {
               const email = new TextDecoder().decode(emailBytes).trim();
-              if (email) {
+              if (z.email().safeParse(email).success) {
                 logger.info(`Account info from unified user status: email=${email}`);
                 return { email, name: '', isAuthenticated: true };
               }

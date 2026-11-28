@@ -1,6 +1,9 @@
 // @vitest-environment node
+import fs from 'node:fs';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
 import type { ProcessInfo } from '@draculabo/sysinfo-process-enhanced';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { confirmIdeAccountIdentity } from '@/modules/antigravity-runtime/ideAccountIdentity';
@@ -25,6 +28,21 @@ let auth: unknown;
 let user: unknown;
 let headersValid: boolean;
 let requests: string[];
+let home: string;
+
+function writeDiscovery(contents: unknown): void {
+  const directory = path.join(home, '.gemini', 'antigravity', 'daemon');
+  fs.mkdirSync(directory, { recursive: true });
+  fs.writeFileSync(path.join(directory, `hub_${port}.json`), JSON.stringify(contents));
+}
+/** CLI 1.5.2+ receives its CSRF token through the environment, not argv. */
+function envTokenHub(overrides: Partial<ProcessInfo> = {}): ProcessInfo {
+  const base = hub(overrides);
+  return {
+    ...base,
+    cmd: base.cmd.filter((value) => value !== '--csrf_token' && value !== 'synthetic-csrf'),
+  };
+}
 
 function hub(overrides: Partial<ProcessInfo> = {}): ProcessInfo {
   const name = process.platform === 'win32' ? 'agy.exe' : 'agy';
@@ -59,6 +77,8 @@ beforeEach(async () => {
   user = { userStatus: { email: 'TARGET@example.org', extraProviderField: true } };
   requests = [];
   headersValid = true;
+  home = fs.mkdtempSync(path.join(os.tmpdir(), 'ide-identity-'));
+  vi.spyOn(os, 'homedir').mockReturnValue(home);
   server = http.createServer((request, response) => {
     requests.push(request.url ?? '');
     headersValid &&=
@@ -71,6 +91,8 @@ beforeEach(async () => {
   mocks.read.mockReset().mockImplementation(async () => [root, host, hub()]);
 });
 afterEach(async () => {
+  vi.restoreAllMocks();
+  fs.rmSync(home, { recursive: true, force: true });
   Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
   server.closeAllConnections();
   await new Promise<void>((resolve, reject) =>
@@ -176,5 +198,50 @@ describe('IDE Agent identity confirmation', () => {
     await expect(
       confirmIdeAccountIdentity(context, root.pid, 'target@example.org', 80),
     ).rejects.toThrow();
+  });
+  it('reads the CSRF token from the hub discovery file when argv omits it', async () => {
+    mocks.read.mockImplementation(async () => [root, host, envTokenHub()]);
+    writeDiscovery({
+      pid: 12,
+      httpPort: port,
+      httpsPort: 1,
+      lsVersion: '2.35.2',
+      csrfToken: 'synthetic-csrf',
+    });
+
+    await confirmIdeAccountIdentity(context, root.pid, 'target@example.org', 1500);
+
+    expect(headersValid).toBe(true);
+    expect(requests).toHaveLength(2);
+  });
+  it.each([
+    [
+      'another hub process',
+      (hubPort: number) => ({ pid: 99, httpPort: hubPort, csrfToken: 'synthetic-csrf' }),
+    ],
+    ['another port', () => ({ pid: 12, httpPort: 1, csrfToken: 'synthetic-csrf' })],
+    [
+      'a changed schema',
+      (hubPort: number) => ({ pid: 12, httpPort: hubPort, token: 'synthetic-csrf' }),
+    ],
+  ])('does not use a discovery file written by %s', async (_label, contents) => {
+    mocks.read.mockImplementation(async () => [root, host, envTokenHub()]);
+    writeDiscovery(contents(port));
+
+    await expect(
+      confirmIdeAccountIdentity(context, root.pid, 'target@example.org', 80),
+    ).rejects.toMatchObject({ messageKey: 'process-runtime.switched-identity-unconfirmed' });
+    expect(requests).toEqual([]);
+  });
+  it('fails without waiting for the deadline once the launched main process is replaced', async () => {
+    mocks.read
+      .mockResolvedValueOnce([root, host])
+      .mockResolvedValue([{ ...root, startTime: 500n }, host, hub()]);
+    const started = Date.now();
+
+    await expect(
+      confirmIdeAccountIdentity(context, root.pid, 'target@example.org', 10_000),
+    ).rejects.toMatchObject({ messageKey: 'process-runtime.switched-identity-unconfirmed' });
+    expect(Date.now() - started).toBeLessThan(2000);
   });
 });
